@@ -1,0 +1,17 @@
+# In the calendar event, put the links in the memo section
+# If you use Native MacOS Calendar, use Notes or Location field, as the synchronization with Google Calendar does not work well, if you use URL field.
+
+https://google.com #chrome #full
+👉 Opens Chrome in full screen
+
+https://zoom.us #chrome #left #alert=2m
+👉 Opens 2 minutes before event start
+
+https://zoom.us #chrome #left
+https://notion.so #edge #right
+👉 Split-screen workflow
+
+https://mail.google.com #chrome #left #1password
+https://slack.com #chrome #right #bitwarden
+👉 Autofill login credentials
+
