@@ -16,6 +16,7 @@ from browser import (
 )
 from state import load_state, save_state, is_done, mark_done
 from utils import log
+from onboarding import run_onboarding, uninstall_launchd, load_json
 
 from settings import (
     GRACE_SECONDS,
@@ -31,6 +32,9 @@ from settings import (
     AUTOFILL_BUFFER,
     BROWSER_MAP,
 )
+
+DEBUG = "--debug" in sys.argv
+
 
 # =========================
 # 🔒 Lock
@@ -72,10 +76,7 @@ def acquire_lock():
             os.remove(LOCK_FILE)
 
         except Exception:
-            try:
-                os.remove(LOCK_FILE)
-            except Exception:
-                pass
+            os.remove(LOCK_FILE)
 
     with open(LOCK_FILE, "w") as f:
         f.write(f"{os.getpid()}|{int(time.time())}")
@@ -128,26 +129,21 @@ def resolve_tags(global_tags, entry_tags):
     def is_layout(tag):
         return tag.startswith(("#left", "#right", "#top", "#bottom", "#full"))
 
-    # layout priority: entry > global
     entry_layout = {t for t in entry_tags if is_layout(t)}
     global_layout = {t for t in global_tags if is_layout(t)}
     layout_tags = entry_layout if entry_layout else global_layout
 
-    # browser priority: entry > global
     entry_browser = [t for t in entry_tags if t in BROWSER_MAP]
     global_browser = [t for t in global_tags if t in BROWSER_MAP]
     browser_tag = entry_browser[0] if entry_browser else (global_browser[0] if global_browser else None)
 
-    # merge everything
     tags = global_tags | entry_tags
 
-    # remove all layout + browser tags
     tags = {
         t for t in tags
         if t not in BROWSER_MAP and not is_layout(t)
     }
 
-    # re-add correct ones
     tags |= layout_tags
     if browser_tag:
         tags.add(browser_tag)
@@ -165,13 +161,49 @@ def main():
     os.makedirs("data", exist_ok=True)
 
     state = load_state()
-    events = get_upcoming_events()
+
+    config = load_json("data/config.json")
+    selected_calendars = (
+        config.get("calendars") if config and "calendars" in config else ["primary"]
+    )
+
+    if DEBUG:
+        log(f"DEBUG: Calendars → {selected_calendars}")
+
+    events = []
+
+    for calendar_id in selected_calendars:
+        cal_events = get_upcoming_events(calendar_id)
+
+        if DEBUG:
+            log(f"DEBUG: {calendar_id} → {len(cal_events)} events")
+
+        events.extend(cal_events)
+
+    # Deduplicate
+    seen = set()
+    unique_events = []
+
+    for e in events:
+        key = (e["id"], e["start"])
+        if key not in seen:
+            seen.add(key)
+            unique_events.append(e)
+
+    events = unique_events
+
+    # Sort
+    events.sort(key=lambda e: e["start"])
 
     log(f"EVENT COUNT: {len(events)}")
 
     for event in events:
         text = event.get("text") or ""
         event_time = event.get("start")
+        calendar_id = event.get("calendar_id", "unknown")
+
+        if DEBUG:
+            log(f"DEBUG: Event → [{calendar_id}] {event.get('title')}")
 
         if not event_time:
             continue
@@ -183,36 +215,30 @@ def main():
         key = f"{event['id']}_{event_time.isoformat()}"
 
         if is_done(state, key):
+            if DEBUG:
+                log("DEBUG: Skipped (already done)")
             continue
-
-        # =========================
-        # ⏱ Timing
-        # =========================
 
         global_tags = extract_global_tags(text)
         alert_offset = extract_alert_offset(global_tags)
         trigger_time = event_time - timedelta(seconds=alert_offset)
 
         if now < trigger_time - timedelta(seconds=EARLY_TOLERANCE):
+            if DEBUG:
+                log("DEBUG: Skipped (too early)")
             continue
 
         if now > trigger_time + timedelta(seconds=GRACE_SECONDS):
+            if DEBUG:
+                log("DEBUG: Skipped (too late)")
             continue
 
-        # =========================
-        # 🔗 URLs
-        # =========================
-
-        entries = extract_url_entries(
-            text,
-            title=event.get("title")
-        )
+        entries = extract_url_entries(text, title=event.get("title"))
 
         if not entries:
             continue
 
-        log(f"Processing event: {event.get('title', '')}")
-        log(f"URL count: {len(entries)}")
+        log(f"Processing: {event.get('title')}")
 
         for entry in entries:
             url = entry["url"]
@@ -220,60 +246,26 @@ def main():
 
             tags = resolve_tags(global_tags, entry_tags)
 
+            if DEBUG:
+                log(f"DEBUG: Tags → {tags}")
+
             delay = detect_delay(tags)
             should_autofill, should_submit = resolve_autofill(tags)
 
-            log(f"Opening: {url}")
-            log(f"Delay: {delay}s")
-
-            # =========================
-            # 🌐 OPEN
-            # =========================
-
             open_urls([url], tags)
-
             time.sleep(AUTOFILL_BUFFER)
-
-            # =========================
-            # 🔍 Detect browser
-            # =========================
 
             browser_name, _ = parse_browser(tags)
             browser_name = browser_name or get_frontmost_app()
 
-            log(f"Detected browser: {browser_name or 'unknown'}")
-
-            # =========================
-            # 🪟 Layout (critical: BEFORE autofill)
-            # =========================
-
             if has_layout(tags) and browser_name:
                 adjust_window(browser_name, tags)
 
-            # =========================
-            # ⏳ Page load
-            # =========================
-
             time.sleep(delay)
 
-            # =========================
-            # 🔐 Autofill
-            # =========================
-
             if should_autofill:
-                log("🔐 Autofill triggered")
-
-                time.sleep(AUTOFILL_BUFFER)
-
-                trigger_autofill(
-                    tags,
-                    submit=should_submit,
-                    browser_name=browser_name
-                )
-
+                trigger_autofill(tags, submit=should_submit, browser_name=browser_name)
                 time.sleep(POST_AUTOFILL_DELAY)
-
-            time.sleep(POST_AUTOFILL_DELAY)
 
         mark_done(state, key)
         log("✅ Event completed")
@@ -287,6 +279,16 @@ def main():
 # =========================
 
 if __name__ == "__main__":
+    full = "--full" in sys.argv
+
+    if "--uninstall" in sys.argv:
+        uninstall_launchd(full=full)
+        sys.exit(0)
+
+    if "--setup" in sys.argv:
+        run_onboarding()
+        sys.exit(0)
+
     if not acquire_lock():
         sys.exit(0)
 
