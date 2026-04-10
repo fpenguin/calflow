@@ -4,13 +4,16 @@ Turn your calendar into an automation engine — open apps, log in, and arrange 
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Install (Recommended)
 
 ```bash
-git clone https://github.com/fpenguin/calflow.git
-cd calflow
-pip install -r requirements.txt
-python src/main.py
+curl -sSL https://raw.githubusercontent.com/fpenguin/calflow/main/install.sh | bash
+```
+
+Then run:
+
+```bash
+calflow --setup
 ```
 
 ---
@@ -121,61 +124,39 @@ Calendar → Parse → Open → Detect → Resize → Autofill
 
 ---
 
-## 🧱 Project Structure
-
-```text
-calflow/
-├── src/
-├── settings.py
-└── README.md
-```
-
----
-
-## 🔧 Setup
-
-### 1. Install dependencies
+## 🚀 Setup (First Run)
 
 ```bash
+git clone https://github.com/fpenguin/calflow.git
+cd calflow
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+python src/main.py --setup
 ```
-
 ---
 
-### 2. Google Calendar API
+## ⏱ Automation (macOS)
 
-1. Go to https://console.cloud.google.com/
-2. Create project
-3. Enable Google Calendar API
-4. Configure OAuth consent screen
-5. Add yourself as **Test User**
-6. Create OAuth Client ID (Desktop App)
-7. Download credentials.json
-
-Place it here:
-
-```text
-secrets/credentials.json
-```
-
----
-
-### 3. First Run
+Check running:
 
 ```bash
-python src/main.py
+launchctl list | grep calflow
+```
+
+View logs:
+
+```bash
+tail -f /tmp/calflow.log
 ```
 
 ---
 
-## ⏱ Run Automatically (macOS)
+## 🧪 Debug Mode
 
 ```bash
-mkdir -p ~/Library/LaunchAgents
-nano ~/Library/LaunchAgents/com.calflow.plist
+calflow --debug
 ```
-
-Use launchd for scheduling.
 
 ---
 
