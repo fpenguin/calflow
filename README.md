@@ -1,6 +1,17 @@
 # Calflow
 
-Automate opening URLs from calendar events — with browser control, window layout, and optional password autofill.
+Turn your calendar into an automation engine — open apps, log in, and arrange your workspace automatically.
+
+---
+
+## ⚡ Quick Start
+
+```bash
+git clone https://github.com/fpenguin/calflow.git
+cd calflow
+pip install -r requirements.txt
+python src/main.py
+```
 
 ---
 
@@ -13,6 +24,15 @@ Calflow reads upcoming calendar events and:
 - Positions windows (left/right/full)  
 - Triggers password autofill (Bitwarden / 1Password)  
 - Optionally signs in automatically  
+
+---
+
+## 🎯 Use Cases
+
+- Daily login workflows (Notion, Gmail, Slack, etc.)
+- SSO-heavy enterprise environments
+- Multi-window setups for operators / traders
+- Automating repetitive browser routines
 
 ---
 
@@ -31,8 +51,8 @@ https://www.notion.so/login #right70 #submit
 - Opens both URLs in Chrome (even if OS default browser is Safari)  
 - First window → left 30%  
 - Second window → right 70%  
-- Autofills ID/PW on both websites (via password manager)  
-- Submits login on the second website (`#submit`)  
+- Autofills credentials  
+- Submits login on the second site  
 
 ---
 
@@ -71,7 +91,7 @@ https://www.notion.so/login #right70 #submit
 | `#bottom90` | Bottom 90% |
 | `#full` | Full screen |
 
-👉 Layout automatically forces **new window mode**
+👉 Layout forces **new window mode**
 
 ---
 
@@ -79,9 +99,9 @@ https://www.notion.so/login #right70 #submit
 
 | Tag | Behavior |
 |-----|--------|
-| `#submit` | Autofill + press Enter (Manual / Semi-auto mode) |
-| `#fill` | Autofill only (Manual mode) |
-| `#noautofill` | Disable autofill (Auto mode) |
+| `#submit` | Autofill + Enter |
+| `#fill` | Autofill only |
+| `#noautofill` | Disable autofill |
 
 ---
 
@@ -89,21 +109,15 @@ https://www.notion.so/login #right70 #submit
 
 | Tag | Behavior |
 |-----|--------|
-| `#slow` | Use longer delay (SSO / heavy pages) |
+| `#slow` | Longer delay |
 
 ---
 
 ## ⚙️ How It Works
 
 ```text
-Calendar → Parse → Open URL → Detect Browser → Resize → Autofill
+Calendar → Parse → Open → Detect → Resize → Autofill
 ```
-
-### Key principles:
-
-- Always targets **frontmost window**  
-- Layout happens **before autofill** (prevents popup interference)  
-- Tags are resolved with **entry > global priority**  
 
 ---
 
@@ -112,12 +126,6 @@ Calendar → Parse → Open URL → Detect Browser → Resize → Autofill
 ```text
 calflow/
 ├── src/
-│   ├── main.py
-│   ├── browser.py
-│   ├── parser.py
-│   ├── calendar_client.py
-│   ├── state.py
-│   └── utils.py
 ├── settings.py
 └── README.md
 ```
@@ -134,17 +142,25 @@ pip install -r requirements.txt
 
 ---
 
-### 2. Configure settings
+### 2. Google Calendar API
 
-Edit `settings.py`:
+1. Go to https://console.cloud.google.com/
+2. Create project
+3. Enable Google Calendar API
+4. Configure OAuth consent screen
+5. Add yourself as **Test User**
+6. Create OAuth Client ID (Desktop App)
+7. Download credentials.json
 
-- Autofill provider (Bitwarden / 1Password)  
-- Delays  
-- Browser mappings  
+Place it here:
+
+```text
+secrets/credentials.json
+```
 
 ---
 
-### 3. Run
+### 3. First Run
 
 ```bash
 python src/main.py
@@ -152,9 +168,18 @@ python src/main.py
 
 ---
 
-## 🔐 Autofill Setup
+## ⏱ Run Automatically (macOS)
 
-Calflow triggers your password manager via keyboard shortcuts.
+```bash
+mkdir -p ~/Library/LaunchAgents
+nano ~/Library/LaunchAgents/com.calflow.plist
+```
+
+Use launchd for scheduling.
+
+---
+
+## 🔐 Autofill Setup
 
 Example (Bitwarden):
 
@@ -162,36 +187,23 @@ Example (Bitwarden):
 Cmd + Shift + L
 ```
 
-Configure in `settings.py`:
-
-```python
-AUTOFILL_SHORTCUTS
-```
-
 ---
 
 ## ⚠️ Known Limitations
 
-- macOS only (uses AppleScript)  
-- Window control depends on browser support  
-- Chrome profile switching requires CLI launch  
-- Dynamic login pages may need `#slow`  
+- macOS only  
+- AppleScript dependency  
+- Chrome profile requires CLI  
+- Dynamic pages may need `#slow`  
 
 ---
 
 ## 🚀 Roadmap
 
-- Smart page-load detection (replace fixed delays)  
-- Multi-monitor support  
-- Per-domain automation rules  
-
----
-
-## 💡 Tips
-
-- Keep extensions minimal for performance  
-- Use explicit browser tags to avoid ambiguity  
-- Avoid opening large directories in your editor  
+- Smart page detection  
+- Multi-monitor  
+- Rules engine  
+- Headless mode  
 
 ---
 
