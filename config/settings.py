@@ -17,6 +17,12 @@ Defines:
 
 FETCH_WINDOW_HOURS = 2
 
+# How far ahead the `cli.main status` dashboard looks for the
+# "next event" line. Wider than the daemon window because the
+# dashboard is informational ("when's my next thing?") whereas
+# FETCH_WINDOW_HOURS is the daemon's per-cycle processing window.
+STATUS_LOOKAHEAD_HOURS = 24
+
 DEFAULT_ALERT_SECONDS = 300
 GRACE_SECONDS = 600
 EARLY_TOLERANCE = 30

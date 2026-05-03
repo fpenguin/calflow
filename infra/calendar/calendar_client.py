@@ -101,17 +101,27 @@ def build_service():
 # 📥 EVENT FETCH
 # =========================================================
 
-def get_upcoming_events(service, calendar_id: str = "primary") -> List[Dict]:
+def get_upcoming_events(
+    service,
+    calendar_id: str = "primary",
+    *,
+    hours: Optional[int] = None,
+) -> List[Dict]:
     """
     Fetch events from `calendar_id` whose start falls inside the
-    next `FETCH_WINDOW_HOURS` window.
+    next `hours` window (defaults to `FETCH_WINDOW_HOURS`).
+
+    The `hours` override exists so the daemon can keep its tight
+    2-hour processing window while UI surfaces (status dashboard,
+    menubar app) can look further ahead without changing settings.
 
     Returns:
         List of normalized event dicts (see module docstring).
         Returns [] on any API failure (logged).
     """
+    window_hours = hours if hours is not None else FETCH_WINDOW_HOURS
     now = datetime.now(timezone.utc)
-    future = now + timedelta(hours=FETCH_WINDOW_HOURS)
+    future = now + timedelta(hours=window_hours)
 
     log(f"[INFO] [{calendar_id}] Checking upcoming events")
 
@@ -161,10 +171,16 @@ def get_upcoming_events(service, calendar_id: str = "primary") -> List[Dict]:
 # 🔭 AGGREGATED LOOKUP (status dashboard helper)
 # =========================================================
 
-def next_event_across_calendars(service, calendar_ids: List[str]) -> Optional[Dict]:
+def next_event_across_calendars(
+    service,
+    calendar_ids: List[str],
+    *,
+    hours: Optional[int] = None,
+) -> Optional[Dict]:
     """
-    Return the soonest upcoming event across all `calendar_ids`,
-    or None if there are no upcoming events in the lookup window.
+    Return the soonest upcoming event across all `calendar_ids`
+    within the next `hours` window (defaults to FETCH_WINDOW_HOURS),
+    or None if no events are in the window.
 
     Each calendar is queried independently; the result with the
     smallest `start` (whose start is in the future) wins.
@@ -173,7 +189,7 @@ def next_event_across_calendars(service, calendar_ids: List[str]) -> Optional[Di
     now = datetime.now(timezone.utc)
 
     for cal_id in calendar_ids:
-        for ev in get_upcoming_events(service, cal_id):
+        for ev in get_upcoming_events(service, cal_id, hours=hours):
             start = ev.get("start")
             if not start:
                 continue

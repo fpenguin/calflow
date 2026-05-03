@@ -35,12 +35,23 @@ from core.utils import log
 # =========================================================
 
 def load_state() -> Dict[str, str]:
-    """Load state from disk. Returns {} if absent or corrupted."""
+    """
+    Load state from disk. Returns {} if absent, empty, or corrupted.
+
+    Empty file (0 bytes) is treated as 'fresh state' — silent.
+    Truly malformed JSON gets a `[WARN]` and resets to {}.
+    """
     if not os.path.exists(STATE_PATH):
         return {}
     try:
+        # Treat empty / whitespace-only file as fresh — no warning.
+        if os.path.getsize(STATE_PATH) == 0:
+            return {}
         with open(STATE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            raw = f.read().strip()
+        if not raw:
+            return {}
+        data = json.loads(raw)
         return data if isinstance(data, dict) else {}
     except Exception as exc:
         log(f"[WARN] State corrupted, resetting: {exc}")

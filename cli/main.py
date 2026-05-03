@@ -72,7 +72,7 @@ from core.utils import log
 
 # Config
 from config.config import DATA_DIR
-from config.settings import EARLY_TOLERANCE, GRACE_SECONDS
+from config.settings import EARLY_TOLERANCE, GRACE_SECONDS, STATUS_LOOKAHEAD_HOURS
 
 
 # =========================================================
@@ -271,10 +271,13 @@ def print_status_summary() -> None:
     next_line: Optional[str] = None
     try:
         service = build_service()
-        ev = next_event_across_calendars(service, calendars)
+        ev = next_event_across_calendars(
+            service, calendars, hours=STATUS_LOOKAHEAD_HOURS,
+        )
         if ev is None:
-            next_line = "📅 No upcoming events in the next " \
-                        f"{_lookup_window_hours()}h."
+            next_line = (
+                f"📅 No upcoming events in the next {STATUS_LOOKAHEAD_HOURS}h."
+            )
         else:
             now = datetime.now(timezone.utc).astimezone(ev["start"].tzinfo)
             delta = ev["start"] - now
@@ -308,6 +311,7 @@ def print_status_summary() -> None:
 
 
 def _lookup_window_hours() -> int:
+    """Daemon's per-cycle window. Status uses STATUS_LOOKAHEAD_HOURS."""
     from config.settings import FETCH_WINDOW_HOURS
     return FETCH_WINDOW_HOURS
 
