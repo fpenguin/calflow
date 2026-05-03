@@ -86,16 +86,38 @@ _DYNAMIC_RE = re.compile(r"^\{(.+)\}$")
 # 🚪 HEADER DETECTION (document-wide)
 # =========================================================
 
+def _normalize_header_line(raw: str) -> str:
+    """
+    Lowercase + strip whitespace AND any surrounding quote characters
+    that copy-paste tools (chat clients, code blocks, smart quotes)
+    sometimes wrap the marker in. So `'+CalFlow+`, `"+CalFlow+"`,
+    `“+CalFlow+”`, `‘+CalFlow+’` all resolve to `+calflow+`.
+    """
+    s = raw.strip().lower()
+    # Strip up to 2 layers of paired or stray quote characters.
+    for _ in range(2):
+        if not s:
+            break
+        if s[0] in "'\"‘’“”`":
+            s = s[1:]
+        if s and s[-1] in "'\"‘’“”`":
+            s = s[:-1]
+    return s.strip()
+
+
 def is_plus_header(text: str) -> bool:
     """
     True iff `+CalFlow+` appears as a standalone line ANYWHERE in the doc.
     Matches DSL_GRAMMAR §1.2 / parser-behavior §2.4 (mode is document-wide).
+
+    Tolerant of surrounding quote characters that copy-paste sometimes
+    introduces (e.g. ``'+CalFlow+'`` or ``"+CalFlow+"``).
     """
     if not text:
         return False
     target = PLUS_HEADER.lower()
     for raw in text.splitlines():
-        if raw.strip().lower() == target:
+        if _normalize_header_line(raw) == target:
             return True
     return False
 
@@ -113,7 +135,7 @@ def strip_header(text: str) -> List[str]:
     target = PLUS_HEADER.lower()
     for raw in text.splitlines():
         if not seen:
-            if raw.strip().lower() == target:
+            if _normalize_header_line(raw) == target:
                 seen = True
             continue
         body.append(raw)

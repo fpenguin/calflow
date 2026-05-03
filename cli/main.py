@@ -472,7 +472,7 @@ def _run_custom_script_loop() -> None:
         print("Parsed:")
         _print_parsed_summary(parsed)
         if parsed.is_empty:
-            print("[WARN] Script has no executable content; skipping.")
+            _diagnose_empty_script(script)
         else:
             print()
             answer = input("Run? [Y/n] ").strip().lower()
@@ -781,6 +781,68 @@ def _format_relative_delta(delta) -> str:
     else:
         magnitude = f"{secs // 3600}h{(secs % 3600) // 60}m"
     return f"{sign} {magnitude}" if sign == "in" else f"{magnitude} ago"
+
+
+def _diagnose_empty_script(script: str) -> None:
+    """
+    When a custom script parses to nothing, surface the most likely
+    explanation. Common cases:
+        - copy-paste added a leading apostrophe / smart quote
+        - the user forgot the `+CalFlow+` header but used Plus verbs
+        - the description has no URL/Plus content (Smart-mode noise only)
+    """
+    if not script:
+        print("[WARN] Empty script.")
+        return
+
+    lines = [ln for ln in script.splitlines() if ln.strip()]
+    if not lines:
+        print("[WARN] Script is whitespace only.")
+        return
+
+    # Detect a near-miss header (apostrophe / quote / case variation).
+    plus_lower = "+calflow+"
+    near_miss = None
+    for ln in lines:
+        s = ln.strip().lower()
+        if s == plus_lower:
+            near_miss = None  # actual header found, parser bug elsewhere
+            break
+        # Strip stray quote-like characters and re-test.
+        stripped = s
+        for ch in "'\"‘’“”`":
+            stripped = stripped.strip(ch)
+        if stripped.strip() == plus_lower and s != plus_lower:
+            near_miss = ln
+            break
+
+    if near_miss is not None:
+        print()
+        print("[WARN] Script has no executable content.")
+        print(f"       Found a near-miss header: {near_miss!r}")
+        print("       Did your paste include surrounding quotes? Try:")
+        print("         +CalFlow+   (no quotes, no leading whitespace)")
+        return
+
+    # No header detected at all — but script uses Plus verbs.
+    plus_verbs = (
+        "open", "focus", "close", "hide", "click", "type", "press",
+        "wait", "screenshot", "copy", "paste", "save", "run",
+    )
+    has_verb = any(
+        any(ln.strip().lower().startswith(v + " ") or ln.strip().lower() == v
+            for v in plus_verbs)
+        for ln in lines
+    )
+    if has_verb and not any("+calflow+" in ln.lower() for ln in lines):
+        print()
+        print("[WARN] Script has no executable content.")
+        print("       Looks like a Plus Mode script but it's missing the")
+        print("       `+CalFlow+` header on its own line at the top.")
+        return
+
+    print()
+    print("[WARN] Script has no executable content; skipping.")
 
 
 def _print_description_preview(text: str, max_lines: int = 8) -> None:
