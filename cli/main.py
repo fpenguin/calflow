@@ -321,52 +321,286 @@ def _lookup_window_hours() -> int:
 # =========================================================
 # 🧪 ON-DEMAND TEST  (`python3 -m cli.main test`)
 # =========================================================
+#
+# Three-mode interactive runner (v1.1.3):
+#
+#   Step 1: Fetch the next CalFlow Test Event + show its mode.
+#           Offer:
+#               1) Calendar Event — Dry run
+#               2) Calendar Event — Execute
+#               3) Custom Script
+#
+#   Step 2a: Dry run  → parse + summarise; ask Proceed?
+#   Step 2b: Execute  → run; offer [Enter] re-run / [n] new event / [q] quit
+#   Step 2c: Custom   → paste DSL; parse; run; [Enter] re-run / [c] change / [q] quit
+#
+# Why a re-run loop matters: most QA iterations are "tweak the event,
+# test, tweak, test", and re-running shouldn't require re-creating an
+# event from scratch.
+# =========================================================
 
 def run_test() -> None:
-    """
-    Generate a pre-filled "CalFlow Test Event" in the browser, prompt
-    the user to click Save, then immediately execute the event —
-    bypassing the trigger window — so the user gets instant feedback
-    instead of waiting ~5 minutes for the daemon's next cycle.
+    """Top-level dispatcher for `python3 -m cli.main test`."""
+    print("=" * 50)
+    print(" 🧪  CalFlow test runner")
+    print("=" * 50)
+    print()
 
-    After execution, the event is marked done in `data/state.json` so
-    the launchd daemon won't re-fire it on its next pass.
+    # Try to fetch a pre-existing CalFlow Test Event. If none, fall
+    # straight into the offer-to-create + custom-script flow.
+    test_event = _find_existing_test_event(silent=True)
+    if test_event is None:
+        test_event = _offer_create_test_event()
+        if test_event is None:
+            # The user declined creating one but might still want to try
+            # a custom script — let them in.
+            _run_custom_script_loop()
+            return
+
+    _step1_choose_mode(test_event)
+
+
+def _step1_choose_mode(test_event: Dict) -> None:
+    """Display the event header + run-mode menu. Dispatches to step 2a/b/c."""
+    text = test_event.get("text") or ""
+    parsed = parse(text, title=test_event.get("title"))
+    plus_marker = "+CalFlow+" if parsed.is_plus else "Smart"
+
+    print(f"Selected: {test_event['title']!r}")
+    print(f"Mode    : {plus_marker}")
+    print()
+    print("Run mode:")
+    print()
+    print("  1) Calendar Event — Dry run (no execution)")
+    print("  2) Calendar Event — Execute")
+    print("  3) Custom Script")
+    print()
+
+    choice = input("Choose: ").strip()
+    print()
+    if choice == "1":
+        _step2a_dry_run(test_event, parsed)
+    elif choice == "2":
+        _step2b_execute_loop(test_event, parsed)
+    elif choice == "3":
+        _run_custom_script_loop()
+    else:
+        print("Cancelled.")
+
+
+def _step2a_dry_run(test_event: Dict, parsed) -> None:
+    """Print the parsed AST without executing. Offer to proceed → execute."""
+    print("--- DRY RUN ---")
+    _print_parsed_summary(parsed)
+    print()
+    answer = input("Proceed? [Y/n] ").strip().lower()
+    if answer in ("", "y", "yes"):
+        print()
+        _step2b_execute_loop(test_event, parsed)
+
+
+def _step2b_execute_loop(test_event: Dict, parsed) -> None:
+    """Execute, then loop on [Enter]=rerun / [n]=new event / [q]=quit."""
+    while True:
+        try:
+            _execute_parsed(parsed)
+            _mark_test_event_done(test_event)
+        except Exception as exc:
+            print(f"\n[ERROR] Test execution failed: {exc}")
+
+        print()
+        print("Press:")
+        print("  [Enter] → run again")
+        print("  [n]     → create a new Google Calendar event (starting in 2 min)")
+        print("  [q]     → quit")
+        choice = input("> ").strip().lower()
+        print()
+        if choice in ("q", "quit", "exit"):
+            return
+        if choice == "n":
+            new_event = _offer_create_test_event()
+            if new_event is None:
+                return
+            test_event = new_event
+            text = test_event.get("text") or ""
+            parsed = parse(text, title=test_event.get("title"))
+        # else: empty → re-run with same parsed AST
+
+
+def _run_custom_script_loop() -> None:
+    """Paste DSL → parse → run; offer [Enter]/[c]/[q]."""
+    script = _prompt_for_script()
+    while script is not None:
+        parsed = parse(script, title="Custom script")
+        print()
+        print("Parsed:")
+        _print_parsed_summary(parsed)
+        if parsed.is_empty:
+            print("[WARN] Script has no executable content; skipping.")
+        else:
+            print()
+            answer = input("Run? [Y/n] ").strip().lower()
+            if answer in ("", "y", "yes"):
+                try:
+                    _execute_parsed(parsed)
+                except Exception as exc:
+                    print(f"\n[ERROR] Custom script failed: {exc}")
+
+        print()
+        print("Press:")
+        print("  [Enter] → run again")
+        print("  [c]     → change script")
+        print("  [q]     → quit")
+        choice = input("> ").strip().lower()
+        print()
+        if choice in ("q", "quit", "exit"):
+            return
+        if choice == "c":
+            script = _prompt_for_script()
+            continue
+        # empty → re-run same script
+        # (parsed re-built next loop iteration anyway)
+
+
+# =========================================================
+# 🛠️ TEST RUNNER HELPERS (v1.1.3)
+# =========================================================
+
+def _print_parsed_summary(parsed) -> None:
+    """Compact, human-readable summary of a ParseResult."""
+    print(f"Mode: {parsed.mode.upper()}")
+    if parsed.is_smart:
+        if not parsed.entries:
+            print("(no entries)")
+            return
+        print("Parsed entries:")
+        for entry in parsed.entries:
+            url = getattr(entry, "url", None) or "(no url)"
+            target = getattr(entry, "target", None)
+            tags = sorted(getattr(entry, "tags", set()) or set())
+            line = f"- URL: {url}"
+            if target:
+                line += f"   Target: {target}"
+            if tags:
+                line += f"   Tags: {', '.join(tags)}"
+            print(line)
+        if parsed.global_tags:
+            print(f"Global tags: {', '.join(sorted(parsed.global_tags))}")
+    elif parsed.is_plus:
+        if parsed.has_errors:
+            for err in parsed.errors:
+                print(f"[WARN] Plus validation: {err}")
+        if not parsed.commands:
+            print("(no commands)")
+            return
+        print("Parsed commands:")
+        for cmd in parsed.commands:
+            tags = sorted(cmd.tags or [])
+            tag_str = f"   Tags: {', '.join(tags)}" if tags else ""
+            print(f"- {cmd.name}: {cmd.raw}{tag_str}")
+    else:
+        print("(empty / unrecognised)")
+
+
+def _execute_parsed(parsed) -> None:
+    """Dispatch a ParseResult to the right executor."""
+    if parsed.is_empty:
+        print("[WARN] No executable content.")
+        return
+    print(f"[INFO] Mode: {parsed.mode.upper()}")
+    if parsed.is_smart:
+        execute_entries(
+            entries=parsed.entries,
+            global_tags=set(),
+            debug=DEBUG,
+        )
+    elif parsed.is_plus:
+        if parsed.has_errors:
+            for err in parsed.errors:
+                print(f"[WARN] Plus validation: {err}")
+        execute_commands(
+            commands=parsed.commands,
+            global_tags=set(),
+            debug=DEBUG,
+        )
+    else:
+        print(f"[WARN] Unrecognized mode: {parsed.mode}")
+
+
+def _prompt_for_script() -> Optional[str]:
+    """
+    Read a multi-line custom script. Two terminators:
+        - blank line → done
+        - EOF (Ctrl-D) → done
+    Returns None if the user cancels (Ctrl-C).
+    """
+    print("Paste your script (blank line or Ctrl-D to finish):")
+    lines: List[str] = []
+    try:
+        while True:
+            try:
+                line = input("> " if not lines else "  ")
+            except EOFError:
+                break
+            if line == "" and lines:
+                break
+            if line == "" and not lines:
+                # First-line blank → treat as cancel
+                return None
+            lines.append(line)
+    except KeyboardInterrupt:
+        print()
+        return None
+    return "\n".join(lines)
+
+
+def _offer_create_test_event() -> Optional[Dict]:
+    """
+    Open Google Calendar with a pre-filled CalFlow Test Event, then
+    poll for it to appear. Returns the event dict, or None if the user
+    backs out / it never shows up.
     """
     from cli.onboarding import open_sample_event_in_browser
 
-    print("=" * 50)
-    print(" 🧪  CalFlow test event")
-    print("=" * 50)
-    print()
     print("→ Opening a pre-filled event in your browser…")
     open_sample_event_in_browser()
     print()
     print("👉 Click 'Save' in Google Calendar to commit the event.")
-    print("   (Your default browser should have just opened the editor.)")
     print()
 
     answer = input("Test calendar event saved? Run it now? [Y/n]: ").strip().lower()
     if answer not in ("", "y", "yes"):
         print("Cancelled. The event will run automatically ~5 minutes from now")
         print("if you saved it (the daemon picks it up on its next cycle).")
-        return
+        return None
 
-    print()
-    print("[INFO] Fetching upcoming events from Google Calendar…")
+    return _find_existing_test_event(silent=False)
+
+
+def _find_existing_test_event(*, silent: bool) -> Optional[Dict]:
+    """
+    Look up the most recent 'CalFlow Test Event' in the next hour
+    across all selected calendars. Returns None if not found.
+    """
+    if not silent:
+        print()
+        print("[INFO] Fetching upcoming events from Google Calendar…")
 
     try:
         service = build_service()
     except RuntimeError as exc:
-        print(f"\n🔐 Not connected to Google Calendar yet.\n   {exc}")
-        return
+        if not silent:
+            print(f"\n🔐 Not connected to Google Calendar yet.\n   {exc}")
+        return None
     except Exception as exc:
-        print(f"\n⚠  Could not connect to Google Calendar:\n   {type(exc).__name__}: {exc}")
-        return
+        if not silent:
+            print(
+                f"\n⚠  Could not connect to Google Calendar:\n   "
+                f"{type(exc).__name__}: {exc}"
+            )
+        return None
 
     calendars = get_selected_calendars()
-
-    # The onboarding sample event is scheduled 5 min out; look up to
-    # 1 hour ahead in case the user took a while to save it.
     test_event = None
     for cal_id in calendars:
         for ev in get_upcoming_events(service, cal_id, hours=1):
@@ -378,67 +612,36 @@ def run_test() -> None:
             break
 
     if test_event is None:
-        print()
-        print("⚠  No 'CalFlow Test Event' found in the next hour across")
-        print(f"   {len(calendars)} selected calendar(s).")
-        print("   • Did you click 'Save' in the Google Calendar tab?")
-        print("   • Is the event in one of your selected calendars?")
-        print("     (Run `python3 -m cli.main display` … wait, that's monitors.")
-        print("      The selected calendars are in `data/config.json`.)")
-        return
+        if not silent:
+            print()
+            print("⚠  No 'CalFlow Test Event' found in the next hour across")
+            print(f"   {len(calendars)} selected calendar(s).")
+        return None
 
     event_time = test_event["start"]
     if event_time.tzinfo is None:
         event_time = event_time.replace(tzinfo=timezone.utc)
+        test_event["start"] = event_time
 
-    print()
-    print(f"[INFO] Found:    {test_event['title']!r}")
-    print(f"[INFO] Calendar: {test_event.get('calendar_id', '(unknown)')}")
-    print(f"[INFO] Scheduled at: {event_time.isoformat()}")
-    print(f"[INFO] Running now (bypassing trigger window)…")
-    print()
-
-    text = test_event.get("text") or ""
-    parsed = parse(text, title=test_event.get("title"))
-
-    if parsed.is_empty:
-        print("[WARN] No executable content in the event description.")
-        return
-
-    print(f"[INFO] Mode: {parsed.mode}")
-
-    try:
-        if parsed.is_smart:
-            execute_entries(
-                entries=parsed.entries,
-                global_tags=set(),         # parser already merged
-                debug=DEBUG,
-            )
-        elif parsed.is_plus:
-            if parsed.has_errors:
-                for err in parsed.errors:
-                    print(f"[WARN] Plus validation: {err}")
-            execute_commands(
-                commands=parsed.commands,
-                global_tags=set(),
-                debug=DEBUG,
-            )
-        else:
-            print(f"[WARN] Unrecognized mode: {parsed.mode}")
-            return
-
-        # Mark this run as done so the launchd daemon's next cycle
-        # doesn't re-fire the same event a few minutes from now.
-        state = load_state()
-        run_key = f"{test_event['id']}_{event_time.isoformat()}"
-        mark_done(state, run_key)
-        save_state(state)
-
+    if not silent:
+        print(f"[INFO] Found:        {test_event['title']!r}")
+        print(f"[INFO] Calendar:     {test_event.get('calendar_id', '(unknown)')}")
+        print(f"[INFO] Scheduled at: {event_time.isoformat()}")
         print()
-        print("✅ Test event executed.")
-        print("   (Marked done — the background daemon won't re-fire it.)")
-    except Exception as exc:
-        print(f"\n[ERROR] Test execution failed: {exc}")
+    return test_event
+
+
+def _mark_test_event_done(test_event: Dict) -> None:
+    """Mark this run done so the launchd daemon won't re-fire it."""
+    event_time = test_event["start"]
+    if event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=timezone.utc)
+    state = load_state()
+    run_key = f"{test_event['id']}_{event_time.isoformat()}"
+    mark_done(state, run_key)
+    save_state(state)
+    print("✅ Test event executed.")
+    print("   (Marked done — the background daemon won't re-fire it.)")
 
 
 # =========================================================

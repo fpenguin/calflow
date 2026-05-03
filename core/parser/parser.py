@@ -75,7 +75,6 @@ def parse(text: str, title: Optional[str] = None) -> ParseResult:
 
     try:
         if is_plus_mode(text):
-            log("[INFO] Mode: PLUS")
             commands, errors = parse_plus(text)
             return ParseResult(
                 mode=MODE_PLUS,
@@ -83,7 +82,6 @@ def parse(text: str, title: Optional[str] = None) -> ParseResult:
                 errors=errors,
             )
 
-        log("[INFO] Mode: SMART")
         entries = _smart_extract_url_entries(text, title=title)
         global_tags = frozenset(_smart_extract_tags(text))
         return ParseResult(
