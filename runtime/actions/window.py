@@ -446,13 +446,12 @@ function run(argv) {
         if (fronts.length > 0) frontmost = fronts[0].name();
     } catch (e) {}
 
-    var hid = [], kept = [], errored = [];
+    var hid = [], kept = [], errored = [], diag = [];
 
     // Probe Accessibility ONCE on the first non-trivial app. If reading
     // window geometry fails with the AX-permission signature, abort the
     // whole pass with a sentinel — no point in trying 30 more apps that
     // will all fail the same way.
-    var axChecked = false;
     var axDenied = false;
 
     for (var i = 0; i < procs.length; i++) {
@@ -470,13 +469,14 @@ function run(argv) {
 
         try {
             var wins = p.windows();
+            var winCount = wins ? wins.length : 0;
             var match = false;
-            for (var w = 0; w < wins.length; w++) {
+            var winInfo = [];   // per-window summary for diagnostics
+            for (var w = 0; w < winCount; w++) {
                 var pos, sz;
                 try {
                     pos = wins[w].position();
                     sz  = wins[w].size();
-                    axChecked = true;
                 } catch (e) {
                     var msg = (e && e.message) ? e.message : String(e);
                     if (msg.indexOf("assistive access") !== -1
@@ -486,11 +486,15 @@ function run(argv) {
                         axDenied = true;
                         break;
                     }
+                    winInfo.push("?");
                     continue;
                 }
-                if (!pos || !sz) continue;
+                if (!pos || !sz) { winInfo.push("?"); continue; }
                 var cx = pos[0] + sz[0] / 2;
                 var cy = pos[1] + sz[1] / 2;
+                winInfo.push("[" + Math.round(pos[0]) + "," + Math.round(pos[1])
+                            + " " + Math.round(sz[0]) + "x" + Math.round(sz[1])
+                            + " c=(" + Math.round(cx) + "," + Math.round(cy) + ")]");
                 if (cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh) {
                     match = true;
                     break;
@@ -502,6 +506,11 @@ function run(argv) {
                 hid.push(name);
             } else {
                 kept.push(name);
+                if (winCount === 0) {
+                    diag.push(name + ": no AX windows");
+                } else {
+                    diag.push(name + ": " + winCount + " win " + winInfo.join(""));
+                }
             }
         } catch (e) {
             errored.push(name + " (" + (e.message || e) + ")");
@@ -513,7 +522,8 @@ function run(argv) {
     }
     return "KEPT\t" + kept.join(", ") +
            "\nHIDDEN\t" + hid.join(", ") +
-           "\nERRORED\t" + errored.join(", ");
+           "\nERRORED\t" + errored.join(", ") +
+           "\nDIAG\t" + diag.join(" | ");
 }
 """
 
@@ -607,9 +617,19 @@ def hide_apps_on_display(
         return False
 
     for line in stdout.splitlines():
-        if "\t" in line:
-            tag, _, names = line.partition("\t")
-            log(f"[INFO] {label}: {tag.lower()} = [{names.strip() or '∅'}]")
+        if "\t" not in line:
+            continue
+        tag, _, names = line.partition("\t")
+        names = names.strip() or "∅"
+        if tag == "DIAG":
+            # Per-window detail for KEPT apps — useful when an app you
+            # expected to hide doesn't get hidden (typical: a panel
+            # whose AX-reported position is off-screen, or an app
+            # whose windows are actually on a different display).
+            if names != "∅":
+                log(f"[INFO] {label}: per-window detail → {names}")
+        else:
+            log(f"[INFO] {label}: {tag.lower()} = [{names}]")
     return True
 
 
