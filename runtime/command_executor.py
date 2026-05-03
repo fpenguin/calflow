@@ -261,11 +261,22 @@ def _do_close(params: Dict[str, Any]) -> None:
 
     items = params.get("items") or ()
     keep = params.get("keep") or ()
+    had_items = params.get("had_items", False)
 
     if items:
         for item in items:
             name = item.lstrip("@") if isinstance(item, str) else item
             close_app(name)
+        return
+
+    # v1.1.14 — refuse to fall through to close_all when the user
+    # explicitly listed items (even if they all failed to resolve).
+    # Otherwise an unknown @alias collapses to "close everything".
+    if had_items:
+        log(
+            "[WARN] CLOSE: items list resolved to empty (all unknown). "
+            "Refusing to fall through to `close all`-style behaviour."
+        )
         return
 
     if keep is not None:  # except(<arg>) form — even empty keep is valid here
@@ -316,11 +327,22 @@ def _do_hide(params: Dict[str, Any]) -> None:
     items = params.get("items") or ()
     keep = params.get("keep") or ()
     display_filter = params.get("display_filter")
+    had_items = params.get("had_items", False)
 
     if items:
         for item in items:
             name = item.lstrip("@") if isinstance(item, str) else item
             hide_app(name)
+        return
+
+    # v1.1.14 — refuse to fall through to hide_all when the user
+    # explicitly listed items (even if they all failed to resolve).
+    # Otherwise an unknown @alias collapses to "hide everything".
+    if had_items:
+        log(
+            "[WARN] HIDE: items list resolved to empty (all unknown). "
+            "Refusing to fall through to `hide all`-style behaviour."
+        )
         return
 
     # v1.1.7+ — real per-window display filter via JXA + System Events.

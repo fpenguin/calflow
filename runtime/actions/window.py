@@ -537,25 +537,45 @@ function run(argv) {
             }
             if (axDenied) break;
             if (matchedIdx.length > 0) {
-                // Miniaturize each matched window. Sheets don't support
-                // miniaturize on their own — try, fall back to a soft
-                // skip with a clear diag note.
-                var mini = 0, miniErr = 0;
+                // v1.1.14 — try miniaturize first; on failure fall
+                // back to closing the window (Settings panels and
+                // floating windows usually lack a miniaturize button
+                // but DO have a close button). Tracks per-window
+                // outcome so the user sees what we did.
+                var mini = 0, closed = 0, errs = 0;
                 for (var m = 0; m < matchedIdx.length; m++) {
                     var u2 = matchedIdx[m];
+                    var done = false;
                     try {
                         ui[u2].el.miniaturized = true;
                         mini += 1;
+                        done = true;
                     } catch (e) {
-                        miniErr += 1;
-                        errored.push(
-                            name + " " + ui[u2].kind +
-                            " (cannot miniaturize: " + (e.message || e) + ")"
-                        );
+                        // miniaturize unsupported — try close as fallback
+                        try {
+                            ui[u2].el.close();
+                            closed += 1;
+                            done = true;
+                        } catch (e2) {
+                            errs += 1;
+                            errored.push(
+                                name + " " + ui[u2].kind +
+                                " (mini: " + (e.message || e) +
+                                "; close: " + (e2.message || e2) + ")"
+                            );
+                        }
                     }
                 }
-                if (mini > 0) hid.push(name + " (" + mini + "/" + matchedIdx.length + " win)");
-                else kept.push(name);
+                var actionParts = [];
+                if (mini > 0) actionParts.push(mini + " min");
+                if (closed > 0) actionParts.push(closed + " closed");
+                if (errs > 0)   actionParts.push(errs + " err");
+                var summary = actionParts.join(", ") || "0";
+                if (mini + closed > 0) {
+                    hid.push(name + " (" + summary + " of " + matchedIdx.length + ")");
+                } else {
+                    kept.push(name);
+                }
                 diag.push(name + ": " + ui.length + " ui " + uiInfo.join(""));
             } else {
                 kept.push(name);

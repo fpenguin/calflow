@@ -45,6 +45,7 @@ from core.models import (
     TypeCommand,
     WaitCommand,
 )
+from core.utils import log
 from runtime.actions.browser import parse_layout_tag
 
 
@@ -95,17 +96,32 @@ def resolve_target_expansion(token: Optional[str]) -> List[str]:
     """
     Expand a single `@alias` (or quoted "App Name") into a list of apps.
 
-    - "@chrome"        → ["Google Chrome"]
-    - "@work"          → ["Google Chrome", "Notion", "Figma"]
+    - "@chrome"        → ["Google Chrome"]                   (TARGETS hit)
+    - "@work"          → ["Google Chrome", "Notion", "Figma"] (bundle)
+    - "@cmux"          → ["cmux"]   + [WARN]                 (unknown — fall
+                                                              back to literal)
     - '"Google Chrome"' / 'Google Chrome' → ["Google Chrome"]
-    - unknown alias    → []
+
+    v1.1.14 — unknown @aliases used to return `[]`. That made calls
+    like `hide @cmux` (where `@cmux` isn't in TARGETS) collapse to
+    empty items, and downstream the executor would silently fall
+    through to a *hide-all* path. Returning `[token-without-@]` plus
+    a warning is far safer: the literal app name is what the user
+    almost certainly meant, and worst case the OS-level `hide_app`
+    no-ops (no other apps get touched).
     """
     if not token:
         return []
     if token.startswith("@"):
         value = TARGETS.get(token.lower())
         if value is None:
-            return []
+            literal = token.lstrip("@")
+            log(
+                f"[WARN] Unknown @alias {token!r}; treating as a literal "
+                f"app name ({literal!r}). Add it to TARGETS in "
+                f"config/settings.py to silence this warning."
+            )
+            return [literal] if literal else []
         return list(value) if isinstance(value, list) else [value]
     # Strip surrounding quotes if any
     bare = token.strip()
@@ -298,7 +314,15 @@ def resolve_command(
             base["target_keyword"] = command.target_keyword
             base["items"] = ()
             base["keep"] = ()
+            base["had_items"] = False
             return base
+        # v1.1.14 — `had_items` records whether the user originally
+        # asked for explicit items (vs `except(...)`). Resolution can
+        # legitimately produce `items=()` if every alias was unknown
+        # AND the unknown-alias fallback fails to find a literal name;
+        # the executor uses `had_items` to refuse silent fall-through
+        # to close_all (which would close everything visible).
+        base["had_items"] = bool(command.items)
         if command.items:
             base["items"] = _expand_targets(command.items)
         else:
@@ -319,7 +343,9 @@ def resolve_command(
             base["items"] = ()
             base["keep"] = ()
             base["display_filter"] = None
+            base["had_items"] = False
             return base
+        base["had_items"] = bool(command.items)  # see CloseCommand note
         if command.items:
             base["items"] = _expand_targets(command.items)
             base["keep"] = ()
