@@ -13,7 +13,7 @@ labels reference the section they enforce.
 
 Where a rule depends on a real UI/clipboard/Quartz backend that is
 intentionally a stub in v2.0, the test is marked with `expectedFailure`
-or `skip` and references the gap in docs/v2_migration_notes.md.
+or `skip` and references the gap in docs/roadmap.md.
 
 Run:
     python -m unittest tests.test_v2_spec -v

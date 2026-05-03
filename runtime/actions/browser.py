@@ -1,5 +1,5 @@
 """
-CalFlow Browser & App Launcher (Smart Mode — v1.0)
+CalFlow Browser & App Launcher (v2.0)
 
 Responsibilities:
 - Open URLs in specific browsers (or default)

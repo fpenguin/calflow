@@ -1,5 +1,5 @@
 """
-CalFlow Settings (v1.0 — Smart Mode, v2.0-ready)
+CalFlow Settings (v2.0 — Smart Mode + Plus Mode)
 
 SAFE TO EDIT
 

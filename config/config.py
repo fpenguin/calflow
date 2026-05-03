@@ -1,5 +1,5 @@
 """
-CalFlow Internal Configuration (v1.0 — v2.0 ready)
+CalFlow Internal Configuration (v2.0)
 
 DO NOT EDIT unless developing CalFlow itself.
 """
