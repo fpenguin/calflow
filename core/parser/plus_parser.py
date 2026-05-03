@@ -1,0 +1,616 @@
+"""
+CalFlow Plus Mode Parser (v2.0).
+
+Responsibilities:
+- consume the body of a Plus block (header detected anywhere in the doc)
+- validate via core.validator
+- build a typed AST list (List[BaseCommand])
+
+Design:
+- deterministic
+- pure (no IO)
+- best-effort: a single bad line never aborts the rest of the block
+  unless config.settings.PLUS_STRICT_VALIDATION is True
+- comments use `##`; single `#` is reserved for tags / modifiers
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, FrozenSet, List, Optional, Tuple
+
+from config.settings import (
+    PLUS_DEFAULT_WAIT,
+    PLUS_HEADER,
+    PLUS_STRICT_VALIDATION,
+)
+from core.models import (
+    BaseCommand,
+    ClickCommand,
+    CloseCommand,
+    CopyCommand,
+    FocusCommand,
+    HideCommand,
+    OpenCommand,
+    PasteCommand,
+    PressCommand,
+    RunCommand,
+    SaveCommand,
+    ScreenshotCommand,
+    TypeCommand,
+    ValidationError,
+    WaitCommand,
+)
+from core.utils import log, strip_inline_comment
+from core.validator.validator import (
+    _split_verb_function,
+    tokenize,
+    validate_plus_block,
+)
+
+
+# =========================================================
+# 🔎 REGEX
+# =========================================================
+
+_HASHTAG_RE = re.compile(r"^#\w[\w\-=()%.,@/]*$")
+_AT_RE = re.compile(r"^@\w[\w\-]*$")
+_COORD_RE = re.compile(r"^(-?\d+)\s*,\s*(-?\d+)$")
+_FUNCTION_CALL_RE = re.compile(r"^([A-Za-z_][\w\-]*)\((.*)\)$")
+_TIME_RE = re.compile(r"^(\d+(?:\.\d+)?)(s|m|h|ms)?$", re.IGNORECASE)
+_KEY_TOKEN_RE = re.compile(r"^\{([^{}]+)\}$")
+_SEQ_TOKEN_RE = re.compile(r"^\[(.*)\]$")
+_REP_RE = re.compile(r"^\(?(\{[^{}]+\}|\([^()]*\))\)?x(\d+)$")  # ({left})x5
+_URL_HINT_RE = re.compile(r"://|^[a-z0-9.\-]+\.[a-z]{2,}", re.IGNORECASE)
+_QUOTED_RE = re.compile(r'^"(.*)"$|^\'(.*)\'$')
+
+
+# =========================================================
+# 🚪 HEADER DETECTION (document-wide)
+# =========================================================
+
+def is_plus_header(text: str) -> bool:
+    """
+    True iff `+CalFlow+` appears as a standalone line ANYWHERE in the doc.
+    Matches DSL_GRAMMAR §1.2 / parser-behavior §2.4 (mode is document-wide).
+    """
+    if not text:
+        return False
+    target = PLUS_HEADER.lower()
+    for raw in text.splitlines():
+        if raw.strip().lower() == target:
+            return True
+    return False
+
+
+def strip_header(text: str) -> List[str]:
+    """
+    Return the body lines of a Plus block (everything AFTER the first
+    `+CalFlow+` line). Lines before the header are discarded — Plus Mode
+    is document-wide so they have no semantic meaning.
+    """
+    if not text:
+        return []
+    seen = False
+    body: List[str] = []
+    target = PLUS_HEADER.lower()
+    for raw in text.splitlines():
+        if not seen:
+            if raw.strip().lower() == target:
+                seen = True
+            continue
+        body.append(raw)
+    return body
+
+
+# =========================================================
+# 🚀 PUBLIC API
+# =========================================================
+
+def parse_plus(
+    text: str,
+) -> Tuple[List[BaseCommand], List[ValidationError]]:
+    """Parse the body of a Plus block into a typed AST."""
+    body = strip_header(text)
+    errors = validate_plus_block(body)
+
+    if errors and PLUS_STRICT_VALIDATION:
+        log(
+            f"[WARN] Plus Mode validation failed (strict): "
+            f"{len(errors)} error(s); aborting block."
+        )
+        return [], errors
+
+    commands: List[BaseCommand] = []
+    bad_lines = {e.line_no for e in errors if e.line_no > 0}
+
+    for idx, raw in enumerate(body, start=1):
+        line = strip_inline_comment(raw or "").strip()
+        if not line:
+            continue
+        if idx in bad_lines:
+            log(f"[INFO] skipped line: invalid syntax (line {idx}): {line}")
+            continue
+
+        cmd = _build_command(line, idx)
+        if cmd is not None:
+            commands.append(cmd)
+
+    return commands, errors
+
+
+# =========================================================
+# 🏗️ COMMAND CONSTRUCTION
+# =========================================================
+
+def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
+    tokens = tokenize(line)
+    if not tokens:
+        return None
+
+    # Standalone modifier line (only #tags / @targets, no verb-like token):
+    # silently ignored per parser-behavior §5.10 / DSL_GRAMMAR §3.2.
+    if all(_HASHTAG_RE.match(t) or _AT_RE.match(t) for t in tokens):
+        return None
+
+    # Detach `verb(...)` (e.g. `type("hi")`, `wait(5s)`) into ['verb', 'verb(...)'].
+    tokens = _split_verb_function(tokens)
+
+    head = tokens[0]
+    head_upper = head.upper()
+
+    # ---------------- Implicit open ---------------------------------
+    if head_upper not in {
+        "OPEN", "FOCUS", "CLOSE", "HIDE", "CLICK", "TYPE", "PRESS",
+        "WAIT", "SCREENSHOT", "COPY", "PASTE", "SAVE", "RUN",
+    }:
+        # If it looks like a URL/quoted/file path, normalize to OPEN.
+        if (
+            _URL_HINT_RE.search(head)
+            or _QUOTED_RE.match(head)
+            or head.startswith("~")
+            or head.startswith("/")
+            or head.startswith("@")
+        ):
+            tokens = ["open"] + tokens
+            head = "open"
+            head_upper = "OPEN"
+        else:
+            return None  # validator already logged
+
+    args = tokens[1:]
+    body_args, tags, targets, fns = _split_args(args)
+    raw = line
+
+    if head_upper == "OPEN":
+        primary = body_args[0] if body_args else (targets[0] if targets else "")
+        return OpenCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            url=_unquote(primary) if primary else "",
+            app=targets[0] if targets else None,
+            targets=tuple(targets),
+        )
+
+    if head_upper == "FOCUS":
+        primary = body_args[0] if body_args else (targets[0] if targets else None)
+        title = next((v for (n, v) in fns if n == "title"), None)
+        return FocusCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            target=_unquote(primary) if primary else None,
+            title=title,
+            targets=tuple(targets),
+        )
+
+    if head_upper == "CLOSE":
+        primary = body_args[0] if body_args else None
+        items = _flatten_collection(primary) if primary else ()
+        return CloseCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            target=_unquote(primary) if primary and not items else None,
+            items=items,
+        )
+
+    if head_upper == "HIDE":
+        return _build_hide(line_no, raw, body_args, tags, targets, fns)
+
+    if head_upper == "CLICK":
+        return _build_click(line_no, raw, body_args, tags, fns)
+
+    if head_upper == "TYPE":
+        text = ""
+        if body_args:
+            head_arg = body_args[0]
+            m = _FUNCTION_CALL_RE.match(head_arg)
+            if m:
+                text = _unquote(m.group(2).strip())
+            else:
+                text = _unquote(head_arg)
+        return TypeCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            text=text,
+        )
+
+    if head_upper == "PRESS":
+        return _build_press(line_no, raw, body_args, tags, fns)
+
+    if head_upper == "WAIT":
+        seconds = _normalize_wait(body_args[0]) if body_args else float(PLUS_DEFAULT_WAIT)
+        return WaitCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            seconds=max(0.0, seconds),
+        )
+
+    if head_upper == "SCREENSHOT":
+        return _build_screenshot(line_no, raw, body_args, tags, fns)
+
+    if head_upper == "COPY":
+        return CopyCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+
+    if head_upper == "PASTE":
+        return PasteCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+
+    if head_upper == "SAVE":
+        source = next((v for (n, v) in fns if n == "source"), None)
+        to = next((v for (n, v) in fns if n == "to"), None)
+        return SaveCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            source=source,
+            to=to,
+        )
+
+    if head_upper == "RUN":
+        path = _unquote(body_args[0]) if body_args else ""
+        return RunCommand(
+            line_no=line_no,
+            raw=raw,
+            tags=tags,
+            functions=tuple(fns),
+            path=path,
+        )
+
+    return None
+
+
+# =========================================================
+# 🔧 PER-VERB BUILDERS
+# =========================================================
+
+def _build_hide(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], targets: List[str], fns: List[Tuple[str, Any]],
+) -> HideCommand:
+    if not body:
+        return HideCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+
+    if body[0].lower() == "all":
+        # `hide all` or `hide all except <…>`
+        except_items: Tuple[str, ...] = ()
+        if len(body) >= 2 and body[1].lower() == "except":
+            tail = body[2:]
+            collected: List[str] = []
+            for tok in tail:
+                items = _flatten_collection(tok)
+                if items:
+                    collected.extend(items)
+                else:
+                    collected.append(_unquote(tok))
+            # `@target` was peeled off into `targets`
+            collected.extend(targets)
+            except_items = tuple(collected)
+        return HideCommand(
+            line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+            hide_all=True, except_items=except_items,
+        )
+
+    head = body[0]
+    items = _flatten_collection(head)
+    return HideCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        target=_unquote(head) if not items else None,
+        items=items,
+    )
+
+
+def _build_click(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], fns: List[Tuple[str, Any]],
+) -> ClickCommand:
+    text = next((v for (n, v) in fns if n == "text"), None)
+    selector = next((v for (n, v) in fns if n == "selector"), None)
+    pos = next((v for (n, v) in fns if n == "position"), None)
+    x = y = None
+    if isinstance(pos, tuple) and len(pos) == 2:
+        try:
+            x, y = int(pos[0]), int(pos[1])
+        except Exception:
+            pass
+
+    if text or selector or pos:
+        return ClickCommand(
+            line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+            text=text, selector=selector, x=x, y=y,
+        )
+
+    if not body:
+        return ClickCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+
+    head = body[0]
+    coord = _COORD_RE.match(head)
+    if coord:
+        return ClickCommand(
+            line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+            x=int(coord.group(1)), y=int(coord.group(2)),
+        )
+    return ClickCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        selector=" ".join(body),
+    )
+
+
+def _build_press(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], fns: List[Tuple[str, Any]],
+) -> PressCommand:
+    if not body:
+        return PressCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+
+    head = body[0]
+    seq = _SEQ_TOKEN_RE.match(head)
+    if seq:
+        keys = _parse_press_sequence(seq.group(1))
+    else:
+        keys = (_parse_key_token(head),) if _KEY_TOKEN_RE.match(head) else ()
+    return PressCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        keys=keys,
+    )
+
+
+def _build_screenshot(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], fns: List[Tuple[str, Any]],
+) -> ScreenshotCommand:
+    display = next((v for (n, v) in fns if n == "display"), None)
+    window = next((v for (n, v) in fns if n == "window"), None)
+    area_raw = next((v for (n, v) in fns if n == "area"), None)
+    area = None
+    if isinstance(area_raw, tuple) and len(area_raw) == 4:
+        try:
+            area = (int(area_raw[0]), int(area_raw[1]),
+                    int(area_raw[2]), int(area_raw[3]))
+        except Exception:
+            area = None
+
+    path = None
+    if body and not _FUNCTION_CALL_RE.match(body[0]):
+        path = _unquote(body[0])
+
+    return ScreenshotCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        path=path,
+        display=int(display) if display is not None else None,
+        window=window,
+        area=area,
+    )
+
+
+# =========================================================
+# 🛠️ HELPERS
+# =========================================================
+
+def _split_args(
+    args: List[str],
+) -> Tuple[List[str], FrozenSet[str], List[str], List[Tuple[str, Any]]]:
+    """
+    Partition argument tokens into:
+        body        → positional arguments (not @, #, or function-calls)
+        tags        → frozenset of #tags (lowercased)
+        targets     → @ tokens (lowercased)
+        functions   → list of (name, value) tuples preserving order
+                      value is str | int | float | tuple of args
+    """
+    body: List[str] = []
+    tags: List[str] = []
+    targets: List[str] = []
+    functions: List[Tuple[str, Any]] = []
+
+    for token in args:
+        if _HASHTAG_RE.match(token):
+            tags.append(token.lower())
+            continue
+        if _AT_RE.match(token):
+            targets.append(token.lower())
+            continue
+        m = _FUNCTION_CALL_RE.match(token)
+        if m:
+            name = m.group(1).lower()
+            inner = m.group(2).strip()
+            value = _coerce_function_args(inner)
+            functions.append((name, value))
+            continue
+        body.append(token)
+
+    return body, frozenset(tags), targets, functions
+
+
+def _coerce_function_args(inner: str) -> Any:
+    """
+    Parse the inside of `name(...)` into a Python value.
+
+    - "x"           → "x"            (single quoted string)
+    - 1, 2, 3       → (1, 2, 3)      (ints)
+    - 0.1s          → 0.1            (seconds, normalized)
+    - clipboard     → "clipboard"    (bare identifier)
+    - "a", "b"      → ("a", "b")     (tuple of strings)
+    """
+    if inner == "":
+        return None
+
+    parts = _split_top_level(inner, sep=",")
+    if len(parts) == 1:
+        return _coerce_single(parts[0].strip())
+    return tuple(_coerce_single(p.strip()) for p in parts)
+
+
+def _coerce_single(token: str) -> Any:
+    if not token:
+        return None
+    if _QUOTED_RE.match(token):
+        return _unquote(token)
+    m = _TIME_RE.match(token)
+    if m:
+        v = float(m.group(1))
+        unit = (m.group(2) or "s").lower()
+        if unit == "ms":
+            return v / 1000.0
+        if unit == "m":
+            return v * 60.0
+        if unit == "h":
+            return v * 3600.0
+        return v
+    if token.lstrip("-").isdigit():
+        try:
+            return int(token)
+        except Exception:
+            return token
+    try:
+        return float(token)
+    except Exception:
+        return token
+
+
+def _split_top_level(s: str, sep: str = ",") -> List[str]:
+    """Split s by sep, respecting (), [], {}, "", ''."""
+    parts: List[str] = []
+    buf: List[str] = []
+    quote = ""
+    paren = brace = bracket = 0
+    for ch in s:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = ""
+        elif ch in ('"', "'"):
+            quote = ch
+            buf.append(ch)
+        elif ch == "(":
+            paren += 1; buf.append(ch)
+        elif ch == ")":
+            paren = max(0, paren - 1); buf.append(ch)
+        elif ch == "{":
+            brace += 1; buf.append(ch)
+        elif ch == "}":
+            brace = max(0, brace - 1); buf.append(ch)
+        elif ch == "[":
+            bracket += 1; buf.append(ch)
+        elif ch == "]":
+            bracket = max(0, bracket - 1); buf.append(ch)
+        elif ch == sep and not (paren or brace or bracket):
+            parts.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf).strip())
+    return parts
+
+
+def _normalize_wait(token: str) -> float:
+    """Accept `5`, `5s`, `5m`, `wait(5s)` (already de-wrapped by caller)."""
+    inner = token
+    fc = _FUNCTION_CALL_RE.match(token)
+    if fc:
+        inner = fc.group(2).strip()
+    m = _TIME_RE.match(inner)
+    if not m:
+        return float(PLUS_DEFAULT_WAIT)
+    value = float(m.group(1))
+    unit = (m.group(2) or "s").lower()
+    if unit == "ms":
+        return value / 1000.0
+    if unit == "m":
+        return value * 60.0
+    if unit == "h":
+        return value * 3600.0
+    return value
+
+
+def _flatten_collection(token: str) -> Tuple[str, ...]:
+    """Parse `[a,b,c]` → ('a','b','c'); returns () for non-collections."""
+    if not token:
+        return ()
+    m = _SEQ_TOKEN_RE.match(token)
+    if not m:
+        return ()
+    inner = m.group(1).strip()
+    if not inner:
+        return ()
+    parts = _split_top_level(inner, sep=",")
+    return tuple(_unquote(p.strip()) for p in parts)
+
+
+def _parse_key_token(token: str) -> Any:
+    """`{enter}` → ('key','enter');  `{cmd+shift+tab}` → ('combo', ('cmd','shift','tab'))."""
+    m = _KEY_TOKEN_RE.match(token)
+    if not m:
+        return ("invalid", token)
+    inner = m.group(1).strip()
+    if "+" in inner:
+        return ("combo", tuple(p.strip().lower() for p in inner.split("+") if p.strip()))
+    return ("key", inner.lower())
+
+
+def _parse_press_sequence(inner: str) -> Tuple[Any, ...]:
+    """Parse `[{a}, ({b})x5, {c}]` interior into ordered key entries."""
+    parts = _split_top_level(inner, sep=",")
+    out: List[Any] = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        rep = _REP_RE.match(p)
+        if rep:
+            inner_tok = rep.group(1)
+            count = int(rep.group(2))
+            base = _parse_key_token(inner_tok if inner_tok.startswith("{")
+                                    else "{" + inner_tok.strip("()") + "}")
+            out.append(("rep", base, count))
+            continue
+        if _KEY_TOKEN_RE.match(p):
+            out.append(_parse_key_token(p))
+            continue
+        # Strip outer parens for grouping
+        if p.startswith("(") and p.endswith(")"):
+            inner_p = p[1:-1].strip()
+            if _KEY_TOKEN_RE.match(inner_p):
+                out.append(_parse_key_token(inner_p))
+                continue
+        out.append(("invalid", p))
+    return tuple(out)
+
+
+def _unquote(text: str) -> str:
+    if not text:
+        return ""
+    m = _QUOTED_RE.match(text)
+    if m:
+        return m.group(1) if m.group(1) is not None else m.group(2) or ""
+    return text

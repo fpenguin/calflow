@@ -1,0 +1,204 @@
+# 🍎 Menubar Companion — Architectural Readiness
+
+This document is **planning only** — no menubar app is being built yet.
+The goal is to make sure the v2.0 architecture doesn't paint us into a
+corner when the menubar app does land.
+
+The menubar app will be a thin GUI shell. The actual logic must live in
+the existing Python packages, exposed as **library-callable APIs** that
+the GUI layer (e.g. `rumps`, `PyQt`, or a Swift app shelling out to
+Python) can drive.
+
+---
+
+# 1. Feature audit (per the 8 requested features)
+
+| # | Feature | What exists today | What's missing for the GUI |
+|---|---------|-------------------|----------------------------|
+| 1 | Welcome screen | static text in `cli/onboarding.run_onboarding()` | content extraction (see §3.1) |
+| 2 | Connect Google Calendar | `infra.calendar.calendar_client.build_service()` runs OAuth | OAuth callback URL is `localhost:0` — works headless. Need a `connection_status() → dict` accessor. |
+| 3 | Select calendars | `cli.onboarding.ensure_calendar_selection(service)` | currently uses `input()` for picking; need a headless `list_calendars(service) → list[dict]` + `set_selected_calendars(ids)` pair |
+| 4 | Change settings | `config/settings.py` is a Python module, hand-edited | need a JSON overlay (`data/user_settings.json`) and a settings-reader API that merges Python defaults + JSON overrides |
+| 5 | Change status (Running / Paused / Stopped) | `cli/onboarding.{start,stop,restart,status}_launchd()` | need a unified `daemon_status() → {state, pid, last_run, next_run}` accessor |
+| 6 | Test +CalFlow+ script | `core.parser.parser.parse(text)` + `runtime.command_executor.execute_commands(...)` | already library-callable; just needs a `dry_run(text) → ExecutionTrace` that returns what would happen instead of doing it |
+| 7 | List upcoming events + manual run | `infra.calendar.calendar_client.get_upcoming_events()` works; `cli/main.py::main()` is the trigger logic but coupled to its own state loop | need `list_upcoming(calendar_ids, hours) → list[Event]` + `run_event(event_id) → ExecutionTrace` extracted from `main()` body |
+| 8 | Tip the developer | trivial — `webbrowser.open(URL)` | none |
+
+---
+
+# 2. Big-picture architectural moves
+
+These are the **only structural changes** the menubar future asks of us.
+None require giving up the v2.0 architecture; they're additive.
+
+## 2.1 Split `cli/onboarding.py` → headless logic + interactive prompts
+
+Today every onboarding step bundles `print()`/`input()` with the
+actual work. The menubar will need the work without the prompts.
+
+**Recommended structure (when we do it):**
+
+```
+cli/onboarding.py                 # CLI entry — keeps the prompts
+core/onboarding/
+    google_oauth.py               # ensure_credentials_logic(json_str)
+    calendar_select.py            # list_calendars(svc), save_selection(ids)
+    daemon_install.py             # install_launchd(interval), uninstall_launchd(full)
+```
+
+The CLI version becomes a thin wrapper that handles I/O and calls
+`core/onboarding/*`. The menubar imports `core/onboarding/*` directly.
+
+**No change needed for v2.0.1** — flag this for v2.x.
+
+## 2.2 Add a JSON settings overlay
+
+`config/settings.py` stays as the **default** (Python module, version-
+controlled). Add `data/user_settings.json` as the **overlay**
+(written by the menubar's "Change Settings" pane, not committed).
+
+```python
+# config/settings.py — last 5 lines
+from .runtime_overlay import apply_overlay
+apply_overlay(globals())   # mutates module globals from data/user_settings.json
+```
+
+This keeps the existing `from config.settings import …` API unchanged.
+The menubar writes JSON; on next import (or after the daemon restarts)
+the override takes effect.
+
+**Estimated effort**: ~50 lines, can ship in v2.0.2.
+
+## 2.3 Extract the per-event run from `cli/main.py::main()`
+
+The menubar's "manually trigger this event" feature wants a function
+like:
+
+```python
+def run_event(event: dict, debug: bool = False) -> ExecutionTrace:
+    """Run a single calendar event through the v2.0 pipeline.
+    Returns a trace dict (mode, commands run, errors, timestamps)."""
+```
+
+The current `main()` is a loop that does fetch + filter + dispatch.
+The body of the inner loop (`for event in events: ...`) is what we
+want to factor out.
+
+**Estimated effort**: ~30 lines + an `ExecutionTrace` dataclass.
+Can ship in v2.0.2.
+
+## 2.4 `dry_run(text) → ExecutionTrace` for the script tester
+
+```python
+def dry_run(text: str, *, title: Optional[str] = None) -> ExecutionTrace:
+    """Parse + resolve `text`, but DON'T execute side effects.
+    Returns what would have happened, including resolved params,
+    bundle expansions, and dynamic substitutions."""
+```
+
+Useful for the menubar's "Test +CalFlow+ script" pane and for the REPL.
+The pieces all exist — `parse()` returns the AST, `resolve_command()`
+returns the param dict — we just need to bundle them into a trace
+without invoking `runtime.command_executor.execute_commands()`.
+
+**Estimated effort**: ~40 lines + dataclasses. Can ship in v2.0.2.
+
+## 2.5 Daemon status accessor
+
+Today `cli.onboarding.status_launchd()` prints the status. The menubar
+needs it as data:
+
+```python
+def daemon_status() -> dict:
+    return {
+        "loaded":     bool,                 # is the plist loaded?
+        "running":    bool,                 # is a process active?
+        "pid":        Optional[int],
+        "last_exit":  Optional[int],
+        "interval":   int,                  # from data/daemon.json
+        "next_run":   Optional[datetime],
+    }
+```
+
+`launchctl list com.calflow` already returns enough info to populate
+this. Wrap the existing logic into a return-rather-than-print function.
+
+**Estimated effort**: ~25 lines. Can ship in v2.0.2.
+
+---
+
+# 3. What the menubar app is responsible for
+
+(Not us — the menubar layer.)
+
+- Cocoa / SwiftUI / `rumps` shell
+- Status item icon and color (Running = green, Paused = yellow, Stopped = grey)
+- Native sheets / windows for each pane
+- Calling the headless Python APIs (subprocess or direct import)
+- Persisting the menubar's own preferences (e.g. "show last-run timestamp")
+
+---
+
+# 4. Concrete API contract the menubar will rely on
+
+These names are **provisional**; they're what we'll commit to when the
+menubar build starts. Documented here so future PRs don't accidentally
+break them.
+
+```python
+# core/onboarding/google_oauth.py
+def has_credentials() -> bool: ...
+def save_credentials_from_json(json_str: str) -> None: ...
+def has_token() -> bool: ...
+def run_oauth_flow() -> None: ...
+
+# core/onboarding/calendar_select.py
+def list_calendars(service) -> list[dict]: ...
+def get_selected_calendars() -> list[str]: ...
+def save_selected_calendars(ids: list[str]) -> None: ...
+
+# core/onboarding/daemon_install.py
+def install_launchd(interval_seconds: int) -> None: ...
+def uninstall_launchd(full: bool = False) -> None: ...
+def daemon_status() -> dict: ...
+
+# core/runner.py  (extracted from cli/main.py)
+def list_upcoming(calendar_ids: list[str], hours: int = 2) -> list[Event]: ...
+def run_event(event: Event, debug: bool = False) -> ExecutionTrace: ...
+def dry_run(text: str, title: str | None = None) -> ExecutionTrace: ...
+
+# core/settings_overlay.py
+def load_overlay() -> dict: ...
+def save_overlay(overrides: dict) -> None: ...
+```
+
+---
+
+# 5. What we should NOT do now
+
+- **Don't import `rumps` or any GUI lib** anywhere in v2.0 packages.
+- **Don't add menubar-only fields to ParseResult / BaseCommand** — keep
+  the AST runtime-agnostic; the menubar can map AST → display however
+  it wants.
+- **Don't move `cli/onboarding.py` yet** — refactor when the menubar
+  build actually starts; meanwhile the daemon must keep working.
+
+---
+
+# 6. Quick win we CAN do in v2.0.2
+
+Without building any GUI, we can already extract `dry_run()` and the
+status accessor. Both improve the **REPL** today:
+
+- `:dry` REPL command that prints the ExecutionTrace without running
+- `:status` REPL command that prints `daemon_status()` JSON
+
+Both are zero-dependency and prove the APIs work end-to-end before the
+menubar layer arrives.
+
+---
+
+# 💡 Principle
+
+> **The menubar is a view layer. Make every action it needs callable
+> as a Python function returning data, not stdout.**

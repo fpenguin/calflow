@@ -1,0 +1,31 @@
+- name: simple url
+  input: |
+    https://google.com
+  expected:
+    urls: ["https://google.com"]
+    tags: []
+    alert: 300
+
+- name: safari tag
+  input: |
+    https://google.com
+    #safari
+  expected:
+    urls: ["https://google.com"]
+    tags: ["#safari"]
+
+- name: multiple urls
+  input: |
+    google.com
+    openai.com
+  expected:
+    urls:
+      - https://google.com
+      - https://openai.com
+
+- name: alert override
+  input: |
+    https://google.com
+    #alert=10m
+  expected:
+    alert: 600
