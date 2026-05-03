@@ -78,21 +78,37 @@ Both MUST be satisfied.
 ## 1.2 Plus Mode
 
 ```ebnf
-plus_block ::= "+CalFlow+" newline command_line*
+plus_block ::= preface? marker_line newline command_line*
+marker_line ::= /any line containing "+CalFlow+" anywhere/
 ```
 
 ---
 
-### Activation Rule
+### Activation Rule (v1.1.6)
 
-- first occurrence of `+CalFlow+` switches mode  
-- applies to entire document  
+- the document switches to Plus Mode if **any line contains the
+  substring `+CalFlow+`** (case-insensitive)  
+- the marker line itself is consumed (it is NOT a command)  
+- everything before the marker line is discarded  
+- everything after the marker line is the Plus body  
+
+This loose rule tolerates the most common copy-paste mangling:
+
+```text
+'+CalFlow+        ← Excel-safe leading apostrophe (Excel treats `+`
+                    at the start of a cell as a formula start)
+"+CalFlow+"       ← chat clients often wrap pasted code in quotes
+‘+CalFlow+’       ← rich-text editors smart-quote the apostrophe
++CalFlow+ note    ← stray comment on the marker line
+```
+
+All of these activate Plus Mode.
 
 ---
 
 ### Behavior
 
-- every line is a command  
+- every body line is a command  
 - no implicit actions  
 - no global state  
 

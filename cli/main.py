@@ -468,6 +468,18 @@ def _run_custom_script_loop() -> None:
     script = _prompt_for_script()
     while script is not None:
         parsed = parse(script, title="Custom script")
+
+        # v1.1.6 — custom-script convenience: if the paste smells like
+        # Plus Mode (uses a Plus verb) but produced nothing as Smart,
+        # auto-prepend `+CalFlow+\n` and re-parse. Only here in the
+        # custom-script flow — calendar events still REQUIRE the marker.
+        if parsed.is_empty and parsed.mode == "smart" and _looks_like_plus(script):
+            print()
+            print("[WARN] Script has no executable content as Smart mode.")
+            print("[WARN] Plus mode command detected. Auto-switching to Plus mode.")
+            print("[WARN] Add `+CalFlow+` header at the top in the calendar event.")
+            parsed = parse("+CalFlow+\n" + script, title="Custom script")
+
         print()
         print("Parsed:")
         _print_parsed_summary(parsed)
@@ -781,6 +793,35 @@ def _format_relative_delta(delta) -> str:
     else:
         magnitude = f"{secs // 3600}h{(secs % 3600) // 60}m"
     return f"{sign} {magnitude}" if sign == "in" else f"{magnitude} ago"
+
+
+_PLUS_VERBS = (
+    "open", "focus", "close", "hide", "click", "type", "press",
+    "wait", "screenshot", "copy", "paste", "save", "run",
+)
+
+
+def _looks_like_plus(script: str) -> bool:
+    """
+    True if any non-blank line begins with a Plus Mode verb. Used to
+    decide whether to auto-promote a custom-script paste into Plus
+    Mode (v1.1.6). Substring `+CalFlow+` short-circuits to False (it
+    would already parse as Plus directly).
+    """
+    if not script or "+calflow+" in script.lower():
+        return False
+    for raw in script.splitlines():
+        line = raw.strip().lower()
+        if not line or line.startswith("##"):
+            continue
+        # First whitespace-delimited token IS the verb.
+        head = line.split(None, 1)[0]
+        # Detach trailing `(...)` if the user wrote `wait(5s)` or `type("x")`
+        if "(" in head:
+            head = head.split("(", 1)[0]
+        if head in _PLUS_VERBS:
+            return True
+    return False
 
 
 def _diagnose_empty_script(script: str) -> None:
