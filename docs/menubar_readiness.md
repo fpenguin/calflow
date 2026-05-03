@@ -198,6 +198,85 @@ menubar layer arrives.
 
 ---
 
+# 7. Permission UX — assisted grants (v1.1.9+ memo)
+
+Two macOS permission flows currently friction the CLI experience and
+need a first-class menubar pane when it lands:
+
+## 7.1 Accessibility for `/usr/bin/osascript`
+
+CalFlow needs the **Accessibility** TCC bucket (separate from
+**Automation / Apple Events**) for any verb that reads or writes
+window geometry:
+
+| Verb | Needs |
+|------|-------|
+| `hide @app`, `hide all`, `close @app`, `close all` | Apple Events to System Events (Automation) — ✅ usually granted on first prompt |
+| `hide display(N)` | **Accessibility** — needs the explicit per-binary grant |
+| `focus @app display(N)` | **Accessibility** |
+| Future click / type / press backends (v2.x) | **Accessibility** |
+
+The CLI's v1.1.9 onboarding step opens System Settings to the
+Accessibility pane and gives copy-pasteable steps:
+
+  1. Click [+]
+  2. ⌘⇧G to type a path
+  3. Paste `/usr/bin/osascript`
+  4. Toggle ON
+
+The menubar should:
+
+- **Detect missing Accessibility on launch** by probing one cheap AX
+  read (e.g. `position of front window of process "Finder"`). If it
+  errors with `assistive access`, show a banner with a "Grant…" button
+  that opens the Accessibility pane via the
+  `x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility`
+  URL.
+- **Offer to add osascript automatically** — the URL above scrolls the
+  user there but doesn't add the binary. macOS doesn't let third-party
+  apps add entries to Accessibility; the user must click [+] themselves.
+  Provide a one-screen tutorial with screenshots / a short loom.
+- **Re-probe periodically** so the banner clears when permission is
+  granted, no app restart required.
+
+## 7.2 Menu-bar app hide nuance
+
+`hide @app` (and the per-display variant) sets `visible of process` to
+false. For a normal app this hides every window. For a **menu-bar-
+resident app** (BetterDisplay, Shottr, Bartender, Bitwarden, etc.) the
+menu-bar item itself isn't a "window" — and any popover or settings
+window the app currently has open won't always go away with
+`set visible to false`.
+
+Observed in the wild (v1.1.8 QA pass):
+
+```text
+hide display(1)
+→ everything on display 1 hidden EXCEPT BetterDisplay's settings popup
+  (BetterDisplay is a menu-bar app)
+```
+
+When the menubar app is built we should:
+
+- Detect menu-bar-only apps via `LSUIElement` in their `Info.plist`
+  and surface them differently in the picker (separate "menu-bar apps"
+  section).
+- For `hide`, also try `tell application "<X>" to close every window`
+  before / instead of `set visible`. Falls back gracefully on apps
+  that don't expose `close window`.
+- Consider an explicit `close popups` verb for power users who want
+  to clear settings panes without quitting menu-bar agents.
+
+## 7.3 Future Apple Events / Automation auto-prompt
+
+Some operations (like quitting a not-yet-running app) trigger the
+Automation prompt the first time. The menubar can pre-warm by issuing
+a no-op Apple Event (`tell application "X" to get name`) for each
+known TARGET app on first run, so users approve all required apps in
+one batch rather than one prompt per script execution.
+
+---
+
 # 💡 Principle
 
 > **The menubar is a view layer. Make every action it needs callable

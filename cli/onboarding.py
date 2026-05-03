@@ -431,6 +431,76 @@ def _autofill_label(key: str) -> str:
     return key
 
 
+def ensure_accessibility_permission():
+    """
+    Step 5 of onboarding: walk the user through granting Accessibility
+    permission to /usr/bin/osascript so window-aware verbs work.
+
+    Two macOS permission buckets matter:
+      - Apple Events / Automation  → enough for `set visible to false`
+                                     (powers `hide @app`, `hide all`,
+                                     `close @app`, `close all`)
+      - Accessibility              → needed for AX attribute reads
+                                     (powers `hide display(N)`,
+                                     `focus … display(N)` window
+                                     positioning, future click/type)
+
+    Granting Automation does NOT grant Accessibility — they're separate
+    TCC buckets. This step opens System Settings directly to the
+    Accessibility pane so the user doesn't have to hunt for it.
+    """
+    print("""
+🔐 Accessibility permission
+
+Some CalFlow verbs read window geometry (which display a window is on,
+where it's positioned). macOS gates this behind the Accessibility
+permission, granted PER BINARY.
+
+Without it, these verbs degrade or fail:
+   hide display(N)            ← needs window position reads
+   focus @app display(N)      ← needs window relocation
+   future click/type backends ← needs UI element reads
+
+Verbs that DON'T need this (work without Accessibility):
+   open / focus / close / hide @app / hide all / wait / screenshot
+
+Want to open System Settings → Privacy & Security → Accessibility now?
+""")
+    choice = input("Open Accessibility settings? [Y/n]: ").strip().lower()
+    if choice not in ("", "y", "yes"):
+        print("\nSkipped. You can grant it later — CalFlow will print")
+        print("a clear error the first time a window-aware verb runs.\n")
+        return False
+
+    # Open the Accessibility pane directly. macOS supports
+    # `x-apple.systempreferences:` URLs for deep-linking into Settings.
+    url = (
+        "x-apple.systempreferences:"
+        "com.apple.preference.security?Privacy_Accessibility"
+    )
+    try:
+        webbrowser.open(url)
+    except Exception as exc:
+        print(f"⚠  Could not open Settings automatically: {exc}")
+        print("   Open it manually: System Settings → Privacy & Security → Accessibility")
+        return False
+
+    print("""
+👉 In the Accessibility pane that just opened:
+
+   1. Click the [+] button (lock unlock first if needed)
+   2. Press ⌘⇧G (Cmd+Shift+G) to type a path
+   3. Paste:  /usr/bin/osascript
+   4. Click Open
+   5. Toggle the new "osascript" entry ON
+
+When done, hit Enter here and CalFlow will continue.
+""")
+    input("Press Enter once you've granted permission (or to skip): ")
+    print("✅ Accessibility step complete (verification happens at first use).\n")
+    return True
+
+
 def ensure_autofill_provider():
     """
     Step 4 of onboarding: pick which password manager to drive when
@@ -510,7 +580,7 @@ Turn your calendar into an automation engine
 🚀 Welcome to CalFlow Setup
 """)
 
-    total = 4
+    total = 5
 
     step("Google Credentials", 1, total)
     ensure_credentials()
@@ -526,6 +596,9 @@ Turn your calendar into an automation engine
 
     step("Password Manager", 4, total)
     provider = ensure_autofill_provider()
+
+    step("Accessibility Permission", 5, total)
+    ensure_accessibility_permission()
 
     print("\n🎉 Setup complete!\n")
     print(f"✔ Calendars: {len(calendars)}")
