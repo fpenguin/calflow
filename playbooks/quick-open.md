@@ -18,7 +18,7 @@ Launch everything → instantly organized.
 
 open tip-developer-today.com/dashboard @chrome #left(50%) #submit
 open tip-developer-today.com/analytics @chrome #right(50%)
-open tip-developer-today.com/ @safari #display(2)
+open tip-developer-today.com/ @safari #display
 close "Spotify"
 ```
 
@@ -60,7 +60,7 @@ You get:
 
 open analytics.com @chrome #left(60%)
 open logs.com @chrome #right(40%)
-open status.com @safari #display(2)
+open status.com @safari #display
 ```
 
 → main dashboard + logs + status screen  
@@ -74,7 +74,7 @@ open status.com @safari #display(2)
 
 open tradingview.com #left(50%)
 open broker.com #right(50%)
-open news.com #display(2)
+open news.com #display
 ```
 
 → charts + execution + news  
@@ -88,7 +88,7 @@ open news.com #display(2)
 
 open notion.so #left(50%)
 open slack.com #right(50%)
-open admin.dashboard.com #display(2)
+open admin.dashboard.com #display
 ```
 
 → docs + communication + backend  
@@ -102,7 +102,7 @@ open admin.dashboard.com #display(2)
 
 open ads.google.com #left(50%)
 open analytics.google.com #right(50%)
-open ahrefs.com #display(2)
+open ahrefs.com #display
 ```
 
 → ads + analytics + SEO tools  
@@ -155,7 +155,7 @@ close "Discord"
 - `open` = launch tool  
 - `@chrome / @safari` = choose browser  
 - `#left / #right` = layout  
-- `#display` = monitor  
+- `#display` = first external monitor (or `#display("Name")` / `#display(N)`)  
 - `close` = remove noise  
 
 ---

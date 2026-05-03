@@ -674,12 +674,13 @@ open zoom.us #left(50%)
 
 ## 6.1 Categories
 
-| Category | Examples |
-|----------|----------|
-| Display | #display |
-| Layout | #left, #area |
-| Session | #profile |
-| Behavior | #fill, #submit |
+| Category | Examples | Resolver |
+|----------|----------|----------|
+| Display  | `#display`, `#display()`, `#display(ext)`, `#display(2)`, `#display("Samsung")` | `core.resolver.resolve_display(tags)` |
+| Layout   | `#left`, `#right`, `#middle`, `#top`, `#bottom`, `#full`, `#grid(NxM@D)`, `#area(x,y,w,h)` | `core.resolver.resolve_layout(tags)` |
+| Session  | `#profile(N)` | n/a (passed through as a tag string) |
+| Behavior | `#fill`, `#submit`, `#slow`, `#no-autofill`, `#force` | `core.resolver.resolve_autofill(tags)` |
+| Alert    | `#alert=Ns`, `#alert=Nm` | `core.parser.smart_parser.extract_alert_offset(tags)` |
 
 ---
 

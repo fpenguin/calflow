@@ -444,6 +444,27 @@ For each command:
 
 ---
 
+### `#display` — picking which monitor
+
+| Form | Meaning | Fallback |
+|------|---------|----------|
+| *no `#display` tag* | primary monitor | n/a |
+| `#display` | first external monitor | → primary if no external (warns) |
+| `#display()` | same as `#display` | → primary if no external (warns) |
+| `#display(ext)` | same as `#display` (recommended hint) | → primary if no external (warns) |
+| `#display(N)` | Nth display, 1-based (1 = primary) | **none** — skips layout if N is out of range |
+| `#display("Samsung S90D")` | case-insensitive substring match on the display's name | **none** — skips layout if no match |
+
+Run `python3 -m cli.main display` to see your connected monitors and
+the exact strings you can paste into `#display("…")`.
+
+> **Portability tip.** `#display(N)` depends on your current macOS
+> primary-display setting and the order in which OS sees displays —
+> brittle if you move between locations. `#display` (bare) and
+> `#display("…")` are robust across home/work/laptop-only setups.
+
+---
+
 ### Global Tags (Smart Mode Only)
 
 Standalone tags apply to all subsequent lines.

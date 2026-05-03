@@ -138,6 +138,49 @@ zoom.us
 
 ---
 
+### 1.1.6a `#display` symbolic forms
+
+**Input:**
+```text
+zoom.us @chrome #display
+```
+
+**Expected:**
+
+- Chrome opens zoom.us on **first external monitor**  
+- if no external connected → opens on primary; logs `[WARN] #display: no external monitor connected; using primary`  
+
+---
+
+### 1.1.6b `#display("name")` substring match
+
+**Input:**
+```text
+zoom.us @chrome #display("Samsung")
+```
+
+**Expected:**
+
+- if any connected display's `localizedName` contains "samsung" (case-insensitive) → opens there  
+- if no match → layout is **skipped** (no fallback); logs `[WARN]`  
+
+---
+
+### 1.1.6c `#display(N)` out of range
+
+**Input:**
+```text
+zoom.us @chrome #display(9)
+```
+
+**Expected:**
+
+- only 2 displays connected → layout **skipped entirely** (no fallback)  
+- Chrome opens zoom.us at default position  
+- logs `[WARN] #display(9): only 2 display(s) connected; layout skipped`  
+
+---
+
 ### 1.1.7 Invalid line ignored
 
 **Input:**

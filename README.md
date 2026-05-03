@@ -115,7 +115,7 @@ Add `+CalFlow+` → unlock everything.
 ```text
 +CalFlow+
 
-open @work #display(2)
+open @work #display
 focus @chrome title("Inbox")
 click text("Export")
 screenshot
@@ -143,7 +143,7 @@ save source(clipboard) to("~/Desktop/export_{now > YYYY-MM-DD}.png")
 ```text
 zoom.us @chrome #left(60%)
 figma.com @chrome #right(40%)
-slack.com @chrome #display(2)
+slack.com @chrome #display
 ```
 
 → everything ready before the call  

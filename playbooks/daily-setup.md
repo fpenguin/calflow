@@ -15,19 +15,25 @@ Open everything you need → exactly where you want it.
 ```text
 +CalFlow+
 
-open @work #display(1)
-open slack.com @chrome #right(30%) #display(2)
-open notion.so @chrome #left(70%) #display(2)
+open @work
+open slack.com @chrome #right(30%) #display
+open notion.so @chrome #left(70%) #display
 ```
 
 ---
 
 ## What actually happens
 
-- `@work` → opens your core apps (Chrome, Figma, etc.)  
-- Slack → right side (30%) on display 2  
-- Notion → left side (70%) on display 2  
+- `@work` → opens your core apps (Chrome, Figma, etc.) on the primary monitor  
+- Slack → right side (30%) on the **first external monitor**  
+- Notion → left side (70%) on the **first external monitor**  
 - everything launches in one run — no dragging windows  
+
+> The bare `#display` is **portable** — it works whether you're at your
+> desk, a different desk, or laptop-only. For a stationary setup with
+> a known arrangement you can also use `#display(2)` (numeric, 1-based)
+> or `#display("Samsung S90D")` (substring match).
+> Run `python3 -m cli.main display` to see your current monitors.
 
 ---
 
@@ -63,13 +69,14 @@ open notion.so #left(70%)
 ### 🖥 Dual monitor (common)
 
 ```text
-open @work #display(1)
-open slack.com #right(30%) #display(2)
-open notion.so #left(70%) #display(2)
+open @work
+open slack.com #right(30%) #display
+open notion.so #left(70%) #display
 ```
 
 → work apps on main screen  
-→ communication + notes on second screen  
+→ communication + notes on the external monitor  
+→ portable: works at home or work without changes  
 
 ---
 
@@ -130,7 +137,7 @@ TARGETS = {
 - `open` = launch  
 - `@work` = bundle  
 - `#left / #right` = layout  
-- `#display` = monitor  
+- `#display` = first external monitor (or `#display("Name")` / `#display(N)`)  
 
 ---
 

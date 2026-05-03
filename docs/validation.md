@@ -639,6 +639,17 @@ save source(clipboard) to("/restricted/path/file.png")
 
 → last wins  
 
+### `#display` resolution + fallback
+
+| Form | Behavior on miss |
+|------|------------------|
+| `#display`, `#display()`, `#display(ext)` | first external; **falls back to primary** if no external is connected (logs `[WARN]`) |
+| `#display(N)` | Nth display; **no fallback** — if N is out of range, the layout is **skipped entirely** (logs `[WARN]`) |
+| `#display("Samsung")` | first display whose name contains the substring (case-insensitive); **no fallback** — if no match, the layout is **skipped entirely** (logs `[WARN]`) |
+
+> Use `python3 -m cli.main display` to discover the exact name strings
+> available on your machine.
+
 ---
 
 ## 7.4 Mixed Layout Systems
