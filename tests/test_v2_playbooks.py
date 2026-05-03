@@ -90,18 +90,19 @@ def install_action_mocks(testcase: unittest.TestCase) -> None:
 
 
 # =============================================================
-# 📕 BASE PLAYBOOK CLASS
+# 📕 PLAYBOOK MIXIN
 # =============================================================
+# Plain class (NOT TestCase) so unittest discovery doesn't run its
+# methods on the base class itself. Each concrete PB_* subclass mixes
+# both the shared assertions and unittest.TestCase.
 
-class _PlaybookBase(unittest.TestCase):
-    """Common assertions every playbook should pass."""
+class _PlaybookMixin:
+    """Shared assertions every playbook must pass."""
 
     playbook_file: str = ""
     expected_verbs: List[str] = []
 
     def setUp(self) -> None:
-        if not self.playbook_file:
-            self.skipTest("base class")
         self.text = first_plus_block(load_playbook(self.playbook_file))
         self.result = parse(self.text)
         install_action_mocks(self)
@@ -136,28 +137,28 @@ class _PlaybookBase(unittest.TestCase):
 # 📕 PER-PLAYBOOK CASES
 # =============================================================
 
-class PB_DailySetup(_PlaybookBase):
+class PB_DailySetup(_PlaybookMixin, unittest.TestCase):
     playbook_file = "daily-setup.md"
     expected_verbs = ["OPEN", "OPEN", "OPEN"]
 
 
-class PB_FocusMode(_PlaybookBase):
+class PB_FocusMode(_PlaybookMixin, unittest.TestCase):
     """playbooks/focus-mode.md — first block is the simple one."""
     playbook_file = "focus-mode.md"
     expected_verbs = ["CLOSE", "HIDE", "FOCUS"]
 
 
-class PB_QuickOpen(_PlaybookBase):
+class PB_QuickOpen(_PlaybookMixin, unittest.TestCase):
     playbook_file = "quick-open.md"
     expected_verbs = ["OPEN", "OPEN", "OPEN", "CLOSE"]
 
 
-class PB_SlackScreenshot(_PlaybookBase):
+class PB_SlackScreenshot(_PlaybookMixin, unittest.TestCase):
     playbook_file = "slack-screenshot.md"
     expected_verbs = ["FOCUS", "SCREENSHOT", "SAVE"]
 
 
-class PB_WeeklyReport(_PlaybookBase):
+class PB_WeeklyReport(_PlaybookMixin, unittest.TestCase):
     playbook_file = "weekly-report.md"
     expected_verbs = ["OPEN", "FOCUS", "SCREENSHOT", "SAVE"]
 

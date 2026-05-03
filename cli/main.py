@@ -47,7 +47,11 @@ from cli.onboarding import (
 )
 
 # Infra
-from infra.calendar.calendar_client import build_service, get_upcoming_events
+from infra.calendar.calendar_client import (
+    build_service,
+    get_upcoming_events,
+    next_event_across_calendars,
+)
 
 # Core (unified parser + back-compat re-exports)
 from core.parser.parser import (
@@ -194,6 +198,121 @@ def _first_non_flag_arg(args: List[str]) -> Optional[str]:
 
 
 # =========================================================
+# 🟢 STATUS DASHBOARD
+# =========================================================
+
+def _format_duration(delta: timedelta) -> str:
+    """Render a timedelta as 'in 1h 28m' / 'in 4m 12s' / 'now'."""
+    total = int(delta.total_seconds())
+    if total < 0:
+        return "in the past"
+    if total < 60:
+        return f"in {total}s"
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h >= 1:
+        return f"in {h}h {m}m"
+    if m >= 5:
+        return f"in {m}m"
+    return f"in {m}m {s}s"
+
+
+def _daemon_state() -> dict:
+    """Return {loaded: bool, raw_line: str|None}. Reads launchctl."""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True, text=True, timeout=3,
+        )
+    except Exception:
+        return {"loaded": False, "raw_line": None}
+    for line in (out.stdout or "").splitlines():
+        if "com.calflow" in line:
+            return {"loaded": True, "raw_line": line.strip()}
+    return {"loaded": False, "raw_line": None}
+
+
+_AVAILABLE_COMMANDS = """
+🛠  Try:
+    python3 -m cli.main             # run one cycle now
+    python3 -m cli.main start       # start the background daemon
+    python3 -m cli.main stop        # stop the background daemon
+    python3 -m cli.main restart     # restart it
+    python3 -m cli.main setup       # re-onboarding
+    python3 -m cli.main uninstall   # remove daemon (data preserved; --full to wipe)
+    python3 -m cli.repl             # interactive REPL (no daemon needed)
+""".rstrip()
+
+
+def print_status_summary() -> None:
+    """
+    Friendly multi-line status output:
+
+        🟢 CalFlow is active with 3 connected calendars
+        📅 Next event starts in 1h 28m  (Daily standup)
+        🛠  Try: …
+
+    Degrades gracefully on missing creds, expired token, network error,
+    no events, or daemon not loaded.
+    """
+    daemon = _daemon_state()
+    calendars = get_selected_calendars()
+    cal_count = len(calendars)
+
+    # ------------------ daemon line ------------------
+    if daemon["loaded"]:
+        head = f"🟢 CalFlow is active with {cal_count} connected calendar{'s' if cal_count != 1 else ''}."
+    else:
+        head = "🟡 CalFlow is installed but the daemon is not loaded."
+    print(head)
+
+    # ------------------ next event line --------------
+    next_line: Optional[str] = None
+    try:
+        service = build_service()
+        ev = next_event_across_calendars(service, calendars)
+        if ev is None:
+            next_line = "📅 No upcoming events in the next " \
+                        f"{_lookup_window_hours()}h."
+        else:
+            now = datetime.now(timezone.utc).astimezone(ev["start"].tzinfo)
+            delta = ev["start"] - now
+            title = (ev.get("title") or "(untitled)").strip() or "(untitled)"
+            next_line = (
+                f"📅 Next event starts {_format_duration(delta)}  "
+                f"(Event title: {title})"
+            )
+    except RuntimeError as exc:
+        # build_service raises this when credentials.json is missing
+        next_line = (
+            "🔐 Not connected to Google Calendar yet.\n"
+            f"    {exc}"
+        )
+    except Exception as exc:
+        # Token expired without refresh, network failure, API down, …
+        next_line = (
+            "⚠  Could not fetch upcoming events:\n"
+            f"    {type(exc).__name__}: {exc}"
+        )
+
+    if next_line:
+        print(next_line)
+
+    # ------------------ launchctl detail (if loaded) -
+    if daemon["loaded"] and daemon["raw_line"]:
+        print(f"   ↳ launchctl: {daemon['raw_line']}")
+
+    # ------------------ available commands -----------
+    print(_AVAILABLE_COMMANDS)
+
+
+def _lookup_window_hours() -> int:
+    from config.settings import FETCH_WINDOW_HOURS
+    return FETCH_WINDOW_HOURS
+
+
+# =========================================================
 # 🚀 MAIN PIPELINE
 # =========================================================
 
@@ -336,7 +455,7 @@ if __name__ == "__main__":
         restart_launchd()
         sys.exit(0)
     if cmd == "status":
-        status_launchd()
+        print_status_summary()
         sys.exit(0)
 
     if not acquire_lock():

@@ -155,3 +155,33 @@ def get_upcoming_events(service, calendar_id: str = "primary") -> List[Dict]:
 
     log(f"[INFO] [{calendar_id}] Loaded {len(out)} events")
     return out
+
+
+# =========================================================
+# 🔭 AGGREGATED LOOKUP (status dashboard helper)
+# =========================================================
+
+def next_event_across_calendars(service, calendar_ids: List[str]) -> Optional[Dict]:
+    """
+    Return the soonest upcoming event across all `calendar_ids`,
+    or None if there are no upcoming events in the lookup window.
+
+    Each calendar is queried independently; the result with the
+    smallest `start` (whose start is in the future) wins.
+    """
+    soonest: Optional[Dict] = None
+    now = datetime.now(timezone.utc)
+
+    for cal_id in calendar_ids:
+        for ev in get_upcoming_events(service, cal_id):
+            start = ev.get("start")
+            if not start:
+                continue
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if start < now:
+                continue
+            if soonest is None or start < soonest["start"]:
+                soonest = {**ev, "start": start}
+
+    return soonest
