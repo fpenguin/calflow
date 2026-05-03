@@ -742,8 +742,16 @@ press [{shift_down},({left})x5,{shift_up}]
 ## Display
 
 ```text
-#display(2)
+no tag                         primary display
+#display                       first external monitor
+#display()                     first external monitor
+#display(ext)                  first external monitor (recommended hint)
+#display(2)                    Nth display by index (1-based; no fallback)
+#display("Samsung S90D")       case-insensitive substring match (no fallback)
 ```
+
+Run `python3 -m cli.main display` to see your connected monitors and
+the exact strings you can use in `#display("…")`.
 
 ---
 

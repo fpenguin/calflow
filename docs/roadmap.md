@@ -262,8 +262,9 @@ These are **out of scope** for any near-term release:
 | WAIT | ✅ | ✅ | ✅ | ✅ (real) |
 | SCREENSHOT (path) | ✅ | ✅ | ✅ | ✅ (real on macOS) |
 | **Dynamic `{now > … > fmt}`** | ✅ | ✅ | ✅ | ✅ (real) |
-| Layout `#left/#right/#middle/#top/#bottom/#full` | ✅ | ✅ | ✅ | 🚧 stub (parses; window move → v2.2) |
-| Layout `#grid` / `#area` | ✅ | ✅ | ✅ | 🚧 stub (window move → v2.2) |
+| Layout `#left/#right/#middle/#top/#bottom/#full` | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript) |
+| Layout `#grid` / `#area` | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript) |
+| `#display` / `#display(ext)` / `#display(N)` / `#display("…")` | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript + JXA) |
 | OPEN (@bundle expansion) | ⏳ | ⏳ | ⏳ | ⏳ (next pass — v2.0.1) |
 | FOCUS | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | CLOSE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |

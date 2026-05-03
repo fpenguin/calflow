@@ -40,20 +40,21 @@ def open_target(
     url: Optional[str] = None,
     app: Optional[str] = None,
     layout: Optional[Dict] = None,
+    display_spec=None,
 ) -> None:
     """
     Open a URL or application and optionally apply layout.
 
     Args:
-        url: normalized URL (e.g. https://example.com)
-        app: macOS app name (e.g. "Google Chrome")
-        layout: normalized layout dict
+        url:          normalized URL (e.g. https://example.com)
+        app:          macOS app name (e.g. "Google Chrome")
+        layout:       normalized layout dict from parse_layout_tag()
+        display_spec: target display from core.resolver.resolve_display()
 
     Constraints:
         - exactly one of (url, app) should be provided
-        - layout is best-effort only
+        - layout / display_spec are best-effort only
     """
-
     if not url and not app:
         log("[WARN] open_target: no url or app provided")
         return
@@ -67,8 +68,8 @@ def open_target(
         # Allow OS time to spawn window
         time.sleep(0.8)
 
-        if layout:
-            _apply_layout(layout)
+        if layout or display_spec:
+            _apply_layout(app, layout, display_spec)
 
     except Exception as e:
         log(f"[ERROR] open_target failed: {e}")
@@ -127,45 +128,24 @@ def _open_app(app: str) -> None:
 # 🪟 LAYOUT ENGINE (BEST-EFFORT)
 # =========================================================
 
-def _apply_layout(layout: Dict) -> None:
+def _apply_layout(
+    app_name: Optional[str],
+    layout: Optional[Dict],
+    display_spec=None,
+) -> None:
     """
-    Apply window layout (macOS best-effort).
+    Apply window layout for `app_name` via runtime.actions.window.
 
-    Supported types:
-        - left
-        - right
-        - full
-
-    Example:
-        {"type": "left", "value": 0.5}
-
-    Constraints:
-        - requires macOS APIs
-        - no-op if unavailable
-        - non-blocking on failure
+    Real macOS implementation lives in window.py — this wrapper exists
+    so the executor doesn't need to import the window module directly
+    and so unit tests can monkey-patch this symbol.
     """
-
-    if not MAC_AVAILABLE:
-        log("[WARN] Layout skipped (macOS APIs unavailable)")
-        return
-
-    layout_type = layout.get("type")
-    value = layout.get("value", 1.0)
-
-    if layout_type not in {"left", "right", "full"}:
-        log(f"[WARN] Unsupported layout type: {layout_type}")
-        return
-
     try:
-        log(f"[INFO] Applying layout: {layout_type} ({value})")
-
-        # -------------------------------------------------
-        # TODO (v1.2+):
-        # - integrate Quartz / AXUIElement
-        # - support multi-display (#display)
-        # - support grid / area layouts
-        # -------------------------------------------------
-
+        # Local import keeps the dependency edge inside this function:
+        # importing window.py at module load would mean it's imported
+        # by every Smart Mode dispatch even when no layout is requested.
+        from runtime.actions.window import apply_layout as _impl
+        _impl(app_name, layout, display_spec)
     except Exception as e:
         log(f"[WARN] Layout failed: {e}")
 

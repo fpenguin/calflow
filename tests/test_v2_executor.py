@@ -33,8 +33,10 @@ class FakeActions:
         self.fills: List[str] = []
         self.sleeps: List[float] = []
 
-    def open_target(self, url=None, app=None, layout=None) -> None:
-        self.opens.append({"url": url, "app": app, "layout": layout})
+    def open_target(self, url=None, app=None, layout=None, display_spec=None) -> None:
+        self.opens.append({
+            "url": url, "app": app, "layout": layout, "display_spec": display_spec,
+        })
 
     def take_screenshot(self, path=None):
         self.shots.append(path)

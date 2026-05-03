@@ -23,6 +23,7 @@ from core.dynamic import resolve_dynamic
 from core.resolver import (
     resolve_autofill,
     resolve_delay,
+    resolve_display,
     resolve_layout,
     resolve_target,
 )
@@ -114,6 +115,7 @@ def _execute_single(
 
     app = resolve_target(tags)
     layout = resolve_layout(tags)
+    display_spec = resolve_display(tags)
     delay = resolve_delay(tags)
     should_fill, should_submit = resolve_autofill(tags)
 
@@ -125,6 +127,7 @@ def _execute_single(
         url=url,
         app=app,
         layout=layout,
+        display_spec=display_spec,
     )
 
     # =====================================================

@@ -188,7 +188,7 @@ class SmartModeDynamic(unittest.TestCase):
         import runtime.executor as ex
         captured = {}
 
-        def fake_open(url=None, app=None, layout=None):
+        def fake_open(url=None, app=None, layout=None, display_spec=None):
             captured["url"] = url
 
         orig_open = ex.open_target

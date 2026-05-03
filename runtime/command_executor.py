@@ -35,7 +35,7 @@ from config.settings import (
 )
 from core.dynamic import resolve_dynamic
 from core.models import BaseCommand
-from core.resolver import resolve_autofill, resolve_command
+from core.resolver import resolve_autofill, resolve_command, resolve_display
 from core.utils import log
 from runtime.actions.autofill import trigger_autofill
 from runtime.actions.browser import open_target
@@ -148,11 +148,14 @@ def _do_open(params: Dict[str, Any]) -> None:
     if not apps:
         apps = [params.get("app") or None]  # type: ignore[list-item]
 
+    display_spec = resolve_display(set(params.get("tags") or frozenset()))
+
     for app in apps:
         open_target(
             url=url,
             app=app,
             layout=params.get("layout"),
+            display_spec=display_spec,
         )
 
     time.sleep(max(0.0, AUTOFILL_BUFFER))

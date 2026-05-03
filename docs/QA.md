@@ -25,7 +25,7 @@ python3 -m unittest \
   -v
 ```
 
-Expected: **`Ran 196 tests in <1s    OK`**
+Expected: **`Ran 235 tests in <1s    OK`**
 
 ### Per-suite breakdown
 
@@ -38,6 +38,7 @@ Expected: **`Ran 196 tests in <1s    OK`**
 | `test_v2_playbooks`  |  30 | Every `+CalFlow+` block in `playbooks/*.md` |
 | `test_v2_dynamic`    |  29 | Dynamic expression engine (base, transforms, formats, whitespace, Smart Mode integration) |
 | `test_v2_comments`   |  26 | `##` line + inline, suppression inside quotes/parens/brackets/braces |
+| `test_v2_window`     |  39 | Display enumeration spec, layout rect math, `#display` regex |
 
 ---
 

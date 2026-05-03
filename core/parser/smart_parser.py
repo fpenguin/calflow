@@ -57,7 +57,19 @@ URL_PATTERN = re.compile(
 )
 
 # Single `#…`; `##` is a comment and must be filtered before this matches.
-HASHTAG_PATTERN = re.compile(r'(?<!#)(#[\w][\w\-=()%.,@/]*)')
+#
+# Tag forms supported:
+#     #name                          (bare)
+#     #name(arg)                     (parenthesized — arg may include
+#                                     identifiers, % numbers, commas, @,
+#                                     /, etc.)
+#     #name("arg with spaces")       (parenthesized — quoted string, may
+#                                     contain spaces — used by
+#                                     #display("Samsung S90D") )
+HASHTAG_PATTERN = re.compile(
+    r'(?<!#)(#[\w][\w\-=%.,@/]*'
+    r'(?:\((?:"[^"]*"|[^)]*)\))?)'
+)
 TARGET_PATTERN = re.compile(r'(?<!\w)(@[\w][\w\-]*)')
 ALERT_PATTERN = re.compile(r"#alert=(\d+)([sm])", re.IGNORECASE)
 

@@ -240,6 +240,7 @@ _AVAILABLE_COMMANDS = """
     python3 -m cli.main stop        # stop the background daemon
     python3 -m cli.main restart     # restart it
     python3 -m cli.main setup       # re-onboarding
+    python3 -m cli.main display     # list connected monitors + #display syntax
     python3 -m cli.main uninstall   # remove daemon (data preserved; --full to wipe)
     python3 -m cli.repl             # interactive REPL (no daemon needed)
 """.rstrip()
@@ -314,6 +315,69 @@ def _lookup_window_hours() -> int:
     """Daemon's per-cycle window. Status uses STATUS_LOOKAHEAD_HOURS."""
     from config.settings import FETCH_WINDOW_HOURS
     return FETCH_WINDOW_HOURS
+
+
+# =========================================================
+# 🖥 DISPLAY INVENTORY
+# =========================================================
+
+def print_display_inventory() -> None:
+    """
+    Print connected displays + a `#display` syntax cheat sheet.
+
+    Pure macOS query (osascript JXA + NSScreen) — no Google
+    credentials needed.
+    """
+    from runtime.actions.window import enumerate_displays
+
+    try:
+        displays = enumerate_displays(force_refresh=True)
+    except Exception as exc:
+        print(f"⚠ Could not enumerate displays: {exc}")
+        return
+
+    if not displays:
+        print("No displays detected (osascript may not be available).")
+        return
+
+    print(f"\nConnected displays ({len(displays)}):\n")
+    for d in displays:
+        marker = "★" if d.get("primary") else " "
+        if d.get("primary"):
+            kind = "primary "
+        elif d.get("builtin"):
+            kind = "builtin "
+        else:
+            kind = "external"
+        name = d.get("name") or f"Display {d['index']}"
+        print(
+            f"  [{d['index']}] {marker} {name:<32} "
+            f"{d['w']}×{d['h']:<6}  {kind}"
+        )
+
+    externals = [d for d in displays if d.get("external")]
+    primary = next((d for d in displays if d.get("primary")), displays[0])
+
+    print()
+    print("Use #display in your CalFlow scripts:")
+    print(f"   no tag                      → primary  ({primary['name']})")
+
+    if not externals:
+        print("   #display                    → no external monitor connected")
+    elif len(externals) == 1:
+        print(f"   #display                    → {externals[0]['name']}")
+        print(f"   #display(ext)               → same — recommended for readability")
+    else:
+        first = externals[0]
+        print(f"   #display                    → first external (currently: {first['name']})")
+        print(f"   #display(ext)               → same — recommended for readability")
+        print('   #display("Samsung")         → matches by name (case-insensitive substring)')
+        for d in externals:
+            short = (d['name'].split() or ['?'])[0]
+            print(f'   #display("{short}")'.ljust(35) + f"  → matches \"{d['name']}\"")
+
+    print(f"   #display({len(displays)})                 → display by index (1 = primary)")
+    print()
 
 
 # =========================================================
@@ -460,6 +524,9 @@ if __name__ == "__main__":
         sys.exit(0)
     if cmd == "status":
         print_status_summary()
+        sys.exit(0)
+    if cmd == "display":
+        print_display_inventory()
         sys.exit(0)
 
     if not acquire_lock():

@@ -16,6 +16,7 @@ Design:
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from config.settings import (
@@ -83,6 +84,44 @@ def resolve_target_expansion(token: Optional[str]) -> List[str]:
     ):
         bare = bare[1:-1]
     return [bare] if bare else []
+
+
+# =========================================================
+# 🖥 DISPLAY (#display tag)
+# =========================================================
+# Returns:
+#   None                   → no #display tag → caller uses primary
+#   ("external", None)     → #display | #display() | #display(<unquoted>)
+#   ("index",   N)         → #display(N) (1-based; no fallback)
+#   ("name",    "Samsung") → #display("…") (substring; no fallback)
+
+_DISPLAY_QUOTED = re.compile(r'^#display\("(.+)"\)$', re.IGNORECASE)
+_DISPLAY_NUMBER = re.compile(r'^#display\((\d+)\)$',  re.IGNORECASE)
+_DISPLAY_PARENS = re.compile(r'^#display\(([^)]*)\)$', re.IGNORECASE)
+_DISPLAY_BARE   = re.compile(r'^#display$',            re.IGNORECASE)
+
+
+def resolve_display(tags: Set[str]) -> Optional[Tuple[str, Any]]:
+    """
+    Pick the first #display tag from `tags` and return its spec.
+
+    Order matters when matching a single tag string:
+        quoted("…")  →  numeric(N)  →  any-other-parens(text|empty)  →  bare
+    """
+    for tag in tags:
+        m = _DISPLAY_QUOTED.match(tag)
+        if m:
+            return ("name", m.group(1))
+        m = _DISPLAY_NUMBER.match(tag)
+        if m:
+            return ("index", int(m.group(1)))
+        if _DISPLAY_PARENS.match(tag):
+            # Anything in parens that wasn't quoted or numeric → external.
+            # `#display(ext)`, `#display(external)`, `#display()`, etc.
+            return ("external", None)
+        if _DISPLAY_BARE.match(tag):
+            return ("external", None)
+    return None
 
 
 # =========================================================
