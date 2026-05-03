@@ -468,15 +468,32 @@ function run(argv) {
         }
 
         try {
+            // v1.1.11 — Option B: enumerate AXWindows AND any AXSheets
+            // attached to them. Settings panels often manifest as
+            // sheets that DON'T appear in windows() directly but DO
+            // live as children of a window. Without this, a process
+            // with main-window-on-display-2 + Settings-sheet-on-
+            // display-1 gets incorrectly kept.
             var wins = p.windows();
-            var winCount = wins ? wins.length : 0;
+            var rawWinCount = wins ? wins.length : 0;
+            var ui = [];   // {kind, el} pairs to test
+            for (var w = 0; w < rawWinCount; w++) {
+                ui.push({ kind: "win", el: wins[w] });
+                try {
+                    var sheets = wins[w].sheets();
+                    for (var s = 0; s < sheets.length; s++) {
+                        ui.push({ kind: "sheet", el: sheets[s] });
+                    }
+                } catch (e) { /* sheets() not always supported */ }
+            }
+
             var match = false;
-            var winInfo = [];   // per-window summary for diagnostics
-            for (var w = 0; w < winCount; w++) {
+            var uiInfo = [];   // per-element summary for diagnostics
+            for (var u = 0; u < ui.length; u++) {
                 var pos, sz;
                 try {
-                    pos = wins[w].position();
-                    sz  = wins[w].size();
+                    pos = ui[u].el.position();
+                    sz  = ui[u].el.size();
                 } catch (e) {
                     var msg = (e && e.message) ? e.message : String(e);
                     if (msg.indexOf("assistive access") !== -1
@@ -486,15 +503,17 @@ function run(argv) {
                         axDenied = true;
                         break;
                     }
-                    winInfo.push("?");
+                    uiInfo.push(ui[u].kind + ":?");
                     continue;
                 }
-                if (!pos || !sz) { winInfo.push("?"); continue; }
+                if (!pos || !sz) { uiInfo.push(ui[u].kind + ":?"); continue; }
                 var cx = pos[0] + sz[0] / 2;
                 var cy = pos[1] + sz[1] / 2;
-                winInfo.push("[" + Math.round(pos[0]) + "," + Math.round(pos[1])
-                            + " " + Math.round(sz[0]) + "x" + Math.round(sz[1])
-                            + " c=(" + Math.round(cx) + "," + Math.round(cy) + ")]");
+                uiInfo.push(
+                    ui[u].kind + ":[" + Math.round(pos[0]) + "," + Math.round(pos[1])
+                    + " " + Math.round(sz[0]) + "x" + Math.round(sz[1])
+                    + " c=(" + Math.round(cx) + "," + Math.round(cy) + ")]"
+                );
                 if (cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh) {
                     match = true;
                     break;
@@ -506,10 +525,10 @@ function run(argv) {
                 hid.push(name);
             } else {
                 kept.push(name);
-                if (winCount === 0) {
+                if (ui.length === 0) {
                     diag.push(name + ": no AX windows");
                 } else {
-                    diag.push(name + ": " + winCount + " win " + winInfo.join(""));
+                    diag.push(name + ": " + ui.length + " ui " + uiInfo.join(""));
                 }
             }
         } catch (e) {
