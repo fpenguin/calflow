@@ -97,6 +97,28 @@ def _osascript_capture(script: str, *, action_label: str) -> Optional[str]:
 
 
 # =========================================================
+# 👀 FRONTMOST (v1.1.2)
+# =========================================================
+
+def get_frontmost_app_name() -> Optional[str]:
+    """
+    Return the name of the frontmost (`active`) macOS application, or
+    None if it can't be determined. Used by the `active` runtime target
+    in `hide active`, `close active`, `screenshot active`, etc.
+    """
+    script = (
+        'tell application "System Events"\n'
+        '    return name of first application process whose frontmost is true\n'
+        'end tell\n'
+    )
+    out = _osascript_capture(script, action_label="frontmost lookup")
+    if out is None:
+        return None
+    name = out.strip()
+    return name or None
+
+
+# =========================================================
 # 🎯 FOCUS
 # =========================================================
 

@@ -141,7 +141,7 @@ class PlusModeBlock(unittest.TestCase):
             "OPEN https://example.com @chrome\n"
             "WAIT 1\n"
             'TYPE "hello"\n'
-            "SCREENSHOT /tmp/out.png\n"
+            'SCREENSHOT to("/tmp/out.png")\n'
         )
         result = parse(text)
         verbs = [c.name for c in result.commands]

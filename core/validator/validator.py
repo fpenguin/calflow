@@ -1,23 +1,32 @@
 """
-Plus Mode DSL Validator (v2.0).
+Plus Mode DSL Validator (v1.1.2).
 
 Grammar (line-based, one command per line, case-insensitive verbs):
 
     open <url|app|file> [@target] [#tag ...]
-    focus <app|@target> [title("…")] [#tag ...]
-    close <app|"name"> | close [list] | close except(<…>)
-    hide | hide <app|@target> | hide [list] | hide except(<…>) [display(N)] | hide display(N)
+    focus <app|@target> [title("…")] [display(N|"name")] [#tag ...]
+    focus active
+    close <app|"name"|@target> | close [list] | close except(<…>) | close active | close all
+    hide <app|@target|"name"> | hide [list] | hide except(<…>) [display(N|"name")] | hide display(N|"name") | hide active | hide all
     click <selector> | click x,y |
         click text("…") [selector("…") | position(x,y)] [#tag ...]
     type "<text>"  |  type("<text>") [speed(s)] [interval(s)] [repeat(N)] [timeout(s)]
     press {key} | press {a+b+c} | press [{a},({b})xN,{c}]
     wait <seconds>  |  wait <Ns|Nm|Nh>  |  wait(<…>)
-    screenshot [<path>] | screenshot display(N) | screenshot window("…") |
-        screenshot area(x,y,w,h)
+    screenshot | screenshot to("<path>") | screenshot active |
+        screenshot display(N|"name") | screenshot window("…") | screenshot area(x,y,w,h)
     copy
     paste
     save source(<…>) to("<path>")
     run "<path>"
+
+v1.1.2 hard-fails:
+    - bare `hide`              → use `hide except(active)` / `hide all`
+    - bare `close`             → too destructive without target
+    - `hide all except @x`     → use `hide except(@x)`
+    - `screenshot "<path>"`    → use `screenshot to("<path>")`
+    - `{active}` / `{@x}` / `{display(N)}` → `{}` is for dynamic values only;
+                                              use bare `active`, `@x`, `display(N)`
 
 Rules:
 - Lines are stripped; blank lines and `## comments` are ignored.
@@ -81,6 +90,13 @@ _TARGET_RE = re.compile(r"^@\w[\w\-]*$")
 _URL_HINT_RE = re.compile(r"://|^[a-z0-9.\-]+\.[a-z]{2,}", re.IGNORECASE)
 _FILE_PATH_RE = re.compile(r'^"?[~/]')
 
+# v1.1.2 — `{ … }` is reserved for dynamic VALUE expressions only.
+# Wrapping a runtime target / alias / filter in `{}` (`{active}`,
+# `{@work}`, `{display(2)}`) is rejected per the type-system contract.
+_RESERVED_RUNTIME_TARGETS = frozenset({"active", "all"})
+_RESERVED_FILTER_NAMES = frozenset({"display", "except"})
+_DYNAMIC_BLOCK_RE = re.compile(r"\{([^{}]+)\}")
+
 
 # =========================================================
 # 🧪 PUBLIC API
@@ -122,6 +138,36 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
     tokens = tokenize(line)
     if not tokens:
         return errors
+
+    # v1.1.2 — type-system guard: reject `{<runtime-target>}` /
+    # `{<alias>}` / `{<filter>}`. `{}` is for dynamic VALUES only
+    # (`{now}`, `{now-7d > YYYY-MM-DD}`).
+    for tok in tokens:
+        for inner in _DYNAMIC_BLOCK_RE.findall(tok):
+            stripped = inner.strip().lower()
+            base = stripped.split("(", 1)[0].strip().lstrip("@")
+            looks_dynamic = (
+                stripped.startswith("now")
+                or stripped.startswith(("+", "-"))
+                or any(t in stripped for t in (" > ", ">", "format("))
+            )
+            if looks_dynamic:
+                continue
+            if (
+                base in _RESERVED_RUNTIME_TARGETS
+                or base in _RESERVED_FILTER_NAMES
+                or stripped.startswith("@")
+            ):
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f"`{{{inner}}}` is invalid — `{{ … }}` is for dynamic "
+                        f"VALUE expressions only (e.g. `{{now}}`). Use bare "
+                        f"`{inner.strip()}` instead. "
+                        f"(See type-system rules in DSL_SPEC §7.)",
+                    )
+                )
+                return errors
 
     # Detach `verb(...)` when verb name and parens are stuck together
     # (e.g. `type("hi")`, `wait(5s)`, `screenshot(area(0,0,1,1))`).
@@ -213,40 +259,41 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             )
 
     elif verb == "FOCUS":
-        # focus needs a window-targeting argument: @target, "App Name",
-        # or title("…") via functions. display() is HIDE-only (per spec
-        # decision Q3 — focus is window-level, not display-level).
+        # v1.1.2:
+        #   focus @app | focus @app title("…") | focus @app display(N|"name")
+        #   focus active                       (no-op runtime target)
         head = body[0] if body else ""
-        has_target = _TARGET_RE.match(head) or _QUOTED_RE.match(head)
-        has_title  = any(
-            _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("title(")
-            for fc in functions
-        )
-        # Reject focus display(...) explicitly with a clear hint
-        if any(_FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("display(")
-               for fc in functions):
-            errors.append(
-                ValidationError(
-                    line_no,
-                    "FOCUS does not accept display(N) — focus needs a window "
-                    "target (@app, \"App Name\", or title(\"…\")). The "
-                    "display() filter is HIDE-only.",
-                )
+        head_lower = head.lower()
+        if head_lower == "active":
+            # `focus active` is a no-op runtime target — accept it; resolver
+            # will short-circuit at exec time.
+            pass
+        else:
+            has_target = _TARGET_RE.match(head) or _QUOTED_RE.match(head)
+            has_title  = any(
+                _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("title(")
+                for fc in functions
             )
-        elif not (has_target or has_title or targets):
-            errors.append(
-                ValidationError(
-                    line_no,
-                    'FOCUS expects @target or "App Name"; got nothing useful',
+            if not (has_target or has_title or targets):
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        'FOCUS expects @target, "App Name", or `active`; '
+                        'got nothing useful',
+                    )
                 )
-            )
 
     elif verb == "CLOSE":
-        # close [list] | close @app | close "App" | close except(<arg>)
-        # Bare `close` is rejected — too destructive without an explicit
-        # target or filter.
+        # v1.1.2:
+        #   close active | close all                   (runtime targets)
+        #   close @app | close "App" | close [list]    (explicit items)
+        #   close except(<arg>)                        (filter form)
+        # Bare `close` (no body / @target / except) is rejected — too
+        # destructive without an explicit target or filter.
         head = body[0] if body else ""
-        has_positional = body or targets  # @target shorthand allowed
+        head_lower = head.lower()
+        is_runtime_kw = head_lower in _RESERVED_RUNTIME_TARGETS
+        has_positional = body or targets
         has_except = any(
             _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("except(")
             for fc in functions
@@ -255,48 +302,82 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             errors.append(
                 ValidationError(
                     line_no,
-                    "CLOSE requires an argument: a list, @target, "
-                    "\"App Name\", or except(<arg>). Bare `close` is not "
-                    "allowed (too destructive).",
+                    "CLOSE requires an argument: `active`, `all`, a list, "
+                    "@target, \"App Name\", or except(<arg>). Bare `close` "
+                    "is not allowed (too destructive).",
                 )
             )
         elif body and not (
-            _QUOTED_RE.match(head) or _TARGET_RE.match(head) or _SEQUENCE_RE.match(head)
-        ):
-            errors.append(
-                ValidationError(
-                    line_no,
-                    f'CLOSE expects @target, "App Name", or [list]; got {head!r}',
-                )
-            )
-
-    elif verb == "HIDE":
-        # New (v1.1+) syntax:
-        #   hide                          ← bare = hide all (except frontmost)
-        #   hide @app | hide "App" | hide [list]
-        #   hide except(<arg>) [display(N)]
-        # Old (v1.0) syntax `hide all` / `hide all except @x` is HARD-FAIL.
-        head = body[0] if body else ""
-        if head.lower() == "all":
-            errors.append(
-                ValidationError(
-                    line_no,
-                    '`hide all` and `hide all except @x` were removed in v1.1. '
-                    'Use bare `hide` to hide everything except the frontmost, '
-                    'or `hide except(@bundle)` / `hide except([list])` to '
-                    'keep specific apps visible.',
-                )
-            )
-        elif body and not (
-            _QUOTED_RE.match(head)
+            is_runtime_kw
+            or _QUOTED_RE.match(head)
             or _TARGET_RE.match(head)
             or _SEQUENCE_RE.match(head)
         ):
             errors.append(
                 ValidationError(
                     line_no,
-                    f'HIDE expects @target, "App Name", [list], or no '
-                    f'argument (bare hide); got {head!r}',
+                    f'CLOSE expects `active`, `all`, @target, "App Name", '
+                    f'or [list]; got {head!r}',
+                )
+            )
+
+    elif verb == "HIDE":
+        # v1.1.2 grammar:
+        #   hide active | hide all                 (runtime targets)
+        #   hide @app | hide "App" | hide [list]   (explicit items)
+        #   hide except(<arg>) [display(N|"name")] (filter form)
+        #   hide display(N|"name")                 (display-only filter)
+        #
+        # Bare `hide` (no body, no @target, no except, no display) is
+        # HARD-FAIL — the v1.1.1 form was removed. Old `hide all except @x`
+        # also hard-fails (already rejected by `head == "all"` + extra body).
+        head = body[0] if body else ""
+        head_lower = head.lower()
+        has_except = any(
+            _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("except(")
+            for fc in functions
+        )
+        has_display = any(
+            _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("display(")
+            for fc in functions
+        )
+
+        # Detect old `hide all except @x` shape: head=="all" AND extra body OR
+        # head=="all" AND `except` function present.
+        if head_lower == "all" and (len(body) > 1 or has_except):
+            errors.append(
+                ValidationError(
+                    line_no,
+                    '`hide all except @x` was removed in v1.1. Use '
+                    '`hide except(@x)` (the `all` is implied by `except`). '
+                    'For "hide every visible app including frontmost", use '
+                    'bare `hide all` (no except).',
+                )
+            )
+        elif not (body or targets or has_except or has_display):
+            # Bare `hide` was removed in v1.1.2.
+            errors.append(
+                ValidationError(
+                    line_no,
+                    'Bare `hide` was removed in v1.1.2. Use one of:\n'
+                    '  hide except(active)   ← keep frontmost visible\n'
+                    '  hide all              ← hide every visible app\n'
+                    '  hide @app             ← hide one app\n'
+                    '  hide [a, b]           ← hide a list\n'
+                    '  hide except(@bundle)  ← keep an alias visible',
+                )
+            )
+        elif body and not (
+            head_lower in _RESERVED_RUNTIME_TARGETS
+            or _QUOTED_RE.match(head)
+            or _TARGET_RE.match(head)
+            or _SEQUENCE_RE.match(head)
+        ):
+            errors.append(
+                ValidationError(
+                    line_no,
+                    f'HIDE expects `active`, `all`, @target, "App Name", or '
+                    f'[list]; got {head!r}',
                 )
             )
 
@@ -365,8 +446,35 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             )
 
     elif verb == "SCREENSHOT":
-        # Optional path / display(N) / window("…") / area(…) — all OK
-        pass
+        # v1.1.2:
+        #   screenshot                          (default sink)
+        #   screenshot to("<path>")             (canonical — mirrors save)
+        #   screenshot active                   (frontmost-window capture)
+        #   screenshot display(N|"name") | window("…") | area(x,y,w,h)
+        #
+        # Positional path was REMOVED in v1.1.2 — point users at to(...).
+        if body:
+            head = body[0]
+            head_lower = head.lower()
+            if head_lower == "active":
+                pass  # runtime target — accepted
+            elif _QUOTED_RE.match(head) or _FILE_PATH_RE.match(head):
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f'`screenshot {head}` (positional path) was removed in '
+                        f'v1.1.2 — use `screenshot to({head})` instead. '
+                        f'(Mirrors `save … to(…)`.)',
+                    )
+                )
+            else:
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f'SCREENSHOT expects no args, `active`, `to("<path>")`, '
+                        f'`display(N)`, `window("…")`, or `area(…)`; got {head!r}',
+                    )
+                )
 
     elif verb == "SAVE":
         # SAVE expects function-style args: source(...) to("…")

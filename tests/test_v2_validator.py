@@ -49,8 +49,11 @@ class ValidLines(unittest.TestCase):
     def test_screenshot_no_args(self) -> None:
         self.assertEqual(validate_plus_line("SCREENSHOT", 1), [])
 
-    def test_screenshot_with_path(self) -> None:
-        self.assertEqual(validate_plus_line("SCREENSHOT /tmp/x.png", 1), [])
+    def test_screenshot_with_to(self) -> None:
+        # v1.1.2 — canonical sink is `to("…")`
+        self.assertEqual(
+            validate_plus_line('SCREENSHOT to("/tmp/x.png")', 1), []
+        )
 
 
 class InvalidLines(unittest.TestCase):
@@ -103,15 +106,18 @@ class BlockLevel(unittest.TestCase):
 
 
 # =========================================================
-# v1.1.1 — HIDE / CLOSE redesign
+# v1.1.2 — HIDE / CLOSE / FOCUS / SCREENSHOT type system
 # =========================================================
 
-class HideCloseV1_1_1(unittest.TestCase):
-    """v1.1.1 — `hide` / `close` shapes, hard-fails, and stub filters."""
+class HideCloseV1_1_2(unittest.TestCase):
+    """v1.1.2 — runtime-target keywords, type-system contract, hard-fails."""
 
-    # ── HIDE: new accepted forms ─────────────────────────
-    def test_hide_bare_is_valid(self) -> None:
-        self.assertEqual(validate_plus_line("hide", 1), [])
+    # ── HIDE: runtime targets + new accepted forms ───────
+    def test_hide_active(self) -> None:
+        self.assertEqual(validate_plus_line("hide active", 1), [])
+
+    def test_hide_all(self) -> None:
+        self.assertEqual(validate_plus_line("hide all", 1), [])
 
     def test_hide_app_is_valid(self) -> None:
         self.assertEqual(validate_plus_line("hide @chrome", 1), [])
@@ -127,6 +133,9 @@ class HideCloseV1_1_1(unittest.TestCase):
     def test_hide_except_target_is_valid(self) -> None:
         self.assertEqual(validate_plus_line("hide except(@work)", 1), [])
 
+    def test_hide_except_active_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("hide except(active)", 1), [])
+
     def test_hide_except_list_is_valid(self) -> None:
         self.assertEqual(
             validate_plus_line('hide except(["Slack","Notion"])', 1), []
@@ -135,24 +144,35 @@ class HideCloseV1_1_1(unittest.TestCase):
     def test_hide_display_filter_is_valid(self) -> None:
         self.assertEqual(validate_plus_line("hide display(2)", 1), [])
 
+    def test_hide_display_named_is_valid(self) -> None:
+        self.assertEqual(
+            validate_plus_line('hide display("Samsung S90D")', 1), []
+        )
+
     def test_hide_except_with_display_filter_is_valid(self) -> None:
         self.assertEqual(
             validate_plus_line("hide except(@work) display(2)", 1), []
         )
 
-    # ── HIDE: hard-fails for old (v1.0) syntax ───────────
-    def test_hide_all_is_hard_fail(self) -> None:
-        errs = validate_plus_line("hide all", 1)
+    # ── HIDE: hard-fails ─────────────────────────────────
+    def test_hide_bare_is_hard_fail(self) -> None:
+        errs = validate_plus_line("hide", 1)
         self.assertEqual(len(errs), 1)
-        self.assertIn("removed in v1.1", errs[0].message)
-        self.assertIn("except(@bundle)", errs[0].message)
+        self.assertIn("removed in v1.1.2", errs[0].message)
+        self.assertIn("hide except(active)", errs[0].message)
 
     def test_hide_all_except_is_hard_fail(self) -> None:
         errs = validate_plus_line("hide all except @work", 1)
         self.assertEqual(len(errs), 1)
         self.assertIn("removed in v1.1", errs[0].message)
 
-    # ── CLOSE: new accepted forms ────────────────────────
+    # ── CLOSE: runtime targets + new accepted forms ──────
+    def test_close_active(self) -> None:
+        self.assertEqual(validate_plus_line("close active", 1), [])
+
+    def test_close_all(self) -> None:
+        self.assertEqual(validate_plus_line("close all", 1), [])
+
     def test_close_app_is_valid(self) -> None:
         self.assertEqual(validate_plus_line("close @chrome", 1), [])
 
@@ -167,6 +187,9 @@ class HideCloseV1_1_1(unittest.TestCase):
     def test_close_except_target_is_valid(self) -> None:
         self.assertEqual(validate_plus_line("close except(@work)", 1), [])
 
+    def test_close_except_active_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("close except(active)", 1), [])
+
     def test_close_except_list_is_valid(self) -> None:
         self.assertEqual(
             validate_plus_line('close except(["Slack","Notion"])', 1), []
@@ -178,12 +201,63 @@ class HideCloseV1_1_1(unittest.TestCase):
         self.assertEqual(len(errs), 1)
         self.assertIn("Bare `close`", errs[0].message)
 
-    # ── FOCUS: display() rejected ────────────────────────
-    def test_focus_display_is_rejected(self) -> None:
-        errs = validate_plus_line("focus @chrome display(2)", 1)
+    # ── FOCUS: display() now ACCEPTED ────────────────────
+    def test_focus_display_is_accepted(self) -> None:
+        # v1.1.2 — focus @app display(N) moves the app to display N.
+        self.assertEqual(
+            validate_plus_line("focus @chrome display(2)", 1), []
+        )
+
+    def test_focus_active_is_accepted(self) -> None:
+        # `focus active` is a no-op runtime target — accepted by validator.
+        self.assertEqual(validate_plus_line("focus active", 1), [])
+
+    # ── SCREENSHOT: positional path REJECTED ─────────────
+    def test_screenshot_positional_path_rejected(self) -> None:
+        errs = validate_plus_line("screenshot /tmp/x.png", 1)
         self.assertEqual(len(errs), 1)
-        self.assertIn("display", errs[0].message.lower())
-        self.assertIn("HIDE-only", errs[0].message)
+        self.assertIn("removed in v1.1.2", errs[0].message)
+        self.assertIn("to(", errs[0].message)
+
+    def test_screenshot_quoted_positional_rejected(self) -> None:
+        errs = validate_plus_line('screenshot "/tmp/x.png"', 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("removed in v1.1.2", errs[0].message)
+
+    def test_screenshot_to_function_accepted(self) -> None:
+        self.assertEqual(
+            validate_plus_line('screenshot to("/tmp/x.png")', 1), []
+        )
+
+    def test_screenshot_active_accepted(self) -> None:
+        self.assertEqual(validate_plus_line("screenshot active", 1), [])
+
+    # ── Type-system contract: {} is for VALUES only ──────
+    def test_dynamic_block_with_runtime_target_rejected(self) -> None:
+        errs = validate_plus_line("hide {active}", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("`{ … }` is for dynamic VALUE expressions only",
+                      errs[0].message)
+
+    def test_dynamic_block_with_alias_rejected(self) -> None:
+        errs = validate_plus_line("hide except({@work})", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("VALUE expressions only", errs[0].message)
+
+    def test_dynamic_block_with_filter_rejected(self) -> None:
+        errs = validate_plus_line("hide {display(2)}", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("VALUE expressions only", errs[0].message)
+
+    def test_dynamic_block_with_now_still_works(self) -> None:
+        # The whole point — `{now}` and friends MUST keep working.
+        self.assertEqual(
+            validate_plus_line('open "https://x.com?d={now}"', 1), []
+        )
+
+    # ── WAIT: v1.1.2 accepts hours ───────────────────────
+    def test_wait_hours(self) -> None:
+        self.assertEqual(validate_plus_line("wait 1h", 1), [])
 
 
 if __name__ == "__main__":  # pragma: no cover

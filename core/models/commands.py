@@ -20,7 +20,7 @@ Design rules:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, FrozenSet, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
 
 
 # =========================================================
@@ -69,49 +69,74 @@ class OpenCommand(BaseCommand):
 
 @dataclass(frozen=True)
 class FocusCommand(BaseCommand):
-    """FOCUS <app|@target> [title("…")] [#tags]"""
+    """
+    FOCUS <app|@target> [title("…")] [display(N|"name")] [#tags]
+    FOCUS active
+
+    Forms:
+        focus @app                  → activate app
+        focus @app title("…")       → activate + raise matching window
+        focus @app display(N)       → activate + move all windows of @app
+                                      to display N (v1.1.2)
+        focus active                → no-op (frontmost is already focused)
+
+    `display_target` carries the display index or substring name when
+    the user requested a window relocation.
+    """
     target: Optional[str] = None  # @alias or quoted string
     title: Optional[str] = None
     targets: Tuple[str, ...] = field(default_factory=tuple)
+    display_target: Optional[Union[int, str]] = None
+    target_keyword: Optional[str] = None  # "active" only (no other runtime kw)
 
 
 @dataclass(frozen=True)
 class CloseCommand(BaseCommand):
     """
-    CLOSE — quit one or more apps.
+    CLOSE — quit one or more apps. (v1.1.2 grammar.)
 
-    Two forms (mutually exclusive):
-        close [list] | close @target | close "App"
-            → items populated; keep_set empty
-        close except(<arg>)
-            → items empty; keep_set populated (apps to KEEP running);
-              everything else visible gets quit
+    Forms (mutually exclusive at the parse layer):
+        close [list] | close @target | close "App"   → items populated
+        close except(<arg>)                          → keep_set populated
+        close active                                 → target_keyword="active"
+        close all                                    → target_keyword="all"
 
-    Bare `close` (no args) is rejected by the validator.
+    Bare `close` is rejected by the validator (too destructive).
+
+    `target_keyword` carries a v1.1.2 runtime target:
+        "active" → resolves at exec time to the frontmost app name
+        "all"    → resolves at exec time to "every visible non-bg app"
     """
     items: Tuple[str, ...] = field(default_factory=tuple)
     keep_set: frozenset = field(default_factory=frozenset)
+    target_keyword: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class HideCommand(BaseCommand):
     """
-    HIDE — hide windows of one or more apps.
+    HIDE — hide windows of one or more apps. (v1.1.2 grammar.)
 
-    Three forms (mutually compatible at the filter layer):
-        hide [list] | hide @target | hide "App"
-            → items populated
-        hide                              ← bare = hide all (except frontmost)
-        hide except(<arg>)                ← keep_set populated (apps to keep visible)
-        hide display(N)                   ← display_filter set (v1.1.2 — stub in v1.1.1)
-        hide except(<arg>) display(N)     ← combine
+    Forms (mutually exclusive at the parse layer):
+        hide [list] | hide @target | hide "App"      → items populated
+        hide except(<arg>) [display(N)]              → keep_set + filter
+        hide display(N)                              → display_filter only
+        hide active                                  → target_keyword="active"
+        hide all                                     → target_keyword="all"
 
-    `items` and (`keep_set`/`display_filter`) are mutually exclusive at
-    the parse layer: explicit-list form OR all-with-filters form.
+    Bare `hide` (with no args) was REMOVED in v1.1.2 — the validator
+    hard-fails it with a migration message pointing to `hide except(active)`.
+
+    `target_keyword` carries a v1.1.2 runtime target:
+        "active" → resolves at exec time to the frontmost app name
+        "all"    → resolves at exec time to "every visible non-bg app"
+
+    `display_filter` may be an int (index) or a string (substring name).
     """
     items: Tuple[str, ...] = field(default_factory=tuple)
     keep_set: frozenset = field(default_factory=frozenset)
-    display_filter: Optional[int] = None
+    display_filter: Optional[Union[int, str]] = None
+    target_keyword: Optional[str] = None
 
 
 # =========================================================
@@ -173,15 +198,26 @@ class WaitCommand(BaseCommand):
 @dataclass(frozen=True)
 class ScreenshotCommand(BaseCommand):
     """
-    SCREENSHOT [<path>]
-    SCREENSHOT display(2)
+    SCREENSHOT  (default — captures full screen to settings dir)
+    SCREENSHOT to("~/x.png")              ← v1.1.2 canonical path syntax
+    SCREENSHOT display(N|"name")
     SCREENSHOT window("Slack")
     SCREENSHOT area(0,0,1920,1080)
+    SCREENSHOT active                     ← v1.1.2 frontmost-window capture
+
+    `path` carries the value of `to(...)` when present.
+
+    The legacy positional form `screenshot "~/x.png"` is REJECTED by
+    the validator with a hint to use `to("…")` (parity with `save … to(…)`).
+
+    `target_keyword` carries `"active"` when the user requested a
+    frontmost-window capture.
     """
     path: Optional[str] = None
-    display: Optional[int] = None
+    display: Optional[Union[int, str]] = None
     window: Optional[str] = None
     area: Optional[Tuple[int, int, int, int]] = None
+    target_keyword: Optional[str] = None
 
 
 # =========================================================

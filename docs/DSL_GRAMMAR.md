@@ -571,52 +571,80 @@ and expansion). The validator skips the line and logs `[WARN]`.
 
 ---
 
-# 5.1 Hide / Close Syntax (v1.1+)
+# 5.1 Hide / Close / Focus Syntax (v1.1.2)
 
-`hide` and `close` accept symmetric forms.
+`hide`, `close`, and `focus` share a runtime-target grammar.
 
 ```ebnf
-hide_command  ::= "hide"
-                | "hide" target
-                | "hide" collection
-                | "hide" "except" "(" except_arg ")"  display_filter?
-                | "hide" display_filter
+hide_command   ::= "hide" runtime_target
+                 | "hide" target
+                 | "hide" string
+                 | "hide" collection
+                 | "hide" "except" "(" except_arg ")"  display_filter?
+                 | "hide" display_filter
 
-close_command ::= "close" target
-                | "close" string
-                | "close" collection
-                | "close" "except" "(" except_arg ")"
+close_command  ::= "close" runtime_target
+                 | "close" target
+                 | "close" string
+                 | "close" collection
+                 | "close" "except" "(" except_arg ")"
 
-except_arg     ::= bundle | target | string | collection
-display_filter ::= "display" "(" integer ")"
+focus_command  ::= "focus" runtime_target
+                 | "focus" target  title_filter? display_filter?
+                 | "focus" string  title_filter? display_filter?
+
+runtime_target ::= "active" | "all"
+except_arg     ::= bundle | target | string | collection | "active"
+display_filter ::= "display" "(" (integer | string) ")"
+title_filter   ::= "title" "(" string ")"
 ```
 
 ### Forms
 
 ```text
-hide                          ## hide everything except the frontmost app
-hide @chrome                  ## hide one app
-hide ["Spotify","Discord"]    ## hide a list
-hide except(@work)            ## hide everything except @work bundle members
-hide except([Slack, Notion])  ## hide everything except a literal list
-hide except(@work) display(2) ## scope the filter to display 2
-hide display(2)               ## hide everything on display 2 (filter only)
+## HIDE
+hide active                       ## hide frontmost
+hide all                          ## hide every visible app
+hide @chrome                      ## hide one app
+hide ["Spotify","Discord"]        ## hide a list
+hide except(@work)                ## hide all except @work
+hide except(active)               ## hide all except frontmost
+hide except([Slack, Notion])      ## hide all except a literal list
+hide display(2)                   ## hide all on display 2
+hide display("Samsung S90D")      ## hide all on a named display
+hide except(@work) display(2)     ## combine
 
-close @chrome                 ## quit one app
-close "Spotify"               ## quit by literal name
-close [a, b]                  ## quit a list
-close except(@work)           ## quit everything except @work
+## CLOSE
+close active                      ## quit frontmost
+close all                         ## quit every visible app
+close @chrome
+close "Spotify"
+close [a, b]
+close except(@work)
+
+## FOCUS
+focus @chrome                     ## activate
+focus @chrome title("Inbox")      ## activate + raise matching window
+focus @chrome display(2)          ## activate + move all windows to display 2
+focus active                      ## no-op (frontmost is focused)
 ```
 
 ### Constraints
 
-- `hide all` and `hide all except <…>` were removed in v1.1 — the
-  validator hard-fails them with a migration message.
-- `close` MUST receive at least one item or `except(...)` — bare
-  `close` is rejected.
-- `display(N)` is parsed and forwarded but per-window display
-  filtering is a stub in v1.1.1; full behavior ships in v1.1.2.
-- `focus display(N)` is REJECTED — focus needs a window target.
+- Bare `hide` (no args) was removed in v1.1.2 — validator hard-fails
+  it with a migration message pointing at `hide except(active)`.
+- `hide all except <…>` is rejected — `except` already implies "all".
+- Bare `close` is rejected — too destructive without an explicit target.
+- `display(N)` accepts an integer (1-based index) or a string substring
+  match against the display name.
+- `display(N)` per-window filtering inside `hide …` is parsed but is a
+  stub at v1.1.2 (runs across all displays); the `display` semantic for
+  `focus … display(N)` (move-to-display) IS fully implemented.
+
+### Reserved words
+
+`active`, `all`, `display`, `except` are reserved by the DSL. User
+`TARGETS` / `BUNDLES` MUST NOT shadow them — config load fails fast.
 
 ---
 

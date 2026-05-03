@@ -1,13 +1,15 @@
 """
-CalFlow Screenshot Action (v2.0).
+CalFlow Screenshot Action (v1.1.2).
 
 Best-effort screen capture used by Plus Mode `SCREENSHOT` commands.
 
 Design:
 - macOS first (uses `/usr/sbin/screencapture` when available)
 - never raises — failures are logged
-- caller passes a fully-resolved absolute path; this module does NOT
-  invent or decide on paths beyond the small fallback below
+- caller passes a fully-resolved absolute path OR None for the default
+- v1.1.2 — default sink is configurable via:
+      PLUS_SCREENSHOT_DIR              (folder)
+      PLUS_SCREENSHOT_FILENAME_FORMAT  (filename pattern)
 """
 
 from __future__ import annotations
@@ -18,7 +20,10 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from config.settings import PLUS_SCREENSHOT_DIR
+from config.settings import (
+    PLUS_SCREENSHOT_DIR,
+    PLUS_SCREENSHOT_FILENAME_FORMAT,
+)
 from core.utils import log
 
 
@@ -26,18 +31,70 @@ from core.utils import log
 # 📁 PATH HELPERS
 # =========================================================
 
+def _format_filename(pattern: str, now: datetime.datetime) -> str:
+    """
+    Expand the user's filename pattern. Recognised tokens:
+
+        {YYYY}                4-digit year
+        {MM}                  2-digit month
+        {DD}                  2-digit day
+        {HH}                  2-digit hour (24h)
+        {mm}                  2-digit minute
+        {ss}                  2-digit second
+        {YYYY-MM-DD}          shorthand date
+        {YYYY-MM-DD_HHMMSS}   shorthand date+time
+
+    Anything else is left literal.
+    """
+    table = {
+        "{YYYY}":              now.strftime("%Y"),
+        "{MM}":                now.strftime("%m"),
+        "{DD}":                now.strftime("%d"),
+        "{HH}":                now.strftime("%H"),
+        "{mm}":                now.strftime("%M"),
+        "{ss}":                now.strftime("%S"),
+        "{YYYY-MM-DD}":        now.strftime("%Y-%m-%d"),
+        "{YYYY-MM-DD_HHMMSS}": now.strftime("%Y-%m-%d_%H%M%S"),
+    }
+    out = pattern or "CalFlow_{YYYY-MM-DD_HHMMSS}.png"
+    for token, value in table.items():
+        out = out.replace(token, value)
+    return out
+
+
 def default_screenshot_path() -> str:
     """
-    Build a timestamped path under PLUS_SCREENSHOT_DIR (default
-    `~/Downloads/CalFlow`). Creates the directory if it doesn't exist.
+    Build a path under PLUS_SCREENSHOT_DIR (default `~/Downloads/CalFlow`)
+    using PLUS_SCREENSHOT_FILENAME_FORMAT (default
+    `CalFlow_{YYYY-MM-DD_HHMMSS}.png`).
+
+    Creates the directory if it doesn't exist; falls back to
+    `~/Library/Application Support/CalFlow/screenshots` if the
+    primary directory is read-only (e.g. iCloud Drive edge cases).
     """
-    target_dir = Path(os.path.expanduser(PLUS_SCREENSHOT_DIR))
+    primary = Path(os.path.expanduser(PLUS_SCREENSHOT_DIR))
+    fallback = Path(
+        os.path.expanduser(
+            "~/Library/Application Support/CalFlow/screenshots"
+        )
+    )
+    target_dir = primary
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
-        log(f"[WARN] Could not create screenshot dir: {exc}")
-    stamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    return str(target_dir / f"calflow_{stamp}.png")
+        log(
+            f"[WARN] Could not create screenshot dir {primary}: {exc}; "
+            f"falling back to {fallback}"
+        )
+        target_dir = fallback
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc2:
+            log(f"[WARN] Fallback dir also failed: {exc2}")
+    filename = _format_filename(
+        PLUS_SCREENSHOT_FILENAME_FORMAT, datetime.datetime.now()
+    )
+    return str(target_dir / filename)
 
 
 # =========================================================

@@ -270,18 +270,35 @@ def resolve_command(
         if len(command.targets) > 1:
             base["invalid"] = "multiple @targets"
             return base
+        # v1.1.2 — runtime-target keyword `active` short-circuits.
+        if command.target_keyword == "active":
+            base.update({
+                "target_keyword": "active",
+                "target": None,
+                "title": command.title,
+                "apps": (),
+                "display_target": None,
+            })
+            return base
         apps = resolve_target_expansion(command.target)
         base.update({
             "target": command.target,
             "title": command.title,
             "apps": apps,
+            "display_target": command.display_target,
         })
         return base
 
     if isinstance(command, CloseCommand):
-        # Two mutually exclusive shapes:
-        #   - items populated → close just those (after bundle expansion)
-        #   - keep_set populated → close everything visible EXCEPT those
+        # v1.1.2 shapes (mutually exclusive at parse time):
+        #   target_keyword=="active"|"all" → runtime target
+        #   items populated                → close just those
+        #   keep_set populated             → close everything except those
+        if command.target_keyword:
+            base["target_keyword"] = command.target_keyword
+            base["items"] = ()
+            base["keep"] = ()
+            return base
         if command.items:
             base["items"] = _expand_targets(command.items)
         else:
@@ -293,12 +310,16 @@ def resolve_command(
         return base
 
     if isinstance(command, HideCommand):
-        # Three orthogonal pieces:
-        #   - items: explicit list (hide just these)
-        #   - keep:  resolved keep_set (apps to keep visible — bare hide
-        #            uses empty keep set, meaning "hide all")
-        #   - display_filter: optional display N (v1.1.2 wires the
-        #            actual filtering; v1.1.1 logs a stub note)
+        # v1.1.2 shapes:
+        #   target_keyword=="active"|"all" → runtime target
+        #   items populated                → hide just those
+        #   keep_set / display_filter      → filter form (hide-all-except + scope)
+        if command.target_keyword:
+            base["target_keyword"] = command.target_keyword
+            base["items"] = ()
+            base["keep"] = ()
+            base["display_filter"] = None
+            return base
         if command.items:
             base["items"] = _expand_targets(command.items)
             base["keep"] = ()
@@ -345,6 +366,7 @@ def resolve_command(
             "display": command.display,
             "window": command.window,
             "area": command.area,
+            "target_keyword": command.target_keyword,  # v1.1.2 — `active`
         })
         return base
 

@@ -81,7 +81,7 @@ class CommandExecutorRoutes(unittest.TestCase):
         self.assertEqual(self.fake.opens[0]["url"], "https://example.com")
 
     def test_screenshot_routes_to_take_screenshot(self) -> None:
-        result = parse("+CalFlow+\nSCREENSHOT /tmp/x.png")
+        result = parse('+CalFlow+\nSCREENSHOT to("/tmp/x.png")')
         ce.execute_commands(result.commands)
         self.assertEqual(self.fake.shots, ["/tmp/x.png"])
 
@@ -105,9 +105,9 @@ class CommandExecutorRoutes(unittest.TestCase):
 
         ce.open_target = boom
         result = parse(
-            "+CalFlow+\n"
-            "OPEN https://a.com\n"
-            "SCREENSHOT /tmp/y.png\n"
+            '+CalFlow+\n'
+            'OPEN https://a.com\n'
+            'SCREENSHOT to("/tmp/y.png")\n'
         )
         ce.execute_commands(result.commands)
         self.assertEqual(self.fake.shots, ["/tmp/y.png"])

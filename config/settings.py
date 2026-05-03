@@ -212,6 +212,24 @@ PLUS_INTER_COMMAND_DELAY = 0.3
 # Customize freely. `~` is expanded at use time.
 PLUS_SCREENSHOT_DIR = "~/Downloads/CalFlow"
 
+# Default filename pattern for screenshots when no `to(...)` is given.
+# Tokens supported: {YYYY}, {MM}, {DD}, {HH}, {mm}, {ss}, {YYYY-MM-DD},
+# {YYYY-MM-DD_HHMMSS}. Anything else is left literal.
+PLUS_SCREENSHOT_FILENAME_FORMAT = "CalFlow_{YYYY-MM-DD_HHMMSS}.png"
+
 # Strict mode: if True, any validation error aborts the whole Plus block.
 # If False, valid commands run and invalid ones are logged + skipped.
 PLUS_STRICT_VALIDATION = False
+
+
+# =========================================================
+# 🔒 RESERVED KEYWORD GUARD (v1.1.2)
+# =========================================================
+# Enforces the DSL contract: user-defined aliases (TARGETS, BUNDLES)
+# MUST NOT shadow CalFlow reserved keywords (`active`, `all`, `display`,
+# `except`). On collision, CalFlow refuses to start with a clear message
+# and a rename suggestion. See core/reserved.py for the rationale.
+
+from core.reserved import enforce_or_exit as _enforce_reserved_keywords
+
+_enforce_reserved_keywords(TARGETS)

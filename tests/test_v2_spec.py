@@ -173,7 +173,8 @@ class S3_PlusModeVerbs(unittest.TestCase):
     def test_focus(self):   self.assertEqual(self._verbs("focus @chrome"), ["FOCUS"])
     def test_close(self):   self.assertEqual(self._verbs('close "Spotify"'), ["CLOSE"])
     def test_hide_app(self):     self.assertEqual(self._verbs("hide @chrome"), ["HIDE"])
-    def test_hide_bare(self):    self.assertEqual(self._verbs("hide"), ["HIDE"])
+    def test_hide_active(self):  self.assertEqual(self._verbs("hide active"), ["HIDE"])
+    def test_hide_all(self):     self.assertEqual(self._verbs("hide all"), ["HIDE"])
     def test_hide_except(self):  self.assertEqual(
         self._verbs("hide except(@chrome)"), ["HIDE"]
     )
@@ -235,12 +236,18 @@ class S3_AST(unittest.TestCase):
         self.assertEqual(cmd.items, ())
         self.assertIn("@chrome", cmd.keep_set)
 
-    def test_hide_bare_has_no_items_or_keep(self):
-        cmd = parse('+CalFlow+\nhide').commands[0]
+    def test_hide_active_sets_target_keyword(self):
+        cmd = parse('+CalFlow+\nhide active').commands[0]
         self.assertIsInstance(cmd, HideCommand)
+        self.assertEqual(cmd.target_keyword, "active")
         self.assertEqual(cmd.items, ())
         self.assertEqual(cmd.keep_set, frozenset())
-        self.assertIsNone(cmd.display_filter)
+
+    def test_hide_all_sets_target_keyword(self):
+        cmd = parse('+CalFlow+\nhide all').commands[0]
+        self.assertIsInstance(cmd, HideCommand)
+        self.assertEqual(cmd.target_keyword, "all")
+        self.assertEqual(cmd.items, ())
 
     def test_hide_display_filter_captured(self):
         cmd = parse('+CalFlow+\nhide display(2)').commands[0]

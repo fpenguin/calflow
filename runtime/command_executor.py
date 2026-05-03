@@ -200,12 +200,22 @@ def _do_open(params: Dict[str, Any]) -> None:
 
 def _do_focus(params: Dict[str, Any]) -> None:
     """
-    `focus @app` → activate app
-    `focus @app title("X")` → activate + raise the matching window
+    v1.1.2 forms:
+        focus @app                  → activate app
+        focus @app title("X")       → activate + raise matching window
+        focus @app display(N|"name") → activate + move all windows to display
+        focus active                → no-op (frontmost is already focused)
     """
     from runtime.actions.app_control import focus_app, focus_window_by_title
+    from runtime.actions.window import move_app_to_display
+
+    # Runtime target — `focus active` is a no-op.
+    if params.get("target_keyword") == "active":
+        log("[INFO] FOCUS active (no-op — frontmost is already focused)")
+        return
 
     title = params.get("title")
+    display_target = params.get("display_target")
     apps = params.get("apps") or ([params.get("target")] if params.get("target") else [])
     apps = [a for a in apps if a]
 
@@ -220,15 +230,34 @@ def _do_focus(params: Dict[str, Any]) -> None:
             focus_window_by_title(app_name, title)
         else:
             focus_app(app_name)
+        if display_target is not None:
+            move_app_to_display(app_name, display_target)
 
 
 def _do_close(params: Dict[str, Any]) -> None:
     """
-    v1.1+ shapes:
+    v1.1.2 shapes:
+        close active                              → quit frontmost app
+        close all                                 → quit every visible app
         close [list] / close @app / close "App"   → items populated
         close except(<arg>)                       → keep populated
     """
-    from runtime.actions.app_control import close_app, close_all
+    from runtime.actions.app_control import (
+        close_app, close_all, get_frontmost_app_name,
+    )
+
+    target_keyword = params.get("target_keyword")
+    if target_keyword == "active":
+        name = get_frontmost_app_name()
+        if name:
+            close_app(name)
+        else:
+            log("[WARN] CLOSE active: could not determine frontmost app")
+        return
+    if target_keyword == "all":
+        # Note: `close_all` keeps frontmost for safety, even with `all`.
+        close_all(except_apps=())
+        return
 
     items = params.get("items") or ()
     keep = params.get("keep") or ()
@@ -249,19 +278,40 @@ def _do_close(params: Dict[str, Any]) -> None:
 
 def _do_hide(params: Dict[str, Any]) -> None:
     """
-    v1.1+ shapes:
+    v1.1.2 shapes:
+        hide active                               → hide frontmost app
+        hide all                                  → hide every visible app
         hide [list] / hide @app / hide "App"      → items populated
-        hide                                       → bare = hide all-except-frontmost
-        hide except(<arg>)                         → keep populated
-        hide display(N)                            → display_filter set
-        hide except(<arg>) display(N)              → both
+        hide except(<arg>)                        → keep populated
+        hide display(N|"name")                    → display_filter set
+        hide except(<arg>) display(N|"name")      → both
 
-    `display(N)` is parsed and forwarded to params; the actual
-    per-window display filtering ships in v1.1.2 (per-window AXUIElement
-    enumeration). For v1.1.1 we log a clear note that the filter is
-    accepted but currently a no-op (hide proceeds across all displays).
+    `display_filter` per-window scoping is still a stub (full impl in
+    a follow-up); we log the filter and proceed across all displays.
     """
-    from runtime.actions.app_control import hide_app, hide_all
+    from runtime.actions.app_control import (
+        hide_app, hide_all, get_frontmost_app_name,
+    )
+
+    target_keyword = params.get("target_keyword")
+    if target_keyword == "active":
+        name = get_frontmost_app_name()
+        if name:
+            hide_app(name)
+        else:
+            log("[WARN] HIDE active: could not determine frontmost app")
+        return
+    if target_keyword == "all":
+        # `hide all` per spec hides EVERY visible non-bg app, including
+        # the frontmost. `hide_all(except_apps=())` keeps frontmost for
+        # safety; for `all` we explicitly bypass that by hiding frontmost
+        # individually first.
+        hide_all(except_apps=())
+        # hide_all keeps the frontmost; finish the job.
+        front = get_frontmost_app_name()
+        if front:
+            hide_app(front)
+        return
 
     items = params.get("items") or ()
     keep = params.get("keep") or ()
@@ -273,12 +323,12 @@ def _do_hide(params: Dict[str, Any]) -> None:
             hide_app(name)
         return
 
-    # Filter form (bare hide / except / display)
+    # Filter form (except / display)
     if display_filter is not None:
         log(
             f"[INFO] hide display({display_filter}) accepted; per-window "
-            "display filtering ships in v1.1.2 — running across all "
-            "displays for now"
+            "display filtering is a stub — running across all displays "
+            "for now"
         )
 
     hide_all(except_apps=keep)
@@ -342,6 +392,18 @@ def _do_wait(params: Dict[str, Any]) -> None:
 # =========================================================
 
 def _do_screenshot(params: Dict[str, Any]) -> None:
+    """
+    v1.1.2 forms:
+        screenshot                          → default sink
+        screenshot to("~/x.png")            → explicit path
+        screenshot active                   → frontmost-window capture (stub)
+        screenshot display(N) | window(...) | area(...)   (stub variants)
+    """
+    if params.get("target_keyword") == "active":
+        log(
+            "[INFO] SCREENSHOT active: frontmost-window capture is a "
+            "stub — falling back to full screen"
+        )
     if params.get("display") or params.get("window") or params.get("area"):
         log(
             "[INFO] SCREENSHOT variant: "

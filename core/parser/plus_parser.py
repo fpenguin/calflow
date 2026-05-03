@@ -64,6 +64,23 @@ _REP_RE = re.compile(r"^\(?(\{[^{}]+\}|\([^()]*\))\)?x(\d+)$")  # ({left})x5
 _URL_HINT_RE = re.compile(r"://|^[a-z0-9.\-]+\.[a-z]{2,}", re.IGNORECASE)
 _QUOTED_RE = re.compile(r'^"(.*)"$|^\'(.*)\'$')
 
+# v1.1.2 — runtime targets (bare identifiers, NOT aliases or apps).
+_RUNTIME_TARGETS = frozenset({"active", "all"})
+
+# v1.1.2 — function-shaped tag names (the "#" drop sugar). When one of
+# these appears as a function-call without the leading "#" AND the line
+# carries an action verb, it is promoted to a tag so the layout
+# resolver can pick it up. They remain in `functions` too, so verbs
+# that treat them as filters (hide / focus) still work.
+_LAYOUT_FN_NAMES = frozenset({
+    "display", "left", "right", "middle", "top", "bottom",
+    "area", "grid", "profile",
+})
+
+# v1.1.2 — dynamic blocks that wrap a runtime target / alias / filter
+# are rejected with a clear hint (data vs. runtime separation).
+_DYNAMIC_RE = re.compile(r"^\{(.+)\}$")
+
 
 # =========================================================
 # 🚪 HEADER DETECTION (document-wide)
@@ -195,17 +212,7 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
         )
 
     if head_upper == "FOCUS":
-        primary = body_args[0] if body_args else (targets[0] if targets else None)
-        title = next((v for (n, v) in fns if n == "title"), None)
-        return FocusCommand(
-            line_no=line_no,
-            raw=raw,
-            tags=tags,
-            functions=tuple(fns),
-            target=_unquote(primary) if primary else None,
-            title=title,
-            targets=tuple(targets),
-        )
+        return _build_focus(line_no, raw, body_args, tags, targets, fns)
 
     if head_upper == "CLOSE":
         return _build_close(line_no, raw, body_args, tags, targets, fns)
@@ -289,17 +296,32 @@ def _build_hide(
     tags: FrozenSet[str], targets: List[str], fns: List[Tuple[str, Any]],
 ) -> HideCommand:
     """
-    HIDE forms (v1.1+):
-        hide                          → bare (= hide all-except-frontmost)
-        hide @app                     → items=("app",)
-        hide [a, b, c]                → items=("a","b","c")
-        hide except(@bundle)          → keep_set=…
-        hide except([list])           → keep_set=…
-        hide except(@bundle) display(N) → keep_set=…, display_filter=N
-        hide display(N)               → display_filter=N (bare-with-filter)
+    HIDE forms (v1.1.2):
+        hide active                      → target_keyword="active"
+        hide all                         → target_keyword="all"
+        hide @app                        → items=("@app",)
+        hide [a, b, c]                   → items=("a","b","c")
+        hide "App"                       → items=("App",)
+        hide except(<arg>)               → keep_set=…
+        hide except(<arg>) display(N|"name") → keep_set + display_filter
+        hide display(N|"name")           → display_filter only
+
+    Bare `hide` (no body, no targets, no filters) is REJECTED upstream
+    by the validator with a v1.1.2 migration message.
     """
     fn_dict = dict(fns)
     has_filters = ("except" in fn_dict) or ("display" in fn_dict)
+
+    # ── Runtime-target keyword (`active`, `all`) ──────────────────────
+    target_keyword: Optional[str] = None
+    if body and not has_filters:
+        head = body[0].lower()
+        if head in _RUNTIME_TARGETS:
+            target_keyword = head
+            return HideCommand(
+                line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+                target_keyword=target_keyword,
+            )
 
     # ── Form 1: explicit list / bare-target / "App" — ignore filters ──
     items_tuple: Tuple[str, ...] = ()
@@ -315,9 +337,9 @@ def _build_hide(
         # will normalize the @ later.
         items_tuple = tuple(targets)
 
-    # ── Form 2: filter form (bare hide / except() / display()) ──
+    # ── Form 2: filter form (except() / display()) ────────────────────
     keep_set: frozenset = frozenset()
-    display_filter: Optional[int] = None
+    display_filter: Optional[Any] = None
 
     if not items_tuple:  # only relevant when there's no explicit list
         except_arg = fn_dict.get("except")
@@ -326,13 +348,7 @@ def _build_hide(
 
         display_arg = fn_dict.get("display")
         if display_arg is not None:
-            try:
-                display_filter = int(display_arg)
-            except (TypeError, ValueError):
-                log(
-                    f"[WARN] HIDE display() expected an integer, got "
-                    f"{display_arg!r}; ignoring filter"
-                )
+            display_filter = _coerce_display_filter(display_arg)
 
     return HideCommand(
         line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
@@ -347,12 +363,24 @@ def _build_close(
     tags: FrozenSet[str], targets: List[str], fns: List[Tuple[str, Any]],
 ) -> CloseCommand:
     """
-    CLOSE forms (v1.1+):
-        close @app | close "App" | close [a, b]   → items populated
-        close except(@bundle)                     → keep_set populated
-    Bare `close` is rejected by the validator before reaching here.
+    CLOSE forms (v1.1.2):
+        close active                          → target_keyword="active"
+        close all                             → target_keyword="all"
+        close @app | close "App" | close [..] → items populated
+        close except(<arg>)                   → keep_set populated
+
+    Bare `close` (no args) is rejected by the validator.
     """
     fn_dict = dict(fns)
+
+    # ── Runtime-target keyword (`active`, `all`) ──────────────────────
+    if body and "except" not in fn_dict:
+        head = body[0].lower()
+        if head in _RUNTIME_TARGETS:
+            return CloseCommand(
+                line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+                target_keyword=head,
+            )
 
     items_tuple: Tuple[str, ...] = ()
     if body:
@@ -376,6 +404,62 @@ def _build_close(
         items=items_tuple,
         keep_set=keep_set,
     )
+
+
+def _build_focus(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], targets: List[str], fns: List[Tuple[str, Any]],
+) -> FocusCommand:
+    """
+    FOCUS forms (v1.1.2):
+        focus @app                  → activate app
+        focus @app title("…")       → activate + raise matching window
+        focus @app display(N|"name") → activate + move all windows to display
+        focus active                → no-op (frontmost is already focused)
+        focus "App Name"            → activate by literal name
+    """
+    fn_dict = dict(fns)
+    title = fn_dict.get("title")
+
+    # ── Runtime-target keyword (`active`) ─────────────────────────────
+    if body:
+        head_lower = body[0].lower()
+        if head_lower == "active":
+            return FocusCommand(
+                line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+                target_keyword="active",
+                title=title,
+            )
+
+    primary = body[0] if body else (targets[0] if targets else None)
+
+    display_target: Optional[Any] = None
+    if "display" in fn_dict:
+        display_target = _coerce_display_filter(fn_dict["display"])
+
+    return FocusCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        target=_unquote(primary) if primary else None,
+        title=title,
+        targets=tuple(targets),
+        display_target=display_target,
+    )
+
+
+def _coerce_display_filter(arg: Any) -> Any:
+    """Display filter accepts int (index, 1-based), str (substring), or 'ext'."""
+    if arg is None:
+        return None
+    if isinstance(arg, int):
+        return arg
+    if isinstance(arg, float):
+        return int(arg)
+    if isinstance(arg, str):
+        s = arg.strip().strip('"').strip("'")
+        if s.isdigit():
+            return int(s)
+        return s
+    return arg
 
 
 def _normalize_except_arg(arg: Any, targets: List[str]) -> frozenset:
@@ -480,9 +564,26 @@ def _build_screenshot(
     line_no: int, raw: str, body: List[str],
     tags: FrozenSet[str], fns: List[Tuple[str, Any]],
 ) -> ScreenshotCommand:
-    display = next((v for (n, v) in fns if n == "display"), None)
-    window = next((v for (n, v) in fns if n == "window"), None)
-    area_raw = next((v for (n, v) in fns if n == "area"), None)
+    """
+    SCREENSHOT forms (v1.1.2):
+        screenshot                          → default → settings dir
+        screenshot to("~/x.png")            → explicit path (canonical)
+        screenshot active                   → frontmost-window capture
+        screenshot display(N|"name")        → by display
+        screenshot window("…")              → by window title
+        screenshot area(x,y,w,h)            → by region
+
+    The legacy positional `screenshot "~/x.png"` form is REJECTED by
+    the validator with a hint to use `to("…")` (parity with `save … to(…)`).
+    """
+    fn_dict = dict(fns)
+
+    display_arg = fn_dict.get("display")
+    display = _coerce_display_filter(display_arg) if display_arg is not None else None
+
+    window = fn_dict.get("window")
+
+    area_raw = fn_dict.get("area")
     area = None
     if isinstance(area_raw, tuple) and len(area_raw) == 4:
         try:
@@ -491,16 +592,24 @@ def _build_screenshot(
         except Exception:
             area = None
 
-    path = None
-    if body and not _FUNCTION_CALL_RE.match(body[0]):
-        path = _unquote(body[0])
+    # v1.1.2 — `to(...)` is the canonical sink.
+    to_path = fn_dict.get("to")
+    path: Optional[str] = None
+    if to_path is not None:
+        path = _unquote(str(to_path))
+
+    # Runtime-target keyword (`active`)
+    target_keyword: Optional[str] = None
+    if body and body[0].lower() == "active":
+        target_keyword = "active"
 
     return ScreenshotCommand(
         line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
         path=path,
-        display=int(display) if display is not None else None,
+        display=display,
         window=window,
         area=area,
+        target_keyword=target_keyword,
     )
 
 
@@ -518,6 +627,14 @@ def _split_args(
         targets     → @ tokens (lowercased)
         functions   → list of (name, value) tuples preserving order
                       value is str | int | float | tuple of args
+
+    v1.1.2 changes:
+        - function-shaped layout tokens (`display(...)`, `left(...)`, etc.)
+          are also promoted into `tags` (as if the `#` was present), so the
+          layout resolver picks them up. They stay in `functions` too — that
+          way HIDE/FOCUS can use the same parsed value as a filter.
+        - bare runtime targets (`active`, `all`) flow through to `body`
+          unchanged; the per-verb builder converts them to `target_keyword`.
     """
     body: List[str] = []
     tags: List[str] = []
@@ -537,6 +654,11 @@ def _split_args(
             inner = m.group(2).strip()
             value = _coerce_function_args(inner)
             functions.append((name, value))
+            # v1.1.2 — `#` drop sugar: promote layout-named function calls
+            # to tags so the existing layout resolver sees them. The tag
+            # is reconstructed in the canonical `#name(args)` form.
+            if name in _LAYOUT_FN_NAMES:
+                tags.append(f"#{name}({inner})".lower())
             continue
         body.append(token)
 

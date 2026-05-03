@@ -411,3 +411,70 @@ def apply_layout(
         rect = compute_rect(layout, target)
 
     set_window_bounds(app_name, rect)
+
+
+# =========================================================
+# 🚚 MOVE APP TO DISPLAY (v1.1.2 — focus @app display(N))
+# =========================================================
+
+def move_app_to_display(
+    app_name: str,
+    display_target: Any,
+) -> bool:
+    """
+    Activate `app_name` and move its frontmost window to the requested
+    display. Used by `focus @app display(N|"name")` in Plus Mode.
+
+    `display_target` accepts:
+        - int      → 1-based display index
+        - "ext"    → first external monitor
+        - str      → substring match against display name
+
+    Behavior:
+        - looks up the display via `resolve_display_target`
+        - logs and returns False if the display can't be resolved
+        - sizes to the display's full visible frame (no inner layout)
+        - per-window timeout enforced via subprocess timeout in
+          set_window_bounds (~4s)
+
+    Returns True iff the bounds-set succeeded.
+    """
+    if not app_name:
+        log("[WARN] move_app_to_display: missing app name")
+        return False
+    if display_target is None:
+        log("[WARN] move_app_to_display: missing display target")
+        return False
+
+    # Translate the parser-level display value into the resolver-level
+    # tuple format that resolve_display_target expects.
+    spec: Optional[Tuple[str, Any]]
+    if isinstance(display_target, int):
+        spec = ("index", display_target)
+    elif isinstance(display_target, str):
+        s = display_target.strip().lower()
+        if s in ("", "ext", "external"):
+            spec = ("external", None)
+        elif s.isdigit():
+            spec = ("index", int(s))
+        else:
+            spec = ("name", display_target)
+    else:
+        log(f"[WARN] move_app_to_display: bad target {display_target!r}")
+        return False
+
+    displays = enumerate_displays()
+    if not displays:
+        log("[WARN] move_app_to_display: no displays detected")
+        return False
+
+    target = resolve_display_target(spec, displays)
+    if target is None:
+        return False  # resolver already logged
+
+    rect = (target["x"], target["y"], target["w"], target["h"])
+    log(
+        f"[INFO] move {app_name!r} → display {target['index']} "
+        f"({target.get('name','?')}) @ {rect}"
+    )
+    return set_window_bounds(app_name, rect)

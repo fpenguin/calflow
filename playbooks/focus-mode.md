@@ -65,7 +65,7 @@ You get:
 ```text
 +CalFlow+
 
-hide
+hide except(active)
 open notion.so #full
 ```
 
@@ -92,7 +92,7 @@ focus @slack #right(30%)
 ```text
 +CalFlow+
 
-hide
+hide except(active)
 open zoom.us #full
 ```
 
@@ -108,7 +108,7 @@ open zoom.us #full
 close "Spotify"
 close "Slack"
 close "Discord"
-hide
+hide except(active)
 open notion.so #full
 ```
 

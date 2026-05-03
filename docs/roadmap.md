@@ -273,9 +273,14 @@ These are **out of scope** for any near-term release:
 | FOCUS — `focus @app title("…")` | ✅ | ✅ | ✅ | ✅ (real, AXRaise on matching window) |
 | CLOSE — `close "X"` / `close [a, b]` | ✅ | ✅ | ✅ | ✅ (real, `tell app to quit`, only if running) |
 | HIDE — `hide @app` / `hide [a, b]` | ✅ | ✅ | ✅ | ✅ (real, System Events `set visible to false`) |
-| HIDE — bare `hide` / `hide except(<…>)` | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost; v1.1.1) |
-| HIDE — `hide display(N)` / `hide except(<…>) display(N)` | ✅ | ✅ | ✅ | 🚧 stub — display filter accepted; per-window filtering ships in v1.1.2 |
-| CLOSE — `close except(<…>)` | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost; v1.1.1) |
+| HIDE — `hide active` / `hide all` (runtime targets, v1.1.2) | ✅ | ✅ | ✅ | ✅ (real, frontmost lookup + iterate) |
+| HIDE — `hide except(<…>)` (incl. `except(active)`) | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost) |
+| HIDE — `display(N)` / `display("name")` filter | ✅ | ✅ | ✅ | 🚧 stub — display filter accepted; per-window filtering ships later |
+| CLOSE — `close except(<…>)` / `close active` / `close all` | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost; v1.1.2) |
+| FOCUS — `focus @app display(N)` / `display("name")` (v1.1.2) | ✅ | ✅ | ✅ | ✅ (real — activate + JXA enumerate + AppleScript bounds set) |
+| FOCUS — `focus active` (v1.1.2 no-op) | ✅ | ✅ | ✅ | ✅ (real — log-only) |
+| SCREENSHOT — `screenshot to("…")` (v1.1.2 canonical) | ✅ | ✅ | ✅ | ✅ (real, screencapture) |
+| SCREENSHOT — `screenshot active` (frontmost window) | ✅ | ✅ | ✅ | 🚧 stub — falls back to full screen |
 | CLICK | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | TYPE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | PRESS (single / combo / sequence) | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |

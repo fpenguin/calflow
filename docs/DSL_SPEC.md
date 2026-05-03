@@ -805,16 +805,43 @@ click text("Submit") position(100,200) ❌
 
 ---
 
-## 3.1 App Control
+## 3.1 App Control (v1.1.2)
 
 ```text
+## OPEN
 open @chrome
-focus @chrome
+open @work                          ## bundle expansion
+open https://x.com @chrome
+open "Notion"
+
+## FOCUS
+focus @chrome                       ## activate
+focus @chrome title("Inbox")        ## raise matching window
+focus @chrome display(2)            ## activate + move to display
+focus active                        ## no-op (frontmost is focused)
+
+## CLOSE
 close @chrome
+close [a, b]
+close "Spotify"
+close active                        ## quit frontmost
+close all                           ## quit every visible app
+close except(@work)                 ## quit everything except @work
+
+## HIDE
 hide @chrome
-hide
-hide except(@work)
+hide [a, b]
+hide active                         ## hide frontmost
+hide all                            ## hide every visible app
+hide except(@work)                  ## hide all except @work
+hide except(active)                 ## hide all except frontmost
+hide display(2)                     ## hide all on display 2
+hide except(@work) display(2)       ## combine
 ```
+
+> Bare `hide` (no args) was REMOVED in v1.1.2. Use `hide except(active)`
+> to keep the frontmost visible, `hide all` to hide everything, or
+> `hide @app` to hide a specific app.
 
 ---
 
@@ -863,8 +890,11 @@ timeout(3s)
 ## 3.3 Screenshot
 
 ```text
-screenshot
+screenshot                           ## default sink (settings)
+screenshot to("~/x.png")             ## explicit path (canonical — v1.1.2)
+screenshot active                    ## frontmost-window capture
 screenshot display(2)
+screenshot display("Samsung S90D")
 screenshot window("Google Chrome")
 screenshot area(0,0,1920,1080)
 ```
@@ -874,10 +904,14 @@ screenshot area(0,0,1920,1080)
 ### Behavior
 
 - writes a PNG file to `PLUS_SCREENSHOT_DIR` (default `~/Downloads/CalFlow`)
-- if `to("…")` / `path` is supplied, writes there instead
-- destination directory is created automatically if it doesn't exist
-- the default directory is configurable in `config/settings.py`  
-- `#` prefix optional  
+- filename pattern is `PLUS_SCREENSHOT_FILENAME_FORMAT`  
+  (default `CalFlow_{YYYY-MM-DD_HHMMSS}.png`)
+- if `to("…")` is supplied, writes there instead
+- destination directory is created automatically if it doesn't exist; falls
+  back to `~/Library/Application Support/CalFlow/screenshots/` if read-only
+- both folder and filename pattern are configurable in `config/settings.py`
+- positional path (`screenshot "~/x.png"`) was REMOVED in v1.1.2 — use
+  `to("…")` for parity with `save … to(…)`
 
 ---
 
@@ -1000,8 +1034,69 @@ click text("Submit") timeout(3s)
 
 - Smart Mode assumes `open`  
 - Plus Mode requires explicit commands  
-- `#` supported in Plus Mode (compatibility only)  
+- `#` supported in Plus Mode (compatibility only — see §9)  
 - global tags apply ONLY in Smart Mode  
+
+---
+
+# 9. Type System (v1.1.2)
+
+CalFlow's DSL distinguishes between **values** (data the engine
+generates), **runtime targets** (system entities the engine resolves at
+execution time), **aliases** (predefined sets), and **filters**
+(modifiers that narrow a selection). Mixing these types is rejected at
+parse time.
+
+| Type            | Syntax    | Examples                           | Meaning                          |
+|-----------------|-----------|------------------------------------|----------------------------------|
+| Dynamic value   | `{ … }`   | `{now}`, `{now-7d > YYYY-MM-DD}`   | produces data                    |
+| Runtime target  | bare ident | `active`, `all`                   | selects a system entity at exec  |
+| Alias           | `@…`      | `@chrome`, `@work`                 | predefined set from settings     |
+| Filter          | `name(…)` | `except(@x)`, `display(2)`         | modifies the verb's selection    |
+
+## Reserved Keywords
+
+```text
+active   ← frontmost app (resolved at exec time)
+all      ← every visible non-background app
+display  ← filter function name
+except   ← filter function name
+```
+
+User configuration (`TARGETS`, `BUNDLES`) MUST NOT shadow these. CalFlow
+refuses to start with a clear error and a rename suggestion if it does.
+
+## Invalid Usage
+
+```text
+hide {active}            ## ❌ {} is for VALUES only — use bare `active`
+hide except({@work})     ## ❌ same — use `except(@work)`
+hide {display(2)}        ## ❌ same — use `display(2)`
+TARGETS = {"@active": …} ## ❌ shadows reserved keyword — refuses to start
+```
+
+## Rationale
+
+- prevents mixing value and execution semantics
+- keeps the parser + resolver simple (no precedence rules)
+- guarantees portability — same script behaves identically on every machine
+
+---
+
+## 9.1 `#` Drop Sugar (Plus Mode only)
+
+In Plus Mode, attached function-shaped tags MAY drop the `#` prefix:
+
+```text
+open zoom.us @chrome display(2)     ≡  open zoom.us @chrome #display(2)
+open zoom.us @chrome left(50%)      ≡  open zoom.us @chrome #left(50%)
+open zoom.us @chrome area(0,0,1,1)  ≡  open zoom.us @chrome #area(0,0,1,1)
+open zoom.us @chrome grid(3x2@1)    ≡  open zoom.us @chrome #grid(3x2@1)
+open zoom.us @chrome profile(2)     ≡  open zoom.us @chrome #profile(2)
+```
+
+Bare-relative tags (`#left`, `#full`) keep the `#` because they're not
+function-shaped. Standalone `#tag` lines (no verb) remain Smart-Mode-only.
 
 ---
 
