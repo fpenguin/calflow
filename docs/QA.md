@@ -25,9 +25,7 @@ python3 -m unittest \
   -v
 ```
 
-Expected: **`Ran 201 tests in <1s    OK (skipped=5)`**
-
-The 5 skipped tests are the abstract base class for playbook scenarios.
+Expected: **`Ran 196 tests in <1s    OK`**
 
 ### Per-suite breakdown
 
@@ -37,7 +35,7 @@ The 5 skipped tests are the abstract base class for playbook scenarios.
 | `test_v2_parser`     |  16 | Mode detection, AST construction, Smart regression |
 | `test_v2_executor`   |   5 | Plus dispatch table (with mocked actions) |
 | `test_v2_spec`       |  72 | Every rule in `docs/DSL_GRAMMAR / DSL_SPEC / parser-behavior / validation / test-cases` |
-| `test_v2_playbooks`  |  35 | Every `+CalFlow+` block in `playbooks/*.md` (5 base-class skipped) |
+| `test_v2_playbooks`  |  30 | Every `+CalFlow+` block in `playbooks/*.md` |
 | `test_v2_dynamic`    |  29 | Dynamic expression engine (base, transforms, formats, whitespace, Smart Mode integration) |
 | `test_v2_comments`   |  26 | `##` line + inline, suppression inside quotes/parens/brackets/braces |
 
@@ -196,7 +194,7 @@ Walk through:
 python3 -m cli.main status
 ```
 
-**Expected:** `✅ Calflow is loaded` + a `com.calflow` line from launchctl.
+**Expected:** `✅ CalFlow is loaded` + a `com.calflow` line from launchctl.
 
 ## 3.3 Smart Mode test event
 

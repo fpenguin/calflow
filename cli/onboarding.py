@@ -86,7 +86,7 @@ def start_launchd():
         return
 
     subprocess.run(["launchctl", "load", PLIST_PATH])
-    print("▶️ Calflow started\n")
+    print("▶️ CalFlow started\n")
 
 
 def stop_launchd():
@@ -99,13 +99,13 @@ def stop_launchd():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    print("⏹ Calflow stopped\n")
+    print("⏹ CalFlow stopped\n")
 
 
 def restart_launchd():
     stop_launchd()
     start_launchd()
-    print("🔄 Calflow restarted\n")
+    print("🔄 CalFlow restarted\n")
 
 
 def status_launchd():
@@ -116,13 +116,13 @@ def status_launchd():
     )
 
     if "com.calflow" in result.stdout:
-        print("✅ Calflow is loaded")
+        print("✅ CalFlow is loaded")
 
         for line in result.stdout.splitlines():
             if "com.calflow" in line:
                 print("→", line.strip())
     else:
-        print("❌ Calflow is not running")
+        print("❌ CalFlow is not running")
 
 # =========================
 # Sample Event
@@ -139,26 +139,33 @@ def open_sample_event_in_browser():
     def fmt(dt):
         return dt.strftime("%Y%m%dT%H%M%SZ")
 
-    description = """This is a test event for Calflow
+    # v2.0 syntax:
+    #   - `@chrome` / `@safari` are TARGETS (route to a specific browser)
+    #   - `#left(70%)` / `#right(30%)` use parens (validation §3.3)
+    #   - `## …` lines are comments (DSL_GRAMMAR §1.3)
+    #   - the README link is a `##` line so the parser doesn't try to open it
+    #
+    # Note: window-layout APPLICATION is currently a stub on macOS
+    # (see docs/roadmap.md v2.2). The two URLs WILL open in the right
+    # browsers; window resizing lands in the next minor release.
+    description = """## CalFlow test event — runs ~5 min after Save
 
-https://buymeacoffee.com/therapydoge #right30 #safari
-https://login.yahoo.com/ #left70 #fill #chrome
+https://buymeacoffee.com/therapydoge @safari #right(30%)
+https://login.yahoo.com/ @chrome #left(70%) #fill
 
-What will happen next?
-
-→ Two links will open shortly
-→ The first opens in Safari (30% of your screen)
-→ The second opens in Chrome (70% of your screen)
-
-If Chrome is not installed, your default browser will be used instead.
-
-Learn more:
-https://github.com/fpenguin/calflow/blob/main/README.md #ignore
+## What you should see:
+##  - Safari opens buymeacoffee.com (right side, 30% — layout stubbed in v2.0)
+##  - Chrome opens login.yahoo.com (left side, 70% — layout stubbed in v2.0)
+##  - Autofill (#fill) is triggered on the Yahoo login page
+##
+## If a target browser isn't installed, your default browser is used.
+##
+## Learn more: https://github.com/fpenguin/calflow/blob/main/README.md
 """
 
     params = {
         "action": "TEMPLATE",
-        "text": "Calflow Test Event",
+        "text": "CalFlow Test Event",
         "dates": f"{fmt(start)}/{fmt(end)}",
         "details": description,
     }
@@ -363,7 +370,7 @@ def ensure_daemon_setup():
     MAX = 3600
 
     print(f"""
-⏱ How often should Calflow check your calendar?
+⏱ How often should CalFlow check your calendar?
 
 → Press Enter to use {DEFAULT} seconds (recommended)
 → Or enter a custom value ({MIN}–{MAX} seconds):
@@ -419,7 +426,7 @@ def run_onboarding():
 Turn your calendar into an automation engine
 — trigger apps, layouts, and workflows from simple text.
 
-🚀 Welcome to Calflow Setup
+🚀 Welcome to CalFlow Setup
 """)
 
     total = 3
