@@ -239,7 +239,7 @@ The menubar should:
 - **Re-probe periodically** so the banner clears when permission is
   granted, no app restart required.
 
-## 7.2 Menu-bar app hide nuance
+## 7.2 Menu-bar app hide nuance + cross-display app windows
 
 `hide @app` (and the per-display variant) sets `visible of process` to
 false. For a normal app this hides every window. For a **menu-bar-
@@ -255,6 +255,37 @@ hide display(1)
 → everything on display 1 hidden EXCEPT BetterDisplay's settings popup
   (BetterDisplay is a menu-bar app)
 ```
+
+### Cross-display apps (v1.1.10 QA pass)
+
+Same scenario, different cause: an app whose **main window is on
+display 2** but whose **Settings panel was just opened on display 1**:
+
+```text
+hide display(1)
+→ cmux NOT hidden (main window on display 2; Settings panel on display 1)
+→ kept = [..., cmux, ...]
+```
+
+Cause: `p.windows()` from System Events typically returns top-level
+NSWindows only. NSPanel-derived Settings windows (AXSheet / AXPanel)
+are often filtered out. So our centre-test only checks the main
+window's position, finds it on display 2, and keeps the app — even
+though visually the user has a panel open on display 1.
+
+Two fixes to evaluate (post v1.1.10 diagnostic):
+  - **Deep AX traversal** (`entire contents of process`) to enumerate
+    AXSheets / AXPanels alongside windows. Costs latency; risks
+    false-matching invisible AX containers.
+  - **Filter by AXSubrole** (`AXSystemDialog`, `AXFloatingWindow`) and
+    add to the window list. Lower false-positive risk; may miss
+    unusual app architectures.
+
+Either way, `hide display(N)` operates at the **app** level — when an
+app qualifies, the WHOLE app is hidden, including its windows on
+other displays. Per-window hide (just hide the panel on display 1,
+keep the main window on display 2 visible) requires much more
+invasive AX writes and is deferred to v2.x.
 
 When the menubar app is built we should:
 
