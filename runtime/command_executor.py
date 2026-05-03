@@ -328,9 +328,22 @@ def _do_hide(params: Dict[str, Any]) -> None:
     # the wrapper has already logged an actionable message — we do
     # NOT fall back to hide_all here, because hiding EVERY visible
     # app would surprise the user who asked for a specific display.
+    #
+    # v1.1.12 — `keep_frontmost` is opt-in. Bare `hide display(N)`
+    # targets the frontmost app too (the user explicitly asked).
+    # `hide except(active) display(N)` is how the user asks to keep
+    # the frontmost as a safety. We detect the runtime keyword
+    # `active` in the keep set; the JXA-side keep list still also
+    # contains it as a literal name (harmless — no real app is
+    # called "active" since v1.1.2 reserves it).
     if display_filter is not None:
         from runtime.actions.window import hide_apps_on_display
-        hide_apps_on_display(display_filter, except_apps=tuple(keep))
+        keep_active = "active" in (keep or ())
+        hide_apps_on_display(
+            display_filter,
+            except_apps=tuple(keep),
+            keep_frontmost=keep_active,
+        )
         return
 
     hide_all(except_apps=keep)

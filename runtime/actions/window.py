@@ -437,6 +437,12 @@ function run(argv) {
     var keepArr = (argv[4] || "").split("").filter(function (s) { return s.length > 0; });
     var keep = {};
     for (var i = 0; i < keepArr.length; i++) keep[keepArr[i]] = true;
+    // v1.1.12 — frontmost-keep is now OPT-IN via argv[5] ("1" = keep
+    // frontmost as safety, "0" = hide it if it matches the display
+    // filter). Bare `hide display(N)` passes "0" because the user
+    // explicitly asked to hide everything on display N — frontmost
+    // included. `hide except(active) display(N)` passes "1".
+    var keepFrontmost = (argv[5] || "0") === "1";
 
     var SE = Application("System Events");
     var procs = SE.processes.whose({ visible: true, backgroundOnly: false })();
@@ -462,8 +468,14 @@ function run(argv) {
         try { name = p.name(); } catch (e) { continue; }
         if (!name) continue;
 
-        if (name === frontmost || keep[name]) {
+        // Explicit keep list always wins. Frontmost only auto-skips
+        // when the caller passed keepFrontmost=true (i.e. the DSL had
+        // `except(active)`).
+        if (keep[name] || (keepFrontmost && name === frontmost)) {
             kept.push(name);
+            if (keepFrontmost && name === frontmost) {
+                diag.push(name + ": kept (frontmost; use bare display(N) to include it)");
+            }
             continue;
         }
 
@@ -550,6 +562,8 @@ function run(argv) {
 def hide_apps_on_display(
     display_target: Any,
     except_apps: List[str] = (),
+    *,
+    keep_frontmost: bool = False,
 ) -> bool:
     """
     Hide every visible non-background app whose frontmost window's
@@ -560,7 +574,13 @@ def hide_apps_on_display(
         "ext"    → first external monitor
         str      → substring match against display name
 
-    `except_apps` are kept visible; the frontmost is also always kept.
+    `except_apps` are kept visible.
+
+    `keep_frontmost` (v1.1.12 — opt-in) — set True when the caller's
+    keep set contained the runtime keyword `active`. Otherwise the
+    frontmost app gets hidden if it matches the display filter (which
+    is what bare `hide display(N)` should do — the user explicitly
+    asked, and it's surprising to silently skip the active app).
 
     Returns True iff the JXA call succeeded.
     """
@@ -609,6 +629,7 @@ def hide_apps_on_display(
                 str(target["x"]), str(target["y"]),
                 str(target["w"]), str(target["h"]),
                 keep_arg,
+                "1" if keep_frontmost else "0",
             ],
             capture_output=True, text=True, timeout=8,
         )
