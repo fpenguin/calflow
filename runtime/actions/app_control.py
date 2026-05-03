@@ -315,10 +315,16 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
     #     HIDDEN\t<comma-sep-list>
     #     ERRORED\t<comma-sep-list>
     # so we can log a precise summary instead of guessing.
+    #
+    # NOTE: We CANNOT name the 'hidden apps' list `hidden` — that's a
+    # reserved property of System Events processes, and AppleScript
+    # interprets `set hidden to {}` as an attempt to set the System
+    # Events `hidden` attribute (error -10003: 'Access not allowed').
+    # Use `hid` for the local list variable.
     script = (
         'on run\n'
         '    set kept to {}\n'
-        '    set hidden to {}\n'
+        '    set hid to {}\n'
         '    set errored to {}\n'
         '    tell application "System Events"\n'
         '        set frontApp to (name of first application process whose frontmost is true)\n'
@@ -338,7 +344,7 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
         '            else\n'
         '                try\n'
         '                    set visible of p to false\n'
-        '                    set end of hidden to procName\n'
+        '                    set end of hid to procName\n'
         '                on error errMsg\n'
         '                    set end of errored to (procName & " (" & errMsg & ")")\n'
         '                end try\n'
@@ -347,7 +353,7 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
         '    end tell\n'
         '    set AppleScript\'s text item delimiters to ", "\n'
         '    set out to "KEPT\t" & (kept as text) & linefeed\n'
-        '    set out to out & "HIDDEN\t" & (hidden as text) & linefeed\n'
+        '    set out to out & "HIDDEN\t" & (hid as text) & linefeed\n'
         '    set out to out & "ERRORED\t" & (errored as text)\n'
         '    return out\n'
         'end run\n'

@@ -323,12 +323,18 @@ def _do_hide(params: Dict[str, Any]) -> None:
             hide_app(name)
         return
 
-    # Filter form (except / display)
+    # v1.1.7 — real per-window display filter via JXA + System Events.
+    # `hide display(N)` (or `hide except(@x) display(N)`) uses the
+    # window-centre-in-display test. Falls back to hide_all if the
+    # display can't be resolved.
     if display_filter is not None:
+        from runtime.actions.window import hide_apps_on_display
+        ok = hide_apps_on_display(display_filter, except_apps=tuple(keep))
+        if ok:
+            return
         log(
-            f"[INFO] hide display({display_filter}) accepted; per-window "
-            "display filtering is a stub — running across all displays "
-            "for now"
+            f"[WARN] hide display({display_filter}) failed; "
+            "falling back to hide-all behaviour"
         )
 
     hide_all(except_apps=keep)

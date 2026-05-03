@@ -275,7 +275,7 @@ These are **out of scope** for any near-term release:
 | HIDE — `hide @app` / `hide [a, b]` | ✅ | ✅ | ✅ | ✅ (real, System Events `set visible to false`) |
 | HIDE — `hide active` / `hide all` (runtime targets, v1.1.2) | ✅ | ✅ | ✅ | ✅ (real, frontmost lookup + iterate) |
 | HIDE — `hide except(<…>)` (incl. `except(active)`) | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost) |
-| HIDE — `display(N)` / `display("name")` filter | ✅ | ✅ | ✅ | 🚧 stub — display filter accepted; per-window filtering ships later |
+| HIDE — `display(N)` / `display("name")` filter | ✅ | ✅ | ✅ | ✅ (real, v1.1.7 — JXA + window-centre test; needs Accessibility) |
 | CLOSE — `close except(<…>)` / `close active` / `close all` | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost; v1.1.2) |
 | FOCUS — `focus @app display(N)` / `display("name")` (v1.1.2) | ✅ | ✅ | ✅ | ✅ (real — activate + JXA enumerate + AppleScript bounds set) |
 | FOCUS — `focus active` (v1.1.2 no-op) | ✅ | ✅ | ✅ | ✅ (real — log-only) |

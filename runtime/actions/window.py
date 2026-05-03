@@ -414,6 +414,175 @@ def apply_layout(
 
 
 # =========================================================
+# 🪟 PER-WINDOW DISPLAY FILTER (v1.1.7 — hide display(N))
+# =========================================================
+#
+# `hide display(N)` semantics: hide every visible non-background app
+# whose frontmost window's CENTRE point falls inside display N's
+# visibleFrame. Ties (window straddles two displays) go to the display
+# the centre lands on.
+#
+# Requires Accessibility permission (System Events needs to read
+# `position` and `size` of windows). If permission is missing the
+# JXA call fails with -10003; we log the standard hint.
+
+_JXA_HIDE_ON_DISPLAY = r"""
+ObjC.import("AppKit");
+
+function run(argv) {
+    var dx = parseInt(argv[0], 10);
+    var dy = parseInt(argv[1], 10);
+    var dw = parseInt(argv[2], 10);
+    var dh = parseInt(argv[3], 10);
+    var keepArr = (argv[4] || "").split("").filter(function (s) { return s.length > 0; });
+    var keep = {};
+    for (var i = 0; i < keepArr.length; i++) keep[keepArr[i]] = true;
+
+    var SE = Application("System Events");
+    var procs = SE.processes.whose({ visible: true, backgroundOnly: false })();
+    var frontmost = "";
+    try {
+        var fronts = SE.processes.whose({ frontmost: true })();
+        if (fronts.length > 0) frontmost = fronts[0].name();
+    } catch (e) {}
+
+    var hid = [], kept = [], errored = [];
+    for (var i = 0; i < procs.length; i++) {
+        var p = procs[i];
+        var name = "";
+        try { name = p.name(); } catch (e) { continue; }
+        if (!name) continue;
+
+        if (name === frontmost || keep[name]) {
+            kept.push(name);
+            continue;
+        }
+
+        try {
+            var wins = p.windows();
+            var match = false;
+            for (var w = 0; w < wins.length; w++) {
+                var pos, sz;
+                try {
+                    pos = wins[w].position();
+                    sz  = wins[w].size();
+                } catch (e) { continue; }
+                if (!pos || !sz) continue;
+                var cx = pos[0] + sz[0] / 2;
+                var cy = pos[1] + sz[1] / 2;
+                if (cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh) {
+                    match = true;
+                    break;
+                }
+            }
+            if (match) {
+                p.visible = false;
+                hid.push(name);
+            } else {
+                kept.push(name);
+            }
+        } catch (e) {
+            errored.push(name + " (" + e.message + ")");
+        }
+    }
+
+    return "KEPT\t" + kept.join(", ") +
+           "\nHIDDEN\t" + hid.join(", ") +
+           "\nERRORED\t" + errored.join(", ");
+}
+"""
+
+
+def hide_apps_on_display(
+    display_target: Any,
+    except_apps: List[str] = (),
+) -> bool:
+    """
+    Hide every visible non-background app whose frontmost window's
+    centre point falls within the requested display.
+
+    `display_target` accepts the same shapes as `move_app_to_display`:
+        int      → 1-based display index
+        "ext"    → first external monitor
+        str      → substring match against display name
+
+    `except_apps` are kept visible; the frontmost is also always kept.
+
+    Returns True iff the JXA call succeeded.
+    """
+    if display_target is None:
+        log("[WARN] hide display(): missing target")
+        return False
+
+    # Translate into the resolver tuple shape, same as move_app_to_display.
+    spec: Optional[Tuple[str, Any]]
+    if isinstance(display_target, int):
+        spec = ("index", display_target)
+    elif isinstance(display_target, str):
+        s = display_target.strip().lower()
+        if s in ("", "ext", "external"):
+            spec = ("external", None)
+        elif s.isdigit():
+            spec = ("index", int(s))
+        else:
+            spec = ("name", display_target)
+    else:
+        log(f"[WARN] hide display(): bad target {display_target!r}")
+        return False
+
+    displays = enumerate_displays()
+    if not displays:
+        log("[WARN] hide display(): no displays detected")
+        return False
+
+    target = resolve_display_target(spec, displays)
+    if target is None:
+        return False  # resolver already logged
+
+    # The except-list is delimited with U+001F (information-separator-one)
+    # because spaces / commas / hyphens can appear in macOS app names.
+    keep_arg = "".join(a for a in except_apps if a)
+
+    label = (
+        f"HIDE display({target['index']}) [{target.get('name','?')}]"
+        + (f" except {', '.join(except_apps)}" if except_apps else "")
+    )
+
+    try:
+        result = subprocess.run(
+            [
+                "osascript", "-l", "JavaScript", "-e", _JXA_HIDE_ON_DISPLAY,
+                str(target["x"]), str(target["y"]),
+                str(target["w"]), str(target["h"]),
+                keep_arg,
+            ],
+            capture_output=True, text=True, timeout=8,
+        )
+    except FileNotFoundError:
+        log("[WARN] osascript not available — hide-on-display disabled")
+        return False
+    except Exception as exc:
+        log(f"[WARN] {label} subprocess failed: {exc}")
+        return False
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        log(f"[WARN] {label} failed: {stderr or '(no stderr)'}")
+        if "not allowed" in stderr.lower() or "1002" in stderr or "-10003" in stderr:
+            log(
+                "[WARN] Grant Accessibility permission: "
+                "System Settings → Privacy & Security → Accessibility"
+            )
+        return False
+
+    for line in (result.stdout or "").strip().splitlines():
+        if "\t" in line:
+            tag, _, names = line.partition("\t")
+            log(f"[INFO] {label}: {tag.lower()} = [{names.strip() or '∅'}]")
+    return True
+
+
+# =========================================================
 # 🚚 MOVE APP TO DISPLAY (v1.1.2 — focus @app display(N))
 # =========================================================
 
