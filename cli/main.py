@@ -340,28 +340,29 @@ def _lookup_window_hours() -> int:
 # =========================================================
 
 def run_test() -> None:
-    """Top-level dispatcher for `python3 -m cli.main test`."""
+    """
+    Top-level dispatcher for `python3 -m cli.main test`.
+
+    Pipeline:
+        1. fetch all upcoming events (next 2 hours)
+        2. rank: Plus > Smart-with-content > empty
+        3. let user pick (or fall to custom script / new event)
+    """
     print("=" * 50)
     print(" 🧪  CalFlow test runner")
     print("=" * 50)
     print()
 
-    # Try to fetch a pre-existing CalFlow Test Event. If none, fall
-    # straight into the offer-to-create + custom-script flow.
-    test_event = _find_existing_test_event(silent=True)
+    candidates = _list_test_candidates()
+    test_event = _pick_test_candidate(candidates)
     if test_event is None:
-        test_event = _offer_create_test_event()
-        if test_event is None:
-            # The user declined creating one but might still want to try
-            # a custom script — let them in.
-            _run_custom_script_loop()
-            return
+        return
 
     _step1_choose_mode(test_event)
 
 
 def _step1_choose_mode(test_event: Dict) -> None:
-    """Display the event header + run-mode menu. Dispatches to step 2a/b/c."""
+    """Display the event header + preview + run-mode menu."""
     text = test_event.get("text") or ""
     parsed = parse(text, title=test_event.get("title"))
     plus_marker = "+CalFlow+" if parsed.is_plus else "Smart"
@@ -369,21 +370,41 @@ def _step1_choose_mode(test_event: Dict) -> None:
     print(f"Selected: {test_event['title']!r}")
     print(f"Mode    : {plus_marker}")
     print()
+    _print_description_preview(text)
+    if parsed.is_empty:
+        print()
+        print("⚠  This event has no executable content.")
+        print("   Pick a different event (option 4) or paste a custom script.")
+        print()
+    else:
+        print()
     print("Run mode:")
     print()
     print("  1) Calendar Event — Dry run (no execution)")
     print("  2) Calendar Event — Execute")
     print("  3) Custom Script")
+    print("  4) Pick a different event")
+    print("  q) Quit")
     print()
 
-    choice = input("Choose: ").strip()
+    choice = input("Choose: ").strip().lower()
     print()
     if choice == "1":
         _step2a_dry_run(test_event, parsed)
     elif choice == "2":
+        if parsed.is_empty:
+            print("[WARN] Refusing to execute — nothing to do.")
+            return
         _step2b_execute_loop(test_event, parsed)
     elif choice == "3":
         _run_custom_script_loop()
+    elif choice == "4":
+        candidates = _list_test_candidates()
+        next_event = _pick_test_candidate(candidates)
+        if next_event is not None:
+            _step1_choose_mode(next_event)
+    elif choice in ("q", "quit", "exit"):
+        return
     else:
         print("Cancelled.")
 
@@ -400,18 +421,23 @@ def _step2a_dry_run(test_event: Dict, parsed) -> None:
 
 
 def _step2b_execute_loop(test_event: Dict, parsed) -> None:
-    """Execute, then loop on [Enter]=rerun / [n]=new event / [q]=quit."""
+    """Execute, then loop on [Enter]=rerun / [n]=new event / [p]=pick / [q]=quit."""
     while True:
-        try:
-            _execute_parsed(parsed)
-            _mark_test_event_done(test_event)
-        except Exception as exc:
-            print(f"\n[ERROR] Test execution failed: {exc}")
+        if parsed.is_empty:
+            print("[WARN] Refusing to execute — nothing to do.")
+            print("       Pick a different event or paste a custom script.")
+        else:
+            try:
+                _execute_parsed(parsed)
+                _mark_test_event_done(test_event)
+            except Exception as exc:
+                print(f"\n[ERROR] Test execution failed: {exc}")
 
         print()
         print("Press:")
         print("  [Enter] → run again")
-        print("  [n]     → create a new Google Calendar event (starting in 2 min)")
+        print("  [n]     → create a new Google Calendar event")
+        print("  [p]     → pick a different event")
         print("  [q]     → quit")
         choice = input("> ").strip().lower()
         print()
@@ -424,7 +450,17 @@ def _step2b_execute_loop(test_event: Dict, parsed) -> None:
             test_event = new_event
             text = test_event.get("text") or ""
             parsed = parse(text, title=test_event.get("title"))
-        # else: empty → re-run with same parsed AST
+            continue
+        if choice == "p":
+            candidates = _list_test_candidates()
+            picked = _pick_test_candidate(candidates)
+            if picked is None:
+                return
+            test_event = picked
+            text = test_event.get("text") or ""
+            parsed = parse(text, title=test_event.get("title"))
+            continue
+        # empty input → re-run with same parsed AST
 
 
 def _run_custom_script_loop() -> None:
@@ -556,9 +592,13 @@ def _prompt_for_script() -> Optional[str]:
 
 def _offer_create_test_event() -> Optional[Dict]:
     """
-    Open Google Calendar with a pre-filled CalFlow Test Event, then
-    poll for it to appear. Returns the event dict, or None if the user
-    backs out / it never shows up.
+    Open Google Calendar with a pre-filled sample event, then poll for
+    it to appear. Returns the freshly created event dict, or None if
+    the user backs out / it never shows up.
+
+    After saving, we re-fetch and pick the highest-scored candidate
+    starting in the next 10 minutes — that's almost always the just-
+    saved sample.
     """
     from cli.onboarding import open_sample_event_in_browser
 
@@ -574,61 +614,189 @@ def _offer_create_test_event() -> Optional[Dict]:
         print("if you saved it (the daemon picks it up on its next cycle).")
         return None
 
-    return _find_existing_test_event(silent=False)
+    print()
+    candidates = _list_test_candidates(hours=1)
+    if not candidates:
+        print("⚠  No upcoming events found — did you click Save?")
+        return None
 
-
-def _find_existing_test_event(*, silent: bool) -> Optional[Dict]:
-    """
-    Look up the most recent 'CalFlow Test Event' in the next hour
-    across all selected calendars. Returns None if not found.
-    """
-    if not silent:
+    # The freshly saved sample is the highest-scoring item starting in
+    # the next ~10 minutes. If multiple match, hand off to the picker.
+    now = datetime.now(timezone.utc)
+    near = [
+        ev for ev in candidates
+        if (ev["start"] - now).total_seconds() < 600
+    ]
+    if len(near) == 1:
+        chosen = near[0]
+        print(f"[INFO] Found:        {chosen['title']!r}")
+        print(f"[INFO] Calendar:     {chosen.get('calendar_id', '(unknown)')}")
+        print(f"[INFO] Scheduled at: {chosen['start'].isoformat()}")
         print()
-        print("[INFO] Fetching upcoming events from Google Calendar…")
+        return chosen
+    return _pick_test_candidate(candidates)
 
+
+def _list_test_candidates(hours: int = 2) -> List[Dict]:
+    """
+    Fetch every upcoming event in the next `hours` hours across all
+    selected calendars and rank them so the most likely test target
+    floats to the top:
+
+        score 3 — Plus block (`+CalFlow+` in description)
+        score 2 — title contains 'calflow' or 'test'
+        score 1 — non-empty description
+        score 0 — empty / comments-only
+
+    Within each score bucket, earliest start wins.
+
+    Each event gets two computed fields:
+        _score    : int (above)
+        _mode     : 'plus' | 'smart' | 'empty'
+    """
+    print("[INFO] Fetching upcoming events from Google Calendar…")
     try:
         service = build_service()
     except RuntimeError as exc:
-        if not silent:
-            print(f"\n🔐 Not connected to Google Calendar yet.\n   {exc}")
-        return None
+        print(f"\n🔐 Not connected to Google Calendar yet.\n   {exc}")
+        return []
     except Exception as exc:
-        if not silent:
-            print(
-                f"\n⚠  Could not connect to Google Calendar:\n   "
-                f"{type(exc).__name__}: {exc}"
-            )
-        return None
+        print(
+            f"\n⚠  Could not connect to Google Calendar:\n   "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return []
 
-    calendars = get_selected_calendars()
-    test_event = None
-    for cal_id in calendars:
-        for ev in get_upcoming_events(service, cal_id, hours=1):
-            title = (ev.get("title") or "").strip()
-            if "calflow test event" in title.lower():
-                test_event = ev
-                break
-        if test_event:
-            break
+    out: List[Dict] = []
+    for cal_id in get_selected_calendars():
+        for ev in get_upcoming_events(service, cal_id, hours=hours):
+            text = (ev.get("text") or "").strip()
+            title = (ev.get("title") or "").strip().lower()
 
-    if test_event is None:
-        if not silent:
-            print()
-            print("⚠  No 'CalFlow Test Event' found in the next hour across")
-            print(f"   {len(calendars)} selected calendar(s).")
-        return None
+            # Score
+            if "+calflow+" in text.lower():
+                score = 3
+                mode = "plus"
+            elif "calflow" in title or "test" in title:
+                score = 2
+                mode = "smart" if text else "empty"
+            elif text:
+                score = 1
+                mode = "smart"
+            else:
+                score = 0
+                mode = "empty"
 
-    event_time = test_event["start"]
-    if event_time.tzinfo is None:
-        event_time = event_time.replace(tzinfo=timezone.utc)
-        test_event["start"] = event_time
+            ev["_score"] = score
+            ev["_mode"] = mode
 
-    if not silent:
-        print(f"[INFO] Found:        {test_event['title']!r}")
-        print(f"[INFO] Calendar:     {test_event.get('calendar_id', '(unknown)')}")
-        print(f"[INFO] Scheduled at: {event_time.isoformat()}")
+            event_time = ev["start"]
+            if event_time.tzinfo is None:
+                event_time = event_time.replace(tzinfo=timezone.utc)
+                ev["start"] = event_time
+
+            out.append(ev)
+
+    out.sort(key=lambda ev: (-ev["_score"], ev["start"]))
+    print()
+    return out
+
+
+def _pick_test_candidate(candidates: List[Dict]) -> Optional[Dict]:
+    """
+    Show the user a numbered list of upcoming events, plus options to
+    create a new test event, paste a custom script, or quit. Returns
+    the chosen event dict, or None if the user picked custom/quit
+    (those branches handle themselves).
+    """
+    if not candidates:
+        print("⚠  No upcoming events in the next 2 hours.")
         print()
-    return test_event
+        return _offer_create_or_custom()
+
+    print("Upcoming events (next 2 hours):")
+    print()
+    now = datetime.now(timezone.utc)
+    for i, ev in enumerate(candidates[:9], start=1):
+        delta = ev["start"] - now
+        when = _format_relative_delta(delta)
+        mode_tag = {
+            "plus":  "[+CalFlow+]",
+            "smart": "[Smart]    ",
+            "empty": "[empty]    ",
+        }.get(ev.get("_mode", "empty"), "[?]        ")
+        title = ev.get("title") or "(untitled)"
+        print(f"  [{i}] {mode_tag}  {title!r:40s}  {when}")
+    print()
+    print("  [n] Create a new test event (browser opens)")
+    print("  [c] Custom script (paste DSL)")
+    print("  [q] Quit")
+    print()
+
+    choice = input("Choose: ").strip().lower()
+    print()
+    if not choice or choice in ("q", "quit", "exit"):
+        return None
+    if choice == "n":
+        return _offer_create_test_event()
+    if choice == "c":
+        _run_custom_script_loop()
+        return None
+    if choice.isdigit():
+        idx = int(choice)
+        if 1 <= idx <= len(candidates[:9]):
+            return candidates[idx - 1]
+    print(f"Unrecognised choice {choice!r}. Cancelled.")
+    return None
+
+
+def _offer_create_or_custom() -> Optional[Dict]:
+    """No candidates — offer to create one or paste a custom script."""
+    print("Options:")
+    print("  [n] Create a new test event (browser opens)")
+    print("  [c] Custom script (paste DSL)")
+    print("  [q] Quit")
+    print()
+    choice = input("Choose: ").strip().lower()
+    print()
+    if choice == "n":
+        return _offer_create_test_event()
+    if choice == "c":
+        _run_custom_script_loop()
+        return None
+    return None
+
+
+def _format_relative_delta(delta) -> str:
+    """'in 2m', 'in 47s', 'now', '3m ago' — for candidate listing."""
+    secs = int(delta.total_seconds())
+    if -30 <= secs <= 30:
+        return "now"
+    sign = "in" if secs > 0 else "ago"
+    secs = abs(secs)
+    if secs < 60:
+        magnitude = f"{secs}s"
+    elif secs < 3600:
+        magnitude = f"{secs // 60}m"
+    else:
+        magnitude = f"{secs // 3600}h{(secs % 3600) // 60}m"
+    return f"{sign} {magnitude}" if sign == "in" else f"{magnitude} ago"
+
+
+def _print_description_preview(text: str, max_lines: int = 8) -> None:
+    """
+    Show the post-normalize description so the user can verify what
+    the parser actually saw. Trim to N lines for the menu view.
+    """
+    if not text:
+        print("  (description is empty)")
+        return
+    lines = text.splitlines()
+    print("Description:")
+    for line in lines[:max_lines]:
+        print(f"  │ {line}")
+    if len(lines) > max_lines:
+        print(f"  │ … ({len(lines) - max_lines} more line(s))")
 
 
 def _mark_test_event_done(test_event: Dict) -> None:
