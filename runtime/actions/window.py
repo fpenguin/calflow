@@ -499,8 +499,13 @@ function run(argv) {
                 } catch (e) { /* sheets() not always supported */ }
             }
 
-            var match = false;
-            var uiInfo = [];   // per-element summary for diagnostics
+            // v1.1.13 — collect ALL matching windows (per-window minimize).
+            // Old behaviour broke as soon as we hit any match and then
+            // hid the whole process. We now iterate every UI element
+            // and miniaturize each one whose centre is on the target
+            // display — the app's other-display windows stay visible.
+            var matchedIdx = [];   // indices into `ui` to act on
+            var uiInfo = [];       // per-element summary for diagnostics
             for (var u = 0; u < ui.length; u++) {
                 var pos, sz;
                 try {
@@ -521,20 +526,37 @@ function run(argv) {
                 if (!pos || !sz) { uiInfo.push(ui[u].kind + ":?"); continue; }
                 var cx = pos[0] + sz[0] / 2;
                 var cy = pos[1] + sz[1] / 2;
+                var hit = (cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh);
                 uiInfo.push(
-                    ui[u].kind + ":[" + Math.round(pos[0]) + "," + Math.round(pos[1])
+                    ui[u].kind + (hit ? "*" : "") + ":["
+                    + Math.round(pos[0]) + "," + Math.round(pos[1])
                     + " " + Math.round(sz[0]) + "x" + Math.round(sz[1])
                     + " c=(" + Math.round(cx) + "," + Math.round(cy) + ")]"
                 );
-                if (cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh) {
-                    match = true;
-                    break;
-                }
+                if (hit) matchedIdx.push(u);
             }
             if (axDenied) break;
-            if (match) {
-                p.visible = false;
-                hid.push(name);
+            if (matchedIdx.length > 0) {
+                // Miniaturize each matched window. Sheets don't support
+                // miniaturize on their own — try, fall back to a soft
+                // skip with a clear diag note.
+                var mini = 0, miniErr = 0;
+                for (var m = 0; m < matchedIdx.length; m++) {
+                    var u2 = matchedIdx[m];
+                    try {
+                        ui[u2].el.miniaturized = true;
+                        mini += 1;
+                    } catch (e) {
+                        miniErr += 1;
+                        errored.push(
+                            name + " " + ui[u2].kind +
+                            " (cannot miniaturize: " + (e.message || e) + ")"
+                        );
+                    }
+                }
+                if (mini > 0) hid.push(name + " (" + mini + "/" + matchedIdx.length + " win)");
+                else kept.push(name);
+                diag.push(name + ": " + ui.length + " ui " + uiInfo.join(""));
             } else {
                 kept.push(name);
                 if (ui.length === 0) {
@@ -566,23 +588,29 @@ def hide_apps_on_display(
     keep_frontmost: bool = False,
 ) -> bool:
     """
-    Hide every visible non-background app whose frontmost window's
-    centre point falls within the requested display.
+    Per-window hide. For every visible non-background app, miniaturize
+    each WINDOW whose centre falls inside the requested display. Other
+    windows of the same app on other displays stay visible — the app
+    process itself is never hidden by this call (use `hide @app` if
+    that's what you want).
+
+    Miniaturized windows go to the Dock (yellow-button equivalent),
+    so the action is reversible by clicking the Dock thumbnail.
 
     `display_target` accepts the same shapes as `move_app_to_display`:
         int      → 1-based display index
         "ext"    → first external monitor
         str      → substring match against display name
 
-    `except_apps` are kept visible.
+    `except_apps` are skipped entirely (no per-window check).
 
-    `keep_frontmost` (v1.1.12 — opt-in) — set True when the caller's
-    keep set contained the runtime keyword `active`. Otherwise the
-    frontmost app gets hidden if it matches the display filter (which
-    is what bare `hide display(N)` should do — the user explicitly
-    asked, and it's surprising to silently skip the active app).
+    `keep_frontmost` (v1.1.12 — opt-in via DSL `except(active)`) —
+    when True, the frontmost app's windows are skipped too. When False
+    (the bare `hide display(N)` case), the frontmost is included.
 
-    Returns True iff the JXA call succeeded.
+    Returns True iff the JXA call succeeded. AX permission denial,
+    display-not-found, and total subprocess errors return False with
+    actionable log lines.
     """
     if display_target is None:
         log("[WARN] hide display(): missing target")
