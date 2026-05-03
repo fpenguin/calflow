@@ -21,7 +21,8 @@
   to typed dicts.
 - **Calendar layer** — multi-calendar polling, OAuth flow, event
   dedup, idempotent state, lock file, launchd install.
-- **Onboarding** — `python3 -m cli.main setup`.
+- **Onboarding** — `python3 -m cli.main setup` (4 steps: Google credentials, calendar selection, daemon install, password manager).
+- **Autofill keystrokes** — `#fill` and `#submit` send the configured keystroke via osascript + `System Events`. Provider chosen during onboarding (Apple Passwords / 1Password / Bitwarden / None).
 - **REPL** — Smart + Plus Mode interactive testing.
 
 ## What v2.1+ defers — and why
@@ -256,19 +257,23 @@ These are **out of scope** for any near-term release:
 | Smart Mode tag conflict (last wins) | ✅ | ✅ | ✅ | ✅ (real) |
 | Smart Mode `##` comments | ✅ | ✅ | n/a | ✅ (real) |
 | Smart Mode dynamic in URLs | ✅ | ✅ | ✅ | ✅ (real) |
-| OPEN (URL) | ✅ | ✅ | ✅ | ✅ (real) |
-| OPEN (app) | ✅ | ✅ | ✅ | ✅ (real) |
-| OPEN (file) | ✅ | ✅ | ✅ | ✅ (real, via `open`) |
+| OPEN (URL) | ✅ | ✅ | ✅ | ✅ (real, with `#profile(N)` for Chrome) |
+| OPEN (app) — `open "App Name"` | ✅ | ✅ | ✅ | ✅ (real, `open -a` launch) |
+| OPEN (file) — `open "~/path"` | ✅ | ✅ | ✅ | ✅ (real, OS default app) |
+| OPEN (@bundle) — multi-item expansion | ✅ | ✅ | ✅ | ✅ (real — each item dispatched by its own type) |
+| Chrome `#profile(N)` | ✅ | ✅ | ✅ | ✅ (real, `--profile-directory=…`) |
 | WAIT | ✅ | ✅ | ✅ | ✅ (real) |
 | SCREENSHOT (path) | ✅ | ✅ | ✅ | ✅ (real on macOS) |
 | **Dynamic `{now > … > fmt}`** | ✅ | ✅ | ✅ | ✅ (real) |
 | Layout `#left/#right/#middle/#top/#bottom/#full` | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript) |
 | Layout `#grid` / `#area` | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript) |
 | `#display` / `#display(ext)` / `#display(N)` / `#display("…")` | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript + JXA) |
-| OPEN (@bundle expansion) | ⏳ | ⏳ | ⏳ | ⏳ (next pass — v2.0.1) |
-| FOCUS | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
-| CLOSE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
-| HIDE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
+| Autofill `#fill` / `#submit` (Apple Passwords / 1Password / Bitwarden) | ✅ | ✅ | ✅ | ✅ (real on macOS via osascript + System Events; Accessibility permission required first time) |
+| FOCUS — `focus @app` | ✅ | ✅ | ✅ | ✅ (real, `tell app to activate`) |
+| FOCUS — `focus @app title("…")` | ✅ | ✅ | ✅ | ✅ (real, AXRaise on matching window) |
+| CLOSE — `close "X"` / `close [a, b]` | ✅ | ✅ | ✅ | ✅ (real, `tell app to quit`, only if running) |
+| HIDE — `hide @app` / `hide [a, b]` | ✅ | ✅ | ✅ | ✅ (real, System Events `set visible to false`) |
+| HIDE all / all except @bundle | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost) |
 | CLICK | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | TYPE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | PRESS (single / combo / sequence) | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |

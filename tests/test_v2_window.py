@@ -315,5 +315,72 @@ class HashtagRegex(unittest.TestCase):
         )
 
 
+# =============================================================
+# Multi-display rect math (regression for the Cocoa→TopLeft fix)
+# =============================================================
+
+class MultiDisplayRect(unittest.TestCase):
+    """
+    Confirms that compute_rect produces correct AppleScript-style
+    top-left global coordinates for an external display in any
+    arrangement — i.e. the height of the rect equals the external's
+    visibleFrame height, NOT the laptop's.
+
+    These are the dicts that `enumerate_displays` would produce
+    AFTER the Cocoa→TopLeft conversion (see window.py JXA script).
+    """
+
+    def test_external_4k_to_the_right_bottom_aligned_left_70_percent(self):
+        # User scenario: laptop primary 1512×944; 4K external to the right,
+        # bottom-aligned. After Cocoa→TopLeft conversion the external sits at
+        # global y = 944 - 0 - 2160 = -1216.
+        external_4k = {
+            "index": 2, "name": "Samsung S90D",
+            "x": 1512, "y": -1216, "w": 3840, "h": 2160,
+            "primary": False, "builtin": False, "external": True,
+        }
+        rect = compute_rect({"type": "left", "value": 0.7}, external_4k)
+        # Width = 70% of 3840 = 2688
+        # Height = full 2160 (NOT clamped to laptop's 944!)
+        self.assertEqual(rect, (1512, -1216, 2688, 2160))
+
+    def test_external_4k_above_primary_right_30_percent(self):
+        # 4K external above the laptop. After Cocoa→TopLeft:
+        #   primary at (0, 0, 1512, 944)
+        #   external Cocoa origin (0, 944), so TL y = 944 - 944 - 2160 = -2160
+        external_above = {
+            "index": 2, "name": "LG UltraFine",
+            "x": 0, "y": -2160, "w": 3840, "h": 2160,
+            "primary": False, "builtin": False, "external": True,
+        }
+        rect = compute_rect({"type": "right", "value": 0.3}, external_above)
+        # Width 30% of 3840 = 1152; right strip x = 0 + 3840 - 1152 = 2688
+        self.assertEqual(rect, (2688, -2160, 1152, 2160))
+
+    def test_full_layout_uses_full_external_height(self):
+        external = {
+            "index": 2, "name": "Dell U3219Q",
+            "x": 1512, "y": 0, "w": 3840, "h": 2160,
+            "primary": False, "builtin": False, "external": True,
+        }
+        self.assertEqual(
+            compute_rect({"type": "full"}, external),
+            (1512, 0, 3840, 2160),
+        )
+
+    def test_grid_on_external_uses_external_dimensions(self):
+        # 2x2 grid, cell 4 (bottom-right) on a 4K external
+        external = {
+            "index": 2, "name": "Samsung S90D",
+            "x": 1512, "y": -1216, "w": 3840, "h": 2160,
+            "primary": False, "builtin": False, "external": True,
+        }
+        rect = compute_rect(
+            {"type": "grid", "cols": 2, "rows": 2, "cell": 4}, external
+        )
+        # cell 4 = idx 3 → row 1, col 1 → (1512 + 1920, -1216 + 1080, 1920, 1080)
+        self.assertEqual(rect, (3432, -136, 1920, 1080))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)

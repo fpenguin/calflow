@@ -57,7 +57,7 @@ Pick when you want it to run.
 ```text
 +CalFlow+
 
-open @work #display
+open @work #display(ext)
 focus @chrome title("Inbox")
 click text("Export")
 ```
@@ -134,7 +134,7 @@ focus @chrome #full
 
 open analytics.com #left(50%)
 open logs.com #right(50%)
-open status.com #display
+open status.com #display(ext)
 ```
 
 → everything visible at once  

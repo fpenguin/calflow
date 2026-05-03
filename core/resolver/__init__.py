@@ -1,5 +1,6 @@
 from .resolver import (
     resolve_autofill,
+    resolve_chrome_profile,
     resolve_command,
     resolve_delay,
     resolve_display,
@@ -9,6 +10,7 @@ from .resolver import (
 
 __all__ = [
     "resolve_autofill",
+    "resolve_chrome_profile",
     "resolve_command",
     "resolve_delay",
     "resolve_display",

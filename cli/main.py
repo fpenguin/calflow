@@ -239,8 +239,9 @@ _AVAILABLE_COMMANDS = """
     python3 -m cli.main start       # start the background daemon
     python3 -m cli.main stop        # stop the background daemon
     python3 -m cli.main restart     # restart it
-    python3 -m cli.main setup       # re-onboarding
+    python3 -m cli.main setup       # re-onboarding (4 steps)
     python3 -m cli.main display     # list connected monitors + #display syntax
+    python3 -m cli.main test        # generate a test event + run it on demand
     python3 -m cli.main uninstall   # remove daemon (data preserved; --full to wipe)
     python3 -m cli.repl             # interactive REPL (no daemon needed)
 """.rstrip()
@@ -318,6 +319,129 @@ def _lookup_window_hours() -> int:
 
 
 # =========================================================
+# 🧪 ON-DEMAND TEST  (`python3 -m cli.main test`)
+# =========================================================
+
+def run_test() -> None:
+    """
+    Generate a pre-filled "CalFlow Test Event" in the browser, prompt
+    the user to click Save, then immediately execute the event —
+    bypassing the trigger window — so the user gets instant feedback
+    instead of waiting ~5 minutes for the daemon's next cycle.
+
+    After execution, the event is marked done in `data/state.json` so
+    the launchd daemon won't re-fire it on its next pass.
+    """
+    from cli.onboarding import open_sample_event_in_browser
+
+    print("=" * 50)
+    print(" 🧪  CalFlow test event")
+    print("=" * 50)
+    print()
+    print("→ Opening a pre-filled event in your browser…")
+    open_sample_event_in_browser()
+    print()
+    print("👉 Click 'Save' in Google Calendar to commit the event.")
+    print("   (Your default browser should have just opened the editor.)")
+    print()
+
+    answer = input("Test calendar event saved? Run it now? [Y/n]: ").strip().lower()
+    if answer not in ("", "y", "yes"):
+        print("Cancelled. The event will run automatically ~5 minutes from now")
+        print("if you saved it (the daemon picks it up on its next cycle).")
+        return
+
+    print()
+    print("[INFO] Fetching upcoming events from Google Calendar…")
+
+    try:
+        service = build_service()
+    except RuntimeError as exc:
+        print(f"\n🔐 Not connected to Google Calendar yet.\n   {exc}")
+        return
+    except Exception as exc:
+        print(f"\n⚠  Could not connect to Google Calendar:\n   {type(exc).__name__}: {exc}")
+        return
+
+    calendars = get_selected_calendars()
+
+    # The onboarding sample event is scheduled 5 min out; look up to
+    # 1 hour ahead in case the user took a while to save it.
+    test_event = None
+    for cal_id in calendars:
+        for ev in get_upcoming_events(service, cal_id, hours=1):
+            title = (ev.get("title") or "").strip()
+            if "calflow test event" in title.lower():
+                test_event = ev
+                break
+        if test_event:
+            break
+
+    if test_event is None:
+        print()
+        print("⚠  No 'CalFlow Test Event' found in the next hour across")
+        print(f"   {len(calendars)} selected calendar(s).")
+        print("   • Did you click 'Save' in the Google Calendar tab?")
+        print("   • Is the event in one of your selected calendars?")
+        print("     (Run `python3 -m cli.main display` … wait, that's monitors.")
+        print("      The selected calendars are in `data/config.json`.)")
+        return
+
+    event_time = test_event["start"]
+    if event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=timezone.utc)
+
+    print()
+    print(f"[INFO] Found:    {test_event['title']!r}")
+    print(f"[INFO] Calendar: {test_event.get('calendar_id', '(unknown)')}")
+    print(f"[INFO] Scheduled at: {event_time.isoformat()}")
+    print(f"[INFO] Running now (bypassing trigger window)…")
+    print()
+
+    text = test_event.get("text") or ""
+    parsed = parse(text, title=test_event.get("title"))
+
+    if parsed.is_empty:
+        print("[WARN] No executable content in the event description.")
+        return
+
+    print(f"[INFO] Mode: {parsed.mode}")
+
+    try:
+        if parsed.is_smart:
+            execute_entries(
+                entries=parsed.entries,
+                global_tags=set(),         # parser already merged
+                debug=DEBUG,
+            )
+        elif parsed.is_plus:
+            if parsed.has_errors:
+                for err in parsed.errors:
+                    print(f"[WARN] Plus validation: {err}")
+            execute_commands(
+                commands=parsed.commands,
+                global_tags=set(),
+                debug=DEBUG,
+            )
+        else:
+            print(f"[WARN] Unrecognized mode: {parsed.mode}")
+            return
+
+        # Mark this run as done so the launchd daemon's next cycle
+        # doesn't re-fire the same event a few minutes from now.
+        state = load_state()
+        run_key = f"{test_event['id']}_{event_time.isoformat()}"
+        mark_done(state, run_key)
+        save_state(state)
+
+        print()
+        print("✅ Test event executed.")
+        print("   (Marked done — the background daemon won't re-fire it.)")
+    except Exception as exc:
+        print(f"\n[ERROR] Test execution failed: {exc}")
+
+
+# =========================================================
 # 🖥 DISPLAY INVENTORY
 # =========================================================
 
@@ -341,18 +465,23 @@ def print_display_inventory() -> None:
         return
 
     print(f"\nConnected displays ({len(displays)}):\n")
+    print(f"  {'#':>3}    {'name':<32}  {'size':<11}  "
+          f"{'top-left (x,y)':<16}  type")
+    print(f"  {'-'*3}    {'-'*32}  {'-'*11}  {'-'*16}  {'-'*8}")
     for d in displays:
         marker = "★" if d.get("primary") else " "
         if d.get("primary"):
-            kind = "primary "
+            kind = "primary"
         elif d.get("builtin"):
-            kind = "builtin "
+            kind = "builtin"
         else:
             kind = "external"
         name = d.get("name") or f"Display {d['index']}"
+        size = f"{d['w']}×{d['h']}"
+        origin = f"({d['x']:>5}, {d['y']:>5})"
         print(
-            f"  [{d['index']}] {marker} {name:<32} "
-            f"{d['w']}×{d['h']:<6}  {kind}"
+            f"  [{d['index']}] {marker} {name:<32}  {size:<11}  "
+            f"{origin:<16}  {kind}"
         )
 
     externals = [d for d in displays if d.get("external")]
@@ -527,6 +656,9 @@ if __name__ == "__main__":
         sys.exit(0)
     if cmd == "display":
         print_display_inventory()
+        sys.exit(0)
+    if cmd == "test":
+        run_test()
         sys.exit(0)
 
     if not acquire_lock():

@@ -18,7 +18,7 @@ Launch everything → instantly organized.
 
 open tip-developer-today.com/dashboard @chrome #left(50%) #submit
 open tip-developer-today.com/analytics @chrome #right(50%)
-open tip-developer-today.com/ @safari #display
+open tip-developer-today.com/ @safari #display(ext)
 close "Spotify"
 ```
 
@@ -60,7 +60,7 @@ You get:
 
 open analytics.com @chrome #left(60%)
 open logs.com @chrome #right(40%)
-open status.com @safari #display
+open status.com @safari #display(ext)
 ```
 
 → main dashboard + logs + status screen  
@@ -74,7 +74,7 @@ open status.com @safari #display
 
 open tradingview.com #left(50%)
 open broker.com #right(50%)
-open news.com #display
+open news.com #display(ext)
 ```
 
 → charts + execution + news  
@@ -88,7 +88,7 @@ open news.com #display
 
 open notion.so #left(50%)
 open slack.com #right(50%)
-open admin.dashboard.com #display
+open admin.dashboard.com #display(ext)
 ```
 
 → docs + communication + backend  
@@ -102,7 +102,7 @@ open admin.dashboard.com #display
 
 open ads.google.com #left(50%)
 open analytics.google.com #right(50%)
-open ahrefs.com #display
+open ahrefs.com #display(ext)
 ```
 
 → ads + analytics + SEO tools  

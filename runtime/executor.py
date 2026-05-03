@@ -22,6 +22,7 @@ from core.dynamic import resolve_dynamic
 # Resolver
 from core.resolver import (
     resolve_autofill,
+    resolve_chrome_profile,
     resolve_delay,
     resolve_display,
     resolve_layout,
@@ -102,8 +103,15 @@ def _execute_single(
     if url:
         url = resolve_dynamic(url)
 
-    # --- Merge tags (global + line-level) ---
-    tags = global_tags | entry_tags
+    # IMPORTANT: do NOT merge `global_tags` here. In v2.0 the Smart
+    # parser already merges true Smart Mode global state (standalone
+    # tag/target lines) into each entry's `tags` set. Re-merging the
+    # block-wide `extract_tags(text)` here would pull every #tag from
+    # every URL line into every entry — cross-contaminating per-line
+    # layouts (e.g. `#left(70%)` and `#right(30%)` both ending up in
+    # both entries, then `resolve_layout` non-deterministically picks
+    # whichever the set iteration yields last).
+    tags = set(entry_tags)
 
     if debug:
         log(f"[DEBUG] URL: {url}")
@@ -118,6 +126,7 @@ def _execute_single(
     display_spec = resolve_display(tags)
     delay = resolve_delay(tags)
     should_fill, should_submit = resolve_autofill(tags)
+    chrome_profile = resolve_chrome_profile(tags)
 
     # =====================================================
     # 🌐 OPEN
@@ -128,6 +137,7 @@ def _execute_single(
         app=app,
         layout=layout,
         display_spec=display_spec,
+        chrome_profile=chrome_profile,
     )
 
     # =====================================================

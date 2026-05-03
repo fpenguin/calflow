@@ -47,8 +47,9 @@ cd ~/calflow
 
 ```bash
 source .venv/bin/activate
-python3 -m cli.main setup            # OAuth + calendar pick + daemon install
+python3 -m cli.main setup            # 4 steps: OAuth → calendars → daemon → password manager
 python3 -m cli.main status           # check daemon
+python3 -m cli.main display          # list connected monitors + #display(ext) syntax
 ```
 
 Try it without waiting for an event:
@@ -115,7 +116,7 @@ Add `+CalFlow+` → unlock everything.
 ```text
 +CalFlow+
 
-open @work #display
+open @work #display(ext)
 focus @chrome title("Inbox")
 click text("Export")
 screenshot
@@ -143,7 +144,7 @@ save source(clipboard) to("~/Desktop/export_{now > YYYY-MM-DD}.png")
 ```text
 zoom.us @chrome #left(60%)
 figma.com @chrome #right(40%)
-slack.com @chrome #display
+slack.com @chrome #display(ext)
 ```
 
 → everything ready before the call  

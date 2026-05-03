@@ -35,7 +35,12 @@ from config.settings import (
 )
 from core.dynamic import resolve_dynamic
 from core.models import BaseCommand
-from core.resolver import resolve_autofill, resolve_command, resolve_display
+from core.resolver import (
+    resolve_autofill,
+    resolve_chrome_profile,
+    resolve_command,
+    resolve_display,
+)
 from core.utils import log
 from runtime.actions.autofill import trigger_autofill
 from runtime.actions.browser import open_target
@@ -144,11 +149,34 @@ def _do_open(params: Dict[str, Any]) -> None:
         log("[WARN] OPEN missing url")
         return
 
+    tags = set(params.get("tags") or frozenset())
+    display_spec = resolve_display(tags)
+    chrome_profile = resolve_chrome_profile(tags)
+
+    # Bundle expansion: if the primary itself is `@bundle`, the resolver
+    # populated `apps` with multiple items. Each bundle item becomes its
+    # own open dispatch — and the item's own classification (URL / app /
+    # file) decides what gets opened.
     apps: List[str] = params.get("apps") or []
+    primary_is_bundle = url and url.startswith("@") and len(apps) > 1
+
+    if primary_is_bundle:
+        # `open @work` → expand to N opens, one per item.
+        for item in apps:
+            # Each `item` is a string from settings.TARGETS — could be
+            # an app name ("Slack"), URL ("https://x.com"), or file path.
+            open_target(
+                url=item,           # let _classify_primary inside open_target dispatch
+                app=None,           # no routing — item's type decides
+                layout=params.get("layout"),
+                display_spec=display_spec,
+                chrome_profile=chrome_profile,
+            )
+        return
+
+    # Normal case: one open. `apps` contains the routing browser (or None).
     if not apps:
         apps = [params.get("app") or None]  # type: ignore[list-item]
-
-    display_spec = resolve_display(set(params.get("tags") or frozenset()))
 
     for app in apps:
         open_target(
@@ -156,6 +184,7 @@ def _do_open(params: Dict[str, Any]) -> None:
             app=app,
             layout=params.get("layout"),
             display_spec=display_spec,
+            chrome_profile=chrome_profile,
         )
 
     time.sleep(max(0.0, AUTOFILL_BUFFER))
@@ -170,22 +199,67 @@ def _do_open(params: Dict[str, Any]) -> None:
 
 
 def _do_focus(params: Dict[str, Any]) -> None:
-    target = params.get("target")
+    """
+    `focus @app` → activate app
+    `focus @app title("X")` → activate + raise the matching window
+    """
+    from runtime.actions.app_control import focus_app, focus_window_by_title
+
     title = params.get("title")
-    apps = params.get("apps") or ([target] if target else [])
-    log(f"[INFO] FOCUS apps={apps} title={title!r} (stub)")
+    apps = params.get("apps") or ([params.get("target")] if params.get("target") else [])
+    apps = [a for a in apps if a]
+
+    if not apps:
+        log("[WARN] FOCUS missing target")
+        return
+
+    for app in apps:
+        # Strip @ prefix if it leaked through
+        app_name = app.lstrip("@") if isinstance(app, str) else app
+        if title:
+            focus_window_by_title(app_name, title)
+        else:
+            focus_app(app_name)
 
 
 def _do_close(params: Dict[str, Any]) -> None:
+    """`close "X"` / `close @app` / `close [a, b]` — quit the apps."""
+    from runtime.actions.app_control import close_app
+
     items = params.get("items") or ()
-    log(f"[INFO] CLOSE items={list(items)} (stub)")
+    if not items:
+        log("[WARN] CLOSE missing target")
+        return
+
+    for item in items:
+        name = item.lstrip("@") if isinstance(item, str) else item
+        close_app(name)
 
 
 def _do_hide(params: Dict[str, Any]) -> None:
+    """
+    `hide "X"` / `hide @app` → hide one app
+    `hide [a, b]`            → hide each
+    `hide all`               → hide all except frontmost
+    `hide all except @app`   → hide all except listed apps + frontmost
+    """
+    from runtime.actions.app_control import hide_app, hide_all
+
     if params.get("hide_all"):
-        log(f"[INFO] HIDE all except={list(params.get('except') or ())} (stub)")
+        keep = list(params.get("except") or ())
+        # Strip @ prefixes from keep list (resolver may pass raw tokens)
+        keep = [k.lstrip("@") if isinstance(k, str) else k for k in keep]
+        hide_all(except_apps=keep)
         return
-    log(f"[INFO] HIDE items={list(params.get('items') or ())} (stub)")
+
+    items = params.get("items") or ()
+    if not items:
+        log("[WARN] HIDE missing target")
+        return
+
+    for item in items:
+        name = item.lstrip("@") if isinstance(item, str) else item
+        hide_app(name)
 
 
 # =========================================================

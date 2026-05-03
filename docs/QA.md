@@ -25,20 +25,23 @@ python3 -m unittest \
   -v
 ```
 
-Expected: **`Ran 235 tests in <1s    OK`**
+Expected: **`Ran 282 tests in <1s    OK`**
 
 ### Per-suite breakdown
 
 | Suite | Count | What it covers |
 |-------|------:|----------------|
-| `test_v2_validator`  |  18 | Grammar enforcement (arity, quoting, numeric, selector rules) |
-| `test_v2_parser`     |  16 | Mode detection, AST construction, Smart regression |
-| `test_v2_executor`   |   5 | Plus dispatch table (with mocked actions) |
-| `test_v2_spec`       |  72 | Every rule in `docs/DSL_GRAMMAR / DSL_SPEC / parser-behavior / validation / test-cases` |
-| `test_v2_playbooks`  |  30 | Every `+CalFlow+` block in `playbooks/*.md` |
-| `test_v2_dynamic`    |  29 | Dynamic expression engine (base, transforms, formats, whitespace, Smart Mode integration) |
-| `test_v2_comments`   |  26 | `##` line + inline, suppression inside quotes/parens/brackets/braces |
-| `test_v2_window`     |  39 | Display enumeration spec, layout rect math, `#display` regex |
+| `test_v2_validator`           |  18 | Grammar enforcement (arity, quoting, numeric, selector rules) |
+| `test_v2_parser`              |  16 | Mode detection, AST construction, Smart regression |
+| `test_v2_executor`            |   5 | Plus dispatch table (with mocked actions) |
+| `test_v2_spec`                |  72 | Every rule in `docs/DSL_GRAMMAR / DSL_SPEC / parser-behavior / validation / test-cases` |
+| `test_v2_playbooks`           |  30 | Every `+CalFlow+` block in `playbooks/*.md` |
+| `test_v2_dynamic`             |  29 | Dynamic expression engine (base, transforms, formats, whitespace, Smart Mode integration) |
+| `test_v2_comments`            |  26 | `##` line + inline, suppression inside quotes/parens/brackets/braces |
+| `test_v2_window`              |  39 | Display enumeration spec, layout rect math, `#display` regex |
+| `test_v2_no_cross_contamination` |  3 | Pin: per-line tags don't leak across entries (Smart + Plus) |
+| `test_v2_autofill`            |  18 | Autofill keystroke assembly + provider resolution + permission errors |
+| `test_v2_app_control`         |  21 | FOCUS / CLOSE / HIDE AppleScript shape + open_target dispatch + #profile(N) |
 
 ---
 

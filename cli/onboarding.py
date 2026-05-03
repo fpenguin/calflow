@@ -411,6 +411,87 @@ def ensure_daemon_setup():
 
 
 # =========================
+# Password Manager
+# =========================
+
+# Each entry: (key, display label).  `key` must exist in
+# config.settings.AUTOFILL_SHORTCUTS (or be 'none' to disable).
+AUTOFILL_OPTIONS = [
+    ("apple",     "Apple Passwords          (⌘\\)"),
+    ("1password", "1Password                (⌘\\)"),
+    ("bitwarden", "Bitwarden                (⌘⇧L)"),
+    ("none",      "None / skip autofill"),
+]
+
+
+def _autofill_label(key: str) -> str:
+    for k, lbl in AUTOFILL_OPTIONS:
+        if k == key:
+            return lbl
+    return key
+
+
+def ensure_autofill_provider():
+    """
+    Step 4 of onboarding: pick which password manager to drive when
+    a `#fill` tag is in an event description. Choice is saved to
+    data/config.json (alongside the calendars list); the runtime
+    reads it from there at execute time.
+    """
+    config = load_json(CONFIG_PATH) or {}
+
+    if config.get("autofill_provider"):
+        current = config["autofill_provider"]
+        print(f"\n🔑 Autofill provider already set: {_autofill_label(current)}")
+        choice = input("Change? [y/N]: ").strip().lower()
+        if choice not in ("y", "yes"):
+            return current
+
+    print("""
+🔑 Which password manager do you use?
+
+CalFlow sends an autofill keystroke when a `#fill` tag is on a URL
+line in your event description.
+""")
+    for i, (_, label) in enumerate(AUTOFILL_OPTIONS, 1):
+        print(f"  [{i}] {label}")
+
+    print("\n→ Press Enter to use Apple Passwords (default)")
+
+    while True:
+        raw = input("> ").strip()
+        if not raw:
+            provider = "apple"
+            break
+        try:
+            idx = int(raw) - 1
+            if 0 <= idx < len(AUTOFILL_OPTIONS):
+                provider = AUTOFILL_OPTIONS[idx][0]
+                break
+        except ValueError:
+            pass
+        print(f"❌ Pick a number 1–{len(AUTOFILL_OPTIONS)}")
+
+    config["autofill_provider"] = provider
+    save_json(CONFIG_PATH, config)
+    print(f"\n✅ {_autofill_label(provider)}\n")
+
+    if provider != "none":
+        print("""
+🔐 First time CalFlow triggers autofill, macOS will ask you to grant
+   Accessibility permission to whichever process is sending the
+   keystroke (osascript / Python / launchd).
+
+   Click "Allow" in the system prompt. After that, autofill is silent.
+
+   You can also pre-grant it any time:
+       System Settings → Privacy & Security → Accessibility
+""")
+
+    return provider
+
+
+# =========================
 # Main
 # =========================
 
@@ -429,7 +510,7 @@ Turn your calendar into an automation engine
 🚀 Welcome to CalFlow Setup
 """)
 
-    total = 3
+    total = 4
 
     step("Google Credentials", 1, total)
     ensure_credentials()
@@ -443,9 +524,13 @@ Turn your calendar into an automation engine
     step("Background Automation", 3, total)
     interval = ensure_daemon_setup()
 
+    step("Password Manager", 4, total)
+    provider = ensure_autofill_provider()
+
     print("\n🎉 Setup complete!\n")
     print(f"✔ Calendars: {len(calendars)}")
-    print(f"✔ Interval: {interval}s\n")
+    print(f"✔ Interval:  {interval}s")
+    print(f"✔ Autofill:  {_autofill_label(provider)}\n")
 
     print("""
 ---------------------------------------------------

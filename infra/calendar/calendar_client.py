@@ -41,6 +41,7 @@ from config.config import (
 )
 from config.settings import FETCH_WINDOW_HOURS
 from core.utils import log
+from infra.calendar.normalize import normalize_description
 
 
 # =========================================================
@@ -152,6 +153,11 @@ def get_upcoming_events(
         try:
             description = ev.get("description", "") or ""
             location = ev.get("location", "") or ""
+            # Google Calendar returns the description with HTML markup
+            # whenever the user pasted from a rich-text source (chat,
+            # doc, browser auto-link). Normalize so the parser sees
+            # clean plain text with real newlines.
+            description = normalize_description(description)
             text = "\n".join(filter(None, [description, location]))
             out.append({
                 "id":          ev["id"],

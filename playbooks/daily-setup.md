@@ -16,8 +16,8 @@ Open everything you need → exactly where you want it.
 +CalFlow+
 
 open @work
-open slack.com @chrome #right(30%) #display
-open notion.so @chrome #left(70%) #display
+open slack.com @chrome #right(30%) #display(ext)
+open notion.so @chrome #left(70%) #display(ext)
 ```
 
 ---
@@ -70,8 +70,8 @@ open notion.so #left(70%)
 
 ```text
 open @work
-open slack.com #right(30%) #display
-open notion.so #left(70%) #display
+open slack.com #right(30%) #display(ext)
+open notion.so #left(70%) #display(ext)
 ```
 
 → work apps on main screen  

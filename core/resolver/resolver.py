@@ -100,6 +100,30 @@ _DISPLAY_NUMBER = re.compile(r'^#display\((\d+)\)$',  re.IGNORECASE)
 _DISPLAY_PARENS = re.compile(r'^#display\(([^)]*)\)$', re.IGNORECASE)
 _DISPLAY_BARE   = re.compile(r'^#display$',            re.IGNORECASE)
 
+# #profile(N): 1-based, where N=1 maps to Chrome's "Default" directory
+# and N≥2 maps to "Profile {N-1}".
+_PROFILE_RE = re.compile(r'^#profile\((\d+)\)$', re.IGNORECASE)
+
+
+def resolve_chrome_profile(tags: Set[str]) -> Optional[str]:
+    """
+    Translate a `#profile(N)` tag into the Chrome `--profile-directory`
+    value:
+        N=1   → "Default"
+        N=2   → "Profile 1"
+        N=k   → "Profile {k-1}"
+
+    Returns None when no #profile tag is present (or N is invalid).
+    """
+    for tag in tags:
+        m = _PROFILE_RE.match(tag)
+        if m:
+            n = int(m.group(1))
+            if n < 1:
+                return None
+            return "Default" if n == 1 else f"Profile {n - 1}"
+    return None
+
 
 def resolve_display(tags: Set[str]) -> Optional[Tuple[str, Any]]:
     """
@@ -177,12 +201,16 @@ def resolve_command(
     Translate a typed Plus Mode command + ambient tags into a flat
     runtime parameter dict consumed by `runtime.command_executor`.
 
-    Per spec, Plus Mode has NO global state — `global_tags` is only used
-    if the dispatcher chooses to forward calendar-event-level tags.
+    Per spec, Plus Mode has NO global state — every command's tags
+    must come exclusively from the command itself. We accept the
+    `global_tags` parameter for API compatibility but DO NOT merge it
+    into the command's tag set. Doing so would pull every #tag in the
+    block into every command and cross-contaminate per-command layouts
+    (e.g. one OPEN's `#left(70%)` leaking into another OPEN's
+    `#right(30%)`).
     """
-    block_tags: FrozenSet[str] = frozenset(global_tags or frozenset())
     cmd_tags: FrozenSet[str] = frozenset(command.tags)
-    merged: FrozenSet[str] = block_tags | cmd_tags
+    merged: FrozenSet[str] = cmd_tags
 
     base: Dict[str, Any] = {
         "verb": command.name,

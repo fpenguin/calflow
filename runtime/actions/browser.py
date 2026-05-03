@@ -41,55 +41,129 @@ def open_target(
     app: Optional[str] = None,
     layout: Optional[Dict] = None,
     display_spec=None,
+    *,
+    chrome_profile: Optional[str] = None,
 ) -> None:
     """
-    Open a URL or application and optionally apply layout.
+    Open one target (URL, app, or file) and optionally apply layout.
+
+    The `url` parameter holds the **primary** of an OPEN command, which
+    can be any of:
+        - a real URL (`https://…`)
+        - an app name (`Google Chrome`)
+        - a file path (`~/file.pdf`, `/Users/foo/x.txt`, `./script.sh`)
+
+    Dispatch is by primary type, not by hardcoded "URL or app" split.
 
     Args:
-        url:          normalized URL (e.g. https://example.com)
-        app:          macOS app name (e.g. "Google Chrome")
-        layout:       normalized layout dict from parse_layout_tag()
-        display_spec: target display from core.resolver.resolve_display()
-
-    Constraints:
-        - exactly one of (url, app) should be provided
-        - layout / display_spec are best-effort only
+        url:            primary string (URL / app name / file path)
+        app:            optional macOS browser to route a URL through
+        layout:         normalized layout dict from parse_layout_tag()
+        display_spec:   target display from core.resolver.resolve_display()
+        chrome_profile: optional Chrome --profile-directory value
+                        ("Default", "Profile 1", "Profile 2", …)
     """
     if not url and not app:
-        log("[WARN] open_target: no url or app provided")
+        log("[WARN] open_target: no primary or app provided")
         return
 
     try:
-        if url:
-            _open_url(url, app)
-        else:
+        # Decide what `url` actually is.
+        kind = _classify_primary(url) if url else None
+
+        if kind == "url":
+            _open_url(url, app, chrome_profile=chrome_profile)
+        elif kind == "file":
+            _open_file(url)
+        elif kind == "app":
+            _open_app(_strip_quotes(url))
+        elif app:
+            # No primary → just launch the app
             _open_app(app)
+        else:
+            log(f"[WARN] open_target: could not classify primary {url!r}")
+            return
 
         # Allow OS time to spawn window
         time.sleep(0.8)
 
         if layout or display_spec:
-            _apply_layout(app, layout, display_spec)
+            # The window we'll be moving belongs to whichever app handled
+            # the primary. For URLs that's the resolved browser; for app
+            # primaries it's the app itself; for files it's the default
+            # opener (best-effort — may not be scriptable).
+            target_app = app if kind == "url" else (
+                _strip_quotes(url) if kind == "app" else app
+            )
+            _apply_layout(target_app, layout, display_spec)
 
     except Exception as e:
         log(f"[ERROR] open_target failed: {e}")
 
 
 # =========================================================
+# 🔍 PRIMARY CLASSIFICATION
+# =========================================================
+
+# A primary is a "URL" if it has a scheme (`x://`) or looks like a
+# bare domain (`example.com`, `localhost:8080`). A primary is a "file"
+# if it starts with `~`, `/`, or `./`. Anything else (typically a
+# bare quoted string like "Google Chrome") is an app name.
+_URL_HAS_SCHEME = _re_compile = __import__("re").compile(r"^\s*[a-z][a-z0-9+\-.]*://", __import__("re").IGNORECASE)
+_URL_BARE_DOMAIN = __import__("re").compile(r"^\s*[a-z0-9.\-]+\.[a-z]{2,}", __import__("re").IGNORECASE)
+_FILE_PATH = __import__("re").compile(r'^\s*"?(?:~|/|\./)')
+
+
+def _classify_primary(text: str) -> str:
+    """Return one of 'url' | 'file' | 'app' for an OPEN primary."""
+    if not text:
+        return "app"
+    bare = _strip_quotes(text)
+    if _URL_HAS_SCHEME.match(bare) or _URL_BARE_DOMAIN.match(bare):
+        return "url"
+    if _FILE_PATH.match(text):  # check ORIGINAL — quotes preserved
+        return "file"
+    if _FILE_PATH.match(bare):
+        return "file"
+    return "app"
+
+
+def _strip_quotes(text: str) -> str:
+    if not text:
+        return text
+    t = text.strip()
+    if (t.startswith('"') and t.endswith('"')) or (
+        t.startswith("'") and t.endswith("'")
+    ):
+        return t[1:-1]
+    return t
+
+
+# =========================================================
 # 🌐 URL HANDLING
 # =========================================================
 
-def _open_url(url: str, app: Optional[str]) -> None:
+def _open_url(url: str, app: Optional[str], *, chrome_profile: Optional[str] = None) -> None:
     """
     Open URL in specified browser or fallback.
 
     Resolution:
-        1. app provided → open via macOS `open -a`
-        2. fallback → default browser
-
-    Constraint:
-        - url must already be normalized
+        1. app == 'Google Chrome' AND chrome_profile set
+           → open -na "Google Chrome" --args --profile-directory=… url
+        2. app provided → open via macOS `open -a app url`
+        3. fallback → default browser
     """
+    if app == "Google Chrome" and chrome_profile:
+        try:
+            subprocess.run(
+                ["open", "-na", "Google Chrome", "--args",
+                 f"--profile-directory={chrome_profile}", url],
+                check=False,
+            )
+            log(f"[INFO] Opened URL in Chrome ({chrome_profile}): {url}")
+            return
+        except Exception as e:
+            log(f"[WARN] Chrome profile launch failed, fallback: {e}")
 
     if app:
         try:
@@ -99,9 +173,23 @@ def _open_url(url: str, app: Optional[str]) -> None:
         except Exception as e:
             log(f"[WARN] Failed to open in {app}, fallback: {e}")
 
-    # Fallback → default browser
     webbrowser.open(url)
     log(f"[INFO] Opened URL (default): {url}")
+
+
+# =========================================================
+# 📄 FILE HANDLING
+# =========================================================
+
+def _open_file(path: str) -> None:
+    """Open a file with its OS-default app via `open <path>`."""
+    import os
+    expanded = os.path.expanduser(_strip_quotes(path))
+    try:
+        subprocess.run(["open", expanded], check=False)
+        log(f"[INFO] Opened file: {expanded}")
+    except Exception as e:
+        log(f"[ERROR] Failed to open file {expanded!r}: {e}")
 
 
 # =========================================================
@@ -109,19 +197,12 @@ def _open_url(url: str, app: Optional[str]) -> None:
 # =========================================================
 
 def _open_app(app: str) -> None:
-    """
-    Launch macOS application.
-
-    Constraint:
-        - app must be a valid macOS application name
-    """
-
+    """Launch macOS application by name (e.g. 'Google Chrome')."""
     try:
         subprocess.run(["open", "-a", app], check=False)
         log(f"[INFO] Opened app: {app}")
-
     except Exception as e:
-        log(f"[ERROR] Failed to open app '{app}': {e}")
+        log(f"[ERROR] Failed to open app {app!r}: {e}")
 
 
 # =========================================================

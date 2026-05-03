@@ -52,25 +52,59 @@ _DISPLAY_CACHE: Optional[Tuple[float, List[Dict]]] = None
 _DISPLAY_CACHE_TTL = 30.0  # seconds
 
 
+#
+# COORDINATE-SYSTEM NOTE (this matters!):
+#
+# `NSScreen.visibleFrame` returns rects in COCOA coordinates:
+#     - origin (0, 0) is at the BOTTOM-LEFT of the primary display
+#     - y is positive going UP
+#     - secondary displays sit at offsets relative to that origin
+#
+# `tell application "X" to set bounds of window 1 to {x1,y1,x2,y2}`
+# uses AppleScript's TOP-LEFT global coordinates:
+#     - origin (0, 0) is at the TOP-LEFT of the primary display
+#     - y is positive going DOWN
+#
+# For the PRIMARY display the two systems happen to produce identical
+# numbers (origin 0,0 either way) so the bug is invisible on a single-
+# display setup. For any external display positioned anywhere except
+# "perfectly bottom-aligned with the primary's bottom edge", the
+# Cocoa y-value ends up out of range when interpreted as AppleScript-
+# global, and macOS responds by clamping the requested bounds to fit
+# the primary display — producing 'window only as tall as the laptop'.
+#
+# We do the conversion right here in JXA so the rest of the pipeline
+# can stay coordinate-system-agnostic:
+#
+#     y_top_left = primary_h - cocoa_y - height
+#
 _JXA_ENUM = r"""
 ObjC.import("AppKit");
-var screens = $.NSScreen.screens;
-var main    = $.NSScreen.mainScreen;
-var out     = [];
+var screens   = $.NSScreen.screens;
+var main      = $.NSScreen.mainScreen;
+var primaryH  = main.frame.size.height;     // Cocoa height of mainScreen
+var out       = [];
 for (var i = 0; i < screens.js.length; i++) {
     var s    = screens.js[i];
-    var f    = s.visibleFrame;
+    var f    = s.visibleFrame;              // Cocoa coords (bottom-left, y↑)
     var name = ObjC.unwrap(s.localizedName) || ("Display " + (i + 1));
     var isMain = ObjC.unwrap(s.isEqual(main));
+
+    // Convert Cocoa → AppleScript top-left global:
+    //   x stays the same
+    //   y = primaryH - cocoaY - h
+    var xTL = Math.round(f.origin.x);
+    var yTL = Math.round(primaryH - f.origin.y - f.size.height);
+
     out.push({
-        index:   i + 1,
-        name:    name,
-        x:       Math.round(f.origin.x),
-        y:       Math.round(f.origin.y),
-        w:       Math.round(f.size.width),
-        h:       Math.round(f.size.height),
-        primary: !!isMain,
-        builtin: name.toLowerCase().indexOf("built-in") === 0
+        index:    i + 1,
+        name:     name,
+        x:        xTL,
+        y:        yTL,
+        w:        Math.round(f.size.width),
+        h:        Math.round(f.size.height),
+        primary:  !!isMain,
+        builtin:  name.toLowerCase().indexOf("built-in") === 0
     });
 }
 JSON.stringify(out);
