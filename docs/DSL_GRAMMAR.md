@@ -571,6 +571,55 @@ and expansion). The validator skips the line and logs `[WARN]`.
 
 ---
 
+# 5.1 Hide / Close Syntax (v1.1+)
+
+`hide` and `close` accept symmetric forms.
+
+```ebnf
+hide_command  ::= "hide"
+                | "hide" target
+                | "hide" collection
+                | "hide" "except" "(" except_arg ")"  display_filter?
+                | "hide" display_filter
+
+close_command ::= "close" target
+                | "close" string
+                | "close" collection
+                | "close" "except" "(" except_arg ")"
+
+except_arg     ::= bundle | target | string | collection
+display_filter ::= "display" "(" integer ")"
+```
+
+### Forms
+
+```text
+hide                          ## hide everything except the frontmost app
+hide @chrome                  ## hide one app
+hide ["Spotify","Discord"]    ## hide a list
+hide except(@work)            ## hide everything except @work bundle members
+hide except([Slack, Notion])  ## hide everything except a literal list
+hide except(@work) display(2) ## scope the filter to display 2
+hide display(2)               ## hide everything on display 2 (filter only)
+
+close @chrome                 ## quit one app
+close "Spotify"               ## quit by literal name
+close [a, b]                  ## quit a list
+close except(@work)           ## quit everything except @work
+```
+
+### Constraints
+
+- `hide all` and `hide all except <…>` were removed in v1.1 — the
+  validator hard-fails them with a migration message.
+- `close` MUST receive at least one item or `except(...)` — bare
+  `close` is rejected.
+- `display(N)` is parsed and forwarded but per-window display
+  filtering is a stub in v1.1.1; full behavior ships in v1.1.2.
+- `focus display(N)` is REJECTED — focus needs a window target.
+
+---
+
 # 6. Resolution Pipeline
 
 Per-command resolution order:

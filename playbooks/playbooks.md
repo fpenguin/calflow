@@ -119,7 +119,7 @@ open notion.so #left(70%)
 ```text
 +CalFlow+
 
-hide all except @work
+hide except(@work)
 focus @chrome #full
 ```
 

@@ -102,5 +102,89 @@ class BlockLevel(unittest.TestCase):
         self.assertEqual(validate_plus_block(lines), [])
 
 
+# =========================================================
+# v1.1.1 — HIDE / CLOSE redesign
+# =========================================================
+
+class HideCloseV1_1_1(unittest.TestCase):
+    """v1.1.1 — `hide` / `close` shapes, hard-fails, and stub filters."""
+
+    # ── HIDE: new accepted forms ─────────────────────────
+    def test_hide_bare_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("hide", 1), [])
+
+    def test_hide_app_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("hide @chrome", 1), [])
+
+    def test_hide_quoted_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line('hide "Spotify"', 1), [])
+
+    def test_hide_list_is_valid(self) -> None:
+        self.assertEqual(
+            validate_plus_line('hide ["Spotify","Discord"]', 1), []
+        )
+
+    def test_hide_except_target_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("hide except(@work)", 1), [])
+
+    def test_hide_except_list_is_valid(self) -> None:
+        self.assertEqual(
+            validate_plus_line('hide except(["Slack","Notion"])', 1), []
+        )
+
+    def test_hide_display_filter_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("hide display(2)", 1), [])
+
+    def test_hide_except_with_display_filter_is_valid(self) -> None:
+        self.assertEqual(
+            validate_plus_line("hide except(@work) display(2)", 1), []
+        )
+
+    # ── HIDE: hard-fails for old (v1.0) syntax ───────────
+    def test_hide_all_is_hard_fail(self) -> None:
+        errs = validate_plus_line("hide all", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("removed in v1.1", errs[0].message)
+        self.assertIn("except(@bundle)", errs[0].message)
+
+    def test_hide_all_except_is_hard_fail(self) -> None:
+        errs = validate_plus_line("hide all except @work", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("removed in v1.1", errs[0].message)
+
+    # ── CLOSE: new accepted forms ────────────────────────
+    def test_close_app_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("close @chrome", 1), [])
+
+    def test_close_quoted_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line('close "Spotify"', 1), [])
+
+    def test_close_list_is_valid(self) -> None:
+        self.assertEqual(
+            validate_plus_line('close ["Spotify","Discord"]', 1), []
+        )
+
+    def test_close_except_target_is_valid(self) -> None:
+        self.assertEqual(validate_plus_line("close except(@work)", 1), [])
+
+    def test_close_except_list_is_valid(self) -> None:
+        self.assertEqual(
+            validate_plus_line('close except(["Slack","Notion"])', 1), []
+        )
+
+    # ── CLOSE: bare `close` rejected ─────────────────────
+    def test_close_bare_is_rejected(self) -> None:
+        errs = validate_plus_line("close", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("Bare `close`", errs[0].message)
+
+    # ── FOCUS: display() rejected ────────────────────────
+    def test_focus_display_is_rejected(self) -> None:
+        errs = validate_plus_line("focus @chrome display(2)", 1)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("display", errs[0].message.lower())
+        self.assertIn("HIDE-only", errs[0].message)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)

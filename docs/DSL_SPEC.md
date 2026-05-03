@@ -560,8 +560,8 @@ Grouping of multiple values.
 
 ```text
 hide ["Google Chrome","Safari"]
-hide all except [@work,"Spotify"]
-hide all except @work
+hide except([@work,"Spotify"])
+hide except(@work)
 ```
 
 ---
@@ -812,8 +812,8 @@ open @chrome
 focus @chrome
 close @chrome
 hide @chrome
-hide all
-hide all except @work
+hide
+hide except(@work)
 ```
 
 ---

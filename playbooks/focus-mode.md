@@ -27,7 +27,7 @@ focus "Google Chrome" #full
 ```text
 +CalFlow+
 
-hide all except @work
+hide except(@work)
 focus @chrome #full
 ```
 
@@ -65,7 +65,7 @@ You get:
 ```text
 +CalFlow+
 
-hide all
+hide
 open notion.so #full
 ```
 
@@ -78,7 +78,7 @@ open notion.so #full
 ```text
 +CalFlow+
 
-hide all except @work
+hide except(@work)
 focus @chrome #left(70%)
 focus @slack #right(30%)
 ```
@@ -92,7 +92,7 @@ focus @slack #right(30%)
 ```text
 +CalFlow+
 
-hide all
+hide
 open zoom.us #full
 ```
 
@@ -108,7 +108,7 @@ open zoom.us #full
 close "Spotify"
 close "Slack"
 close "Discord"
-hide all
+hide
 open notion.so #full
 ```
 
@@ -133,7 +133,7 @@ close "Spotify"
 ### Control what stays visible
 
 ```text
-hide all except @work
+hide except(@work)
 ```
 
 → only keep your defined work apps  
@@ -164,7 +164,7 @@ hide all except @work
 Start with:
 
 ```text
-hide all except @work
+hide except(@work)
 focus @chrome #full
 ```
 

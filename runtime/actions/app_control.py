@@ -197,6 +197,71 @@ end tell
     return ok
 
 
+def close_all(except_apps: Iterable[str] = ()) -> bool:
+    """
+    Quit every visible non-background process EXCEPT the apps named
+    in `except_apps`. Frontmost is also kept (avoids closing the user's
+    active app).
+
+    Returns True iff osascript exited 0. The script returns a TSV
+    summary on stdout — `kept | closed | errored` — which we log so
+    you can see exactly what the call did.
+    """
+    keep_names = [a.strip() for a in except_apps if a and a.strip()]
+    keep_literal = "{" + ", ".join(
+        '"' + _escape(name) + '"' for name in keep_names
+    ) + "}"
+
+    script = (
+        'on run\n'
+        '    set kept to {}\n'
+        '    set closed to {}\n'
+        '    set errored to {}\n'
+        '    tell application "System Events"\n'
+        '        set frontApp to (name of first application process whose frontmost is true)\n'
+        f'        set keepList to {keep_literal}\n'
+        '        set procs to (every process whose visible is true and background only is false)\n'
+        '        repeat with p in procs\n'
+        '            set procName to ""\n'
+        '            try\n'
+        '                set procName to (name of p as string)\n'
+        '            end try\n'
+        '            if procName is "" then\n'
+        '                -- skip\n'
+        '            else if procName is frontApp then\n'
+        '                set end of kept to procName\n'
+        '            else if keepList contains procName then\n'
+        '                set end of kept to procName\n'
+        '            else\n'
+        '                try\n'
+        '                    tell application procName to quit\n'
+        '                    set end of closed to procName\n'
+        '                on error errMsg\n'
+        '                    set end of errored to (procName & " (" & errMsg & ")")\n'
+        '                end try\n'
+        '            end if\n'
+        '        end repeat\n'
+        '    end tell\n'
+        '    set AppleScript\'s text item delimiters to ", "\n'
+        '    set out to "KEPT\t" & (kept as text) & linefeed\n'
+        '    set out to out & "CLOSED\t" & (closed as text) & linefeed\n'
+        '    set out to out & "ERRORED\t" & (errored as text)\n'
+        '    return out\n'
+        'end run\n'
+    )
+    label = "CLOSE all" + (
+        " except " + ", ".join(keep_names) if keep_names else ""
+    )
+    summary = _osascript_capture(script, action_label=label)
+    if summary is None:
+        return False
+    for line in summary.strip().splitlines():
+        if "\t" in line:
+            tag, _, names = line.partition("\t")
+            log(f"[INFO] {label}: {tag.lower()} = [{names.strip() or '∅'}]")
+    return True
+
+
 def hide_all(except_apps: Iterable[str] = ()) -> bool:
     """
     Hide every visible non-background process EXCEPT the apps named

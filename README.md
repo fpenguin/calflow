@@ -184,7 +184,7 @@ save source(clipboard) to("~/Reports/{now > YYYY-MM}.png")
 ```text
 +CalFlow+
 
-hide all except @work
+hide except(@work)
 focus @chrome #full
 ```
 

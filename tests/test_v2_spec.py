@@ -173,9 +173,15 @@ class S3_PlusModeVerbs(unittest.TestCase):
     def test_focus(self):   self.assertEqual(self._verbs("focus @chrome"), ["FOCUS"])
     def test_close(self):   self.assertEqual(self._verbs('close "Spotify"'), ["CLOSE"])
     def test_hide_app(self):     self.assertEqual(self._verbs("hide @chrome"), ["HIDE"])
-    def test_hide_all(self):     self.assertEqual(self._verbs("hide all"), ["HIDE"])
+    def test_hide_bare(self):    self.assertEqual(self._verbs("hide"), ["HIDE"])
     def test_hide_except(self):  self.assertEqual(
-        self._verbs("hide all except @chrome"), ["HIDE"]
+        self._verbs("hide except(@chrome)"), ["HIDE"]
+    )
+    def test_hide_display_filter(self): self.assertEqual(
+        self._verbs("hide display(1)"), ["HIDE"]
+    )
+    def test_close_except(self): self.assertEqual(
+        self._verbs("close except(@chrome)"), ["CLOSE"]
     )
     def test_click_text(self):   self.assertEqual(
         self._verbs('click text("Sign in")'), ["CLICK"]
@@ -218,12 +224,38 @@ class S3_AST(unittest.TestCase):
         self.assertIsInstance(cmd, FocusCommand)
         self.assertEqual(cmd.title, "Inbox")
 
-    def test_hide_all_except_collects_except_targets(self):
+    def test_hide_except_collects_keep_set(self):
         cmd = parse(
-            '+CalFlow+\nhide all except @chrome'
+            '+CalFlow+\nhide except(@chrome)'
         ).commands[0]
         self.assertIsInstance(cmd, HideCommand)
-        self.assertTrue(cmd.hide_all)
+        # New v1.1 shape: items stays empty (filter form, not items form);
+        # keep_set carries the raw except() tokens — bundle/alias expansion
+        # happens at the resolver layer, not at parse time.
+        self.assertEqual(cmd.items, ())
+        self.assertIn("@chrome", cmd.keep_set)
+
+    def test_hide_bare_has_no_items_or_keep(self):
+        cmd = parse('+CalFlow+\nhide').commands[0]
+        self.assertIsInstance(cmd, HideCommand)
+        self.assertEqual(cmd.items, ())
+        self.assertEqual(cmd.keep_set, frozenset())
+        self.assertIsNone(cmd.display_filter)
+
+    def test_hide_display_filter_captured(self):
+        cmd = parse('+CalFlow+\nhide display(2)').commands[0]
+        self.assertIsInstance(cmd, HideCommand)
+        self.assertEqual(cmd.display_filter, 2)
+
+    def test_close_except_collects_keep_set(self):
+        cmd = parse(
+            '+CalFlow+\nclose except(@chrome)'
+        ).commands[0]
+        from core.models import CloseCommand
+        self.assertIsInstance(cmd, CloseCommand)
+        self.assertEqual(cmd.items, ())
+        # keep_set holds raw tokens at parse time; resolver expands later.
+        self.assertIn("@chrome", cmd.keep_set)
 
     def test_hide_collection(self):
         cmd = parse(

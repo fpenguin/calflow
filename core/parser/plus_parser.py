@@ -208,16 +208,7 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
         )
 
     if head_upper == "CLOSE":
-        primary = body_args[0] if body_args else None
-        items = _flatten_collection(primary) if primary else ()
-        return CloseCommand(
-            line_no=line_no,
-            raw=raw,
-            tags=tags,
-            functions=tuple(fns),
-            target=_unquote(primary) if primary and not items else None,
-            items=items,
-        )
+        return _build_close(line_no, raw, body_args, tags, targets, fns)
 
     if head_upper == "HIDE":
         return _build_hide(line_no, raw, body_args, tags, targets, fns)
@@ -297,36 +288,137 @@ def _build_hide(
     line_no: int, raw: str, body: List[str],
     tags: FrozenSet[str], targets: List[str], fns: List[Tuple[str, Any]],
 ) -> HideCommand:
-    if not body:
-        return HideCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+    """
+    HIDE forms (v1.1+):
+        hide                          → bare (= hide all-except-frontmost)
+        hide @app                     → items=("app",)
+        hide [a, b, c]                → items=("a","b","c")
+        hide except(@bundle)          → keep_set=…
+        hide except([list])           → keep_set=…
+        hide except(@bundle) display(N) → keep_set=…, display_filter=N
+        hide display(N)               → display_filter=N (bare-with-filter)
+    """
+    fn_dict = dict(fns)
+    has_filters = ("except" in fn_dict) or ("display" in fn_dict)
 
-    if body[0].lower() == "all":
-        # `hide all` or `hide all except <…>`
-        except_items: Tuple[str, ...] = ()
-        if len(body) >= 2 and body[1].lower() == "except":
-            tail = body[2:]
-            collected: List[str] = []
-            for tok in tail:
-                items = _flatten_collection(tok)
-                if items:
-                    collected.extend(items)
-                else:
-                    collected.append(_unquote(tok))
-            # `@target` was peeled off into `targets`
-            collected.extend(targets)
-            except_items = tuple(collected)
-        return HideCommand(
-            line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
-            hide_all=True, except_items=except_items,
-        )
+    # ── Form 1: explicit list / bare-target / "App" — ignore filters ──
+    items_tuple: Tuple[str, ...] = ()
+    if body:
+        head = body[0]
+        flattened = _flatten_collection(head)
+        if flattened:
+            items_tuple = flattened
+        else:
+            items_tuple = (_unquote(head),)
+    elif targets and not has_filters:
+        # `hide @chrome` shorthand → items=("@chrome",) — resolver
+        # will normalize the @ later.
+        items_tuple = tuple(targets)
 
-    head = body[0]
-    items = _flatten_collection(head)
+    # ── Form 2: filter form (bare hide / except() / display()) ──
+    keep_set: frozenset = frozenset()
+    display_filter: Optional[int] = None
+
+    if not items_tuple:  # only relevant when there's no explicit list
+        except_arg = fn_dict.get("except")
+        if except_arg is not None:
+            keep_set = _normalize_except_arg(except_arg, targets)
+
+        display_arg = fn_dict.get("display")
+        if display_arg is not None:
+            try:
+                display_filter = int(display_arg)
+            except (TypeError, ValueError):
+                log(
+                    f"[WARN] HIDE display() expected an integer, got "
+                    f"{display_arg!r}; ignoring filter"
+                )
+
     return HideCommand(
         line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
-        target=_unquote(head) if not items else None,
-        items=items,
+        items=items_tuple,
+        keep_set=keep_set,
+        display_filter=display_filter,
     )
+
+
+def _build_close(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], targets: List[str], fns: List[Tuple[str, Any]],
+) -> CloseCommand:
+    """
+    CLOSE forms (v1.1+):
+        close @app | close "App" | close [a, b]   → items populated
+        close except(@bundle)                     → keep_set populated
+    Bare `close` is rejected by the validator before reaching here.
+    """
+    fn_dict = dict(fns)
+
+    items_tuple: Tuple[str, ...] = ()
+    if body:
+        head = body[0]
+        flattened = _flatten_collection(head)
+        if flattened:
+            items_tuple = flattened
+        else:
+            items_tuple = (_unquote(head),)
+    elif targets and "except" not in fn_dict:
+        items_tuple = tuple(targets)
+
+    keep_set: frozenset = frozenset()
+    if not items_tuple:
+        except_arg = fn_dict.get("except")
+        if except_arg is not None:
+            keep_set = _normalize_except_arg(except_arg, targets)
+
+    return CloseCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        items=items_tuple,
+        keep_set=keep_set,
+    )
+
+
+def _normalize_except_arg(arg: Any, targets: List[str]) -> frozenset:
+    """
+    Translate the inside of `except(...)` into a flat FrozenSet of app
+    names. Accepts (per spec Q5):
+
+        except(@bundle)        → expanded list from settings.TARGETS
+        except([list])         → flatten each item
+        except(@target)        → single name
+        except("App Name")     → single name
+
+    Bundle expansion is delegated to the resolver layer so this parser
+    stays import-light. We just return the raw token form here; the
+    resolver does the actual TARGETS lookup.
+
+    `targets` is the list of @ tokens already peeled out by _split_args
+    (in case the user wrote `hide @work except(@chrome)` — though that
+    combo isn't supported, defensive).
+    """
+    # `arg` shapes from _coerce_function_args:
+    #   - tuple of strings (multiple comma-separated values)
+    #   - single string (one value)
+    #   - None (empty parens)
+    #   - dict / nested tuple (unlikely here)
+    raw_items: List[str] = []
+    if arg is None:
+        return frozenset()
+    if isinstance(arg, tuple):
+        raw_items.extend(str(x) for x in arg)
+    elif isinstance(arg, list):
+        raw_items.extend(str(x) for x in arg)
+    elif isinstance(arg, str):
+        # Could be "@bundle", "@target", "App Name", or "[a, b]"
+        flat = _flatten_collection(arg)
+        if flat:
+            raw_items.extend(flat)
+        else:
+            raw_items.append(_unquote(arg))
+    else:
+        raw_items.append(str(arg))
+
+    return frozenset(s for s in raw_items if s)
 
 
 def _build_click(

@@ -146,7 +146,7 @@ class HtmlIntoParser(unittest.TestCase):
             "https://news.ycombinator.com</a> @chrome</p>"
             '<p>open "Notion" #left(50%) #display(ext)</p>'
             '<p>focus @chrome title("Hacker")</p>'
-            "<p>hide all except @work</p>"
+            "<p>hide except(@work)</p>"
             "<p>wait 3</p>"
             '<p>close "Spotify"</p>'
         )

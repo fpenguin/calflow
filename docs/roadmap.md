@@ -273,7 +273,9 @@ These are **out of scope** for any near-term release:
 | FOCUS — `focus @app title("…")` | ✅ | ✅ | ✅ | ✅ (real, AXRaise on matching window) |
 | CLOSE — `close "X"` / `close [a, b]` | ✅ | ✅ | ✅ | ✅ (real, `tell app to quit`, only if running) |
 | HIDE — `hide @app` / `hide [a, b]` | ✅ | ✅ | ✅ | ✅ (real, System Events `set visible to false`) |
-| HIDE all / all except @bundle | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost) |
+| HIDE — bare `hide` / `hide except(<…>)` | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost; v1.1.1) |
+| HIDE — `hide display(N)` / `hide except(<…>) display(N)` | ✅ | ✅ | ✅ | 🚧 stub — display filter accepted; per-window filtering ships in v1.1.2 |
+| CLOSE — `close except(<…>)` | ✅ | ✅ | ✅ | ✅ (real, iterates processes; keeps frontmost; v1.1.1) |
 | CLICK | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | TYPE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | PRESS (single / combo / sequence) | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |

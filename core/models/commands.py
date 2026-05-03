@@ -77,23 +77,41 @@ class FocusCommand(BaseCommand):
 
 @dataclass(frozen=True)
 class CloseCommand(BaseCommand):
-    """CLOSE <app|"name"> | CLOSE [list]"""
-    target: Optional[str] = None
+    """
+    CLOSE — quit one or more apps.
+
+    Two forms (mutually exclusive):
+        close [list] | close @target | close "App"
+            → items populated; keep_set empty
+        close except(<arg>)
+            → items empty; keep_set populated (apps to KEEP running);
+              everything else visible gets quit
+
+    Bare `close` (no args) is rejected by the validator.
+    """
     items: Tuple[str, ...] = field(default_factory=tuple)
+    keep_set: frozenset = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
 class HideCommand(BaseCommand):
     """
-    HIDE <app|@target>
-    HIDE all
-    HIDE all except @target
-    HIDE [a, b]
+    HIDE — hide windows of one or more apps.
+
+    Three forms (mutually compatible at the filter layer):
+        hide [list] | hide @target | hide "App"
+            → items populated
+        hide                              ← bare = hide all (except frontmost)
+        hide except(<arg>)                ← keep_set populated (apps to keep visible)
+        hide display(N)                   ← display_filter set (v1.1.2 — stub in v1.1.1)
+        hide except(<arg>) display(N)     ← combine
+
+    `items` and (`keep_set`/`display_filter`) are mutually exclusive at
+    the parse layer: explicit-list form OR all-with-filters form.
     """
-    target: Optional[str] = None
     items: Tuple[str, ...] = field(default_factory=tuple)
-    hide_all: bool = False
-    except_items: Tuple[str, ...] = field(default_factory=tuple)
+    keep_set: frozenset = field(default_factory=frozenset)
+    display_filter: Optional[int] = None
 
 
 # =========================================================

@@ -61,6 +61,36 @@ def resolve_target(tags: Set[str]) -> Optional[str]:
     return None
 
 
+def _expand_targets(items) -> Tuple[str, ...]:
+    """
+    Expand any iterable of tokens (raw user-typed names + @aliases)
+    into a flat tuple of macOS app names.
+
+    For each token:
+        - "@bundle" or "@target" → resolve via TARGETS (bundle gives a
+          list, single target gives a 1-element list)
+        - quoted/plain "App Name" → kept as-is (after stripping quotes)
+
+    Bundles inside bundles are NOT expanded recursively (TARGETS values
+    are flat per the v1.0 contract).
+    """
+    out: List[str] = []
+    for tok in items:
+        if not tok:
+            continue
+        if isinstance(tok, str) and tok.startswith("@"):
+            out.extend(resolve_target_expansion(tok))
+        else:
+            cleaned = tok.strip()
+            if (cleaned.startswith('"') and cleaned.endswith('"')) or (
+                cleaned.startswith("'") and cleaned.endswith("'")
+            ):
+                cleaned = cleaned[1:-1]
+            if cleaned:
+                out.append(cleaned)
+    return tuple(out)
+
+
 def resolve_target_expansion(token: Optional[str]) -> List[str]:
     """
     Expand a single `@alias` (or quoted "App Name") into a list of apps.
@@ -249,31 +279,33 @@ def resolve_command(
         return base
 
     if isinstance(command, CloseCommand):
-        items = command.items or (
-            tuple(resolve_target_expansion(command.target))
-            if command.target else ()
-        )
-        base["items"] = items
+        # Two mutually exclusive shapes:
+        #   - items populated → close just those (after bundle expansion)
+        #   - keep_set populated → close everything visible EXCEPT those
+        if command.items:
+            base["items"] = _expand_targets(command.items)
+        else:
+            base["items"] = ()
+        if command.keep_set:
+            base["keep"] = _expand_targets(command.keep_set)
+        else:
+            base["keep"] = ()
         return base
 
     if isinstance(command, HideCommand):
-        if command.hide_all:
-            except_apps: List[str] = []
-            for tok in command.except_items:
-                if tok.startswith("@"):
-                    except_apps.extend(resolve_target_expansion(tok))
-                else:
-                    except_apps.append(tok)
-            base.update({
-                "hide_all": True,
-                "except": tuple(except_apps),
-            })
-            return base
-        items = command.items or (
-            tuple(resolve_target_expansion(command.target))
-            if command.target else ()
-        )
-        base["items"] = items
+        # Three orthogonal pieces:
+        #   - items: explicit list (hide just these)
+        #   - keep:  resolved keep_set (apps to keep visible — bare hide
+        #            uses empty keep set, meaning "hide all")
+        #   - display_filter: optional display N (v1.1.2 wires the
+        #            actual filtering; v1.1.1 logs a stub note)
+        if command.items:
+            base["items"] = _expand_targets(command.items)
+            base["keep"] = ()
+        else:
+            base["items"] = ()
+            base["keep"] = _expand_targets(command.keep_set)
+        base["display_filter"] = command.display_filter
         return base
 
     if isinstance(command, ClickCommand):

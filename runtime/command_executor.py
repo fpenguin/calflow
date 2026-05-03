@@ -223,43 +223,65 @@ def _do_focus(params: Dict[str, Any]) -> None:
 
 
 def _do_close(params: Dict[str, Any]) -> None:
-    """`close "X"` / `close @app` / `close [a, b]` — quit the apps."""
-    from runtime.actions.app_control import close_app
+    """
+    v1.1+ shapes:
+        close [list] / close @app / close "App"   → items populated
+        close except(<arg>)                       → keep populated
+    """
+    from runtime.actions.app_control import close_app, close_all
 
     items = params.get("items") or ()
-    if not items:
-        log("[WARN] CLOSE missing target")
+    keep = params.get("keep") or ()
+
+    if items:
+        for item in items:
+            name = item.lstrip("@") if isinstance(item, str) else item
+            close_app(name)
         return
 
-    for item in items:
-        name = item.lstrip("@") if isinstance(item, str) else item
-        close_app(name)
+    if keep is not None:  # except(<arg>) form — even empty keep is valid here
+        # close everything visible except the keep set + frontmost
+        close_all(except_apps=keep)
+        return
+
+    log("[WARN] CLOSE missing arguments (validator should have caught)")
 
 
 def _do_hide(params: Dict[str, Any]) -> None:
     """
-    `hide "X"` / `hide @app` → hide one app
-    `hide [a, b]`            → hide each
-    `hide all`               → hide all except frontmost
-    `hide all except @app`   → hide all except listed apps + frontmost
+    v1.1+ shapes:
+        hide [list] / hide @app / hide "App"      → items populated
+        hide                                       → bare = hide all-except-frontmost
+        hide except(<arg>)                         → keep populated
+        hide display(N)                            → display_filter set
+        hide except(<arg>) display(N)              → both
+
+    `display(N)` is parsed and forwarded to params; the actual
+    per-window display filtering ships in v1.1.2 (per-window AXUIElement
+    enumeration). For v1.1.1 we log a clear note that the filter is
+    accepted but currently a no-op (hide proceeds across all displays).
     """
     from runtime.actions.app_control import hide_app, hide_all
 
-    if params.get("hide_all"):
-        keep = list(params.get("except") or ())
-        # Strip @ prefixes from keep list (resolver may pass raw tokens)
-        keep = [k.lstrip("@") if isinstance(k, str) else k for k in keep]
-        hide_all(except_apps=keep)
-        return
-
     items = params.get("items") or ()
-    if not items:
-        log("[WARN] HIDE missing target")
+    keep = params.get("keep") or ()
+    display_filter = params.get("display_filter")
+
+    if items:
+        for item in items:
+            name = item.lstrip("@") if isinstance(item, str) else item
+            hide_app(name)
         return
 
-    for item in items:
-        name = item.lstrip("@") if isinstance(item, str) else item
-        hide_app(name)
+    # Filter form (bare hide / except / display)
+    if display_filter is not None:
+        log(
+            f"[INFO] hide display({display_filter}) accepted; per-window "
+            "display filtering ships in v1.1.2 — running across all "
+            "displays for now"
+        )
+
+    hide_all(except_apps=keep)
 
 
 # =========================================================

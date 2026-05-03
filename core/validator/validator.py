@@ -5,8 +5,8 @@ Grammar (line-based, one command per line, case-insensitive verbs):
 
     open <url|app|file> [@target] [#tag ...]
     focus <app|@target> [title("…")] [#tag ...]
-    close <app|"name"> | close [list]
-    hide <app|@target> | hide all [except <…>] | hide [list]
+    close <app|"name"> | close [list] | close except(<…>)
+    hide | hide <app|@target> | hide [list] | hide except(<…>) [display(N)] | hide display(N)
     click <selector> | click x,y |
         click text("…") [selector("…") | position(x,y)] [#tag ...]
     type "<text>"  |  type("<text>") [speed(s)] [interval(s)] [repeat(N)] [timeout(s)]
@@ -49,11 +49,14 @@ from core.utils import strip_inline_comment
 # =========================================================
 
 # verb → (min_positional, max_positional | None)
+# `min_positional` counts BODY tokens + @targets + named-function args
+# combined; the verb-specific check below decides which combinations
+# are actually legal.
 KNOWN_COMMANDS: dict = {
     "OPEN":       (1, None),
     "FOCUS":      (1, None),
-    "CLOSE":      (1, None),
-    "HIDE":       (1, None),
+    "CLOSE":      (0, None),  # arity gate handled per-verb (allows `close except(<…>)`)
+    "HIDE":       (0, None),  # bare `hide` is legal (= hide all-except-frontmost)
     "CLICK":      (1, None),
     "TYPE":       (1, None),
     "PRESS":      (1, None),
@@ -210,21 +213,55 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             )
 
     elif verb == "FOCUS":
-        head = body[0]
-        if not (_TARGET_RE.match(head) or _QUOTED_RE.match(head)):
+        # focus needs a window-targeting argument: @target, "App Name",
+        # or title("…") via functions. display() is HIDE-only (per spec
+        # decision Q3 — focus is window-level, not display-level).
+        head = body[0] if body else ""
+        has_target = _TARGET_RE.match(head) or _QUOTED_RE.match(head)
+        has_title  = any(
+            _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("title(")
+            for fc in functions
+        )
+        # Reject focus display(...) explicitly with a clear hint
+        if any(_FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("display(")
+               for fc in functions):
             errors.append(
                 ValidationError(
                     line_no,
-                    f"FOCUS expects @target or \"App Name\"; got {head!r}",
+                    "FOCUS does not accept display(N) — focus needs a window "
+                    "target (@app, \"App Name\", or title(\"…\")). The "
+                    "display() filter is HIDE-only.",
+                )
+            )
+        elif not (has_target or has_title or targets):
+            errors.append(
+                ValidationError(
+                    line_no,
+                    'FOCUS expects @target or "App Name"; got nothing useful',
                 )
             )
 
     elif verb == "CLOSE":
-        head = body[0]
-        if not (
-            _QUOTED_RE.match(head)
-            or _TARGET_RE.match(head)
-            or _SEQUENCE_RE.match(head)
+        # close [list] | close @app | close "App" | close except(<arg>)
+        # Bare `close` is rejected — too destructive without an explicit
+        # target or filter.
+        head = body[0] if body else ""
+        has_positional = body or targets  # @target shorthand allowed
+        has_except = any(
+            _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("except(")
+            for fc in functions
+        )
+        if not (has_positional or has_except):
+            errors.append(
+                ValidationError(
+                    line_no,
+                    "CLOSE requires an argument: a list, @target, "
+                    "\"App Name\", or except(<arg>). Bare `close` is not "
+                    "allowed (too destructive).",
+                )
+            )
+        elif body and not (
+            _QUOTED_RE.match(head) or _TARGET_RE.match(head) or _SEQUENCE_RE.match(head)
         ):
             errors.append(
                 ValidationError(
@@ -234,17 +271,32 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             )
 
     elif verb == "HIDE":
-        head = body[0]
-        # `hide all`, `hide all except ...`, `hide @x`, `hide "X"`, `hide [..]`
+        # New (v1.1+) syntax:
+        #   hide                          ← bare = hide all (except frontmost)
+        #   hide @app | hide "App" | hide [list]
+        #   hide except(<arg>) [display(N)]
+        # Old (v1.0) syntax `hide all` / `hide all except @x` is HARD-FAIL.
+        head = body[0] if body else ""
         if head.lower() == "all":
-            pass
-        elif _QUOTED_RE.match(head) or _TARGET_RE.match(head) or _SEQUENCE_RE.match(head):
-            pass
-        else:
             errors.append(
                 ValidationError(
                     line_no,
-                    f'HIDE expects all|@target|"App Name"|[list]; got {head!r}',
+                    '`hide all` and `hide all except @x` were removed in v1.1. '
+                    'Use bare `hide` to hide everything except the frontmost, '
+                    'or `hide except(@bundle)` / `hide except([list])` to '
+                    'keep specific apps visible.',
+                )
+            )
+        elif body and not (
+            _QUOTED_RE.match(head)
+            or _TARGET_RE.match(head)
+            or _SEQUENCE_RE.match(head)
+        ):
+            errors.append(
+                ValidationError(
+                    line_no,
+                    f'HIDE expects @target, "App Name", [list], or no '
+                    f'argument (bare hide); got {head!r}',
                 )
             )
 
