@@ -447,7 +447,17 @@ function run(argv) {
     } catch (e) {}
 
     var hid = [], kept = [], errored = [];
+
+    // Probe Accessibility ONCE on the first non-trivial app. If reading
+    // window geometry fails with the AX-permission signature, abort the
+    // whole pass with a sentinel — no point in trying 30 more apps that
+    // will all fail the same way.
+    var axChecked = false;
+    var axDenied = false;
+
     for (var i = 0; i < procs.length; i++) {
+        if (axDenied) break;
+
         var p = procs[i];
         var name = "";
         try { name = p.name(); } catch (e) { continue; }
@@ -466,7 +476,18 @@ function run(argv) {
                 try {
                     pos = wins[w].position();
                     sz  = wins[w].size();
-                } catch (e) { continue; }
+                    axChecked = true;
+                } catch (e) {
+                    var msg = (e && e.message) ? e.message : String(e);
+                    if (msg.indexOf("assistive access") !== -1
+                        || msg.indexOf("not allowed") !== -1
+                        || msg.indexOf("-1719") !== -1
+                        || msg.indexOf("-25204") !== -1) {
+                        axDenied = true;
+                        break;
+                    }
+                    continue;
+                }
                 if (!pos || !sz) continue;
                 var cx = pos[0] + sz[0] / 2;
                 var cy = pos[1] + sz[1] / 2;
@@ -475,6 +496,7 @@ function run(argv) {
                     break;
                 }
             }
+            if (axDenied) break;
             if (match) {
                 p.visible = false;
                 hid.push(name);
@@ -482,10 +504,13 @@ function run(argv) {
                 kept.push(name);
             }
         } catch (e) {
-            errored.push(name + " (" + e.message + ")");
+            errored.push(name + " (" + (e.message || e) + ")");
         }
     }
 
+    if (axDenied) {
+        return "AX_DENIED";
+    }
     return "KEPT\t" + kept.join(", ") +
            "\nHIDDEN\t" + hid.join(", ") +
            "\nERRORED\t" + errored.join(", ");
@@ -569,17 +594,43 @@ def hide_apps_on_display(
         stderr = (result.stderr or "").strip()
         log(f"[WARN] {label} failed: {stderr or '(no stderr)'}")
         if "not allowed" in stderr.lower() or "1002" in stderr or "-10003" in stderr:
-            log(
-                "[WARN] Grant Accessibility permission: "
-                "System Settings → Privacy & Security → Accessibility"
-            )
+            _log_accessibility_hint()
         return False
 
-    for line in (result.stdout or "").strip().splitlines():
+    stdout = (result.stdout or "").strip()
+
+    # v1.1.8 — JXA short-circuited on Accessibility denial. Surface ONE
+    # clear, actionable message instead of 30 'not allowed' lines.
+    if stdout == "AX_DENIED" or stdout.startswith("AX_DENIED"):
+        log(f"[ERROR] {label}: Accessibility permission denied for osascript.")
+        _log_accessibility_hint()
+        return False
+
+    for line in stdout.splitlines():
         if "\t" in line:
             tag, _, names = line.partition("\t")
             log(f"[INFO] {label}: {tag.lower()} = [{names.strip() or '∅'}]")
     return True
+
+
+def _log_accessibility_hint() -> None:
+    """
+    Print the canonical 'how to grant Accessibility permission'
+    instruction. Used by every macOS UI-scripting path that needs
+    AX attribute reads (hide_apps_on_display, future window-aware
+    selectors, etc.).
+    """
+    log(
+        "[INFO] Reading window geometry needs Accessibility for "
+        "/usr/bin/osascript:"
+    )
+    log("[INFO]   1. Open System Settings → Privacy & Security → Accessibility")
+    log("[INFO]   2. Click [+] and add /usr/bin/osascript (Cmd+Shift+G to type)")
+    log("[INFO]   3. Toggle it ON")
+    log(
+        "[INFO]   (Note: granting Apple Events / Automation is NOT enough — "
+        "AX attribute reads need the separate Accessibility grant.)"
+    )
 
 
 # =========================================================
