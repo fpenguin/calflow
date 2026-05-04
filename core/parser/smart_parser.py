@@ -312,6 +312,31 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
 
             entries.append({"url": url, "tags": merged_tags})
 
+    # --- v1.1.17 — Title URLs become implicit entries (Option B) --------
+    # Any URL in the title that DIDN'T appear in the body is appended
+    # as its own entry, so a meeting like
+    #     title: "Standup — https://zoom.us/j/12345"
+    #     body : (empty)
+    # still opens the join link. The dedup is handled by the same
+    # `seen` set used for the body loop, so a URL repeated in title
+    # AND body opens exactly once.
+    #
+    # Title URLs inherit only the GLOBAL state (no per-line tags,
+    # since the title isn't a body line). The forced-URL exemption
+    # still applies (they ARE title URLs by definition), so they
+    # bypass blacklist + map-filter regardless of count.
+    for turl in title_urls:
+        if turl in seen:
+            continue
+        seen.add(turl)
+
+        merged_tags = set(global_tags_by_cat.values())
+        if global_target:
+            merged_tags.add(global_target)
+
+        log(f"[INFO] Title URL → entry: {turl}")
+        entries.append({"url": turl, "tags": merged_tags})
+
     if len(entries) > MAX_URLS:
         log("[WARN] MAX_URLS exceeded → trimming")
         return entries[:MAX_URLS]
