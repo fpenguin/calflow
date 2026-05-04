@@ -537,41 +537,53 @@ function run(argv) {
             }
             if (axDenied) break;
             if (matchedIdx.length > 0) {
-                // v1.1.14 — try miniaturize first; on failure fall
-                // back to closing the window (Settings panels and
-                // floating windows usually lack a miniaturize button
-                // but DO have a close button). Tracks per-window
-                // outcome so the user sees what we did.
-                var mini = 0, closed = 0, errs = 0;
+                // v1.1.15 — three-step fallback chain per matched window.
+                // Each chosen because it's NON-DESTRUCTIVE for the
+                // user's data (no quit, no force-close-with-prompt):
+                //   1. miniaturize  → goes to Dock; reversible by click
+                //   2. close        → standard close; some apps have
+                //                     unsaved-changes prompts
+                //   3. move off-screen → set position to (-32000, -32000);
+                //                     window stays alive, content
+                //                     preserved, just not visible.
+                //                     Worst case the user can find it
+                //                     in Mission Control or by re-
+                //                     opening from the app menu.
+                // Tracks per-window outcome so the user sees what we did.
+                var mini = 0, closed = 0, moved = 0, errs = 0;
                 for (var m = 0; m < matchedIdx.length; m++) {
                     var u2 = matchedIdx[m];
-                    var done = false;
+                    var miniErr = null, closeErr = null, moveErr = null;
                     try {
                         ui[u2].el.miniaturized = true;
                         mini += 1;
-                        done = true;
-                    } catch (e) {
-                        // miniaturize unsupported — try close as fallback
-                        try {
-                            ui[u2].el.close();
-                            closed += 1;
-                            done = true;
-                        } catch (e2) {
-                            errs += 1;
-                            errored.push(
-                                name + " " + ui[u2].kind +
-                                " (mini: " + (e.message || e) +
-                                "; close: " + (e2.message || e2) + ")"
-                            );
-                        }
-                    }
+                        continue;
+                    } catch (e) { miniErr = e.message || String(e); }
+                    try {
+                        ui[u2].el.close();
+                        closed += 1;
+                        continue;
+                    } catch (e) { closeErr = e.message || String(e); }
+                    try {
+                        ui[u2].el.position = [-32000, -32000];
+                        moved += 1;
+                        continue;
+                    } catch (e) { moveErr = e.message || String(e); }
+                    errs += 1;
+                    errored.push(
+                        name + " " + ui[u2].kind +
+                        " (mini: " + miniErr +
+                        "; close: " + closeErr +
+                        "; move: " + moveErr + ")"
+                    );
                 }
                 var actionParts = [];
-                if (mini > 0) actionParts.push(mini + " min");
+                if (mini > 0)   actionParts.push(mini + " min");
                 if (closed > 0) actionParts.push(closed + " closed");
+                if (moved > 0)  actionParts.push(moved + " off-screen");
                 if (errs > 0)   actionParts.push(errs + " err");
                 var summary = actionParts.join(", ") || "0";
-                if (mini + closed > 0) {
+                if (mini + closed + moved > 0) {
                     hid.push(name + " (" + summary + " of " + matchedIdx.length + ")");
                 } else {
                     kept.push(name);
