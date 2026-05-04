@@ -469,15 +469,24 @@ def _run_custom_script_loop() -> None:
     while script is not None:
         parsed = parse(script, title="Custom script")
 
-        # v1.1.6 — custom-script convenience: if the paste smells like
-        # Plus Mode (uses a Plus verb) but produced nothing as Smart,
-        # auto-prepend `+CalFlow+\n` and re-parse. Only here in the
-        # custom-script flow — calendar events still REQUIRE the marker.
-        if parsed.is_empty and parsed.mode == "smart" and _looks_like_plus(script):
+        # v1.1.16 — custom-script convenience: if the paste smells like
+        # Plus Mode (any line starts with a Plus verb), auto-prepend
+        # `+CalFlow+\n` and re-parse — REGARDLESS of whether Smart Mode
+        # produced an entry from the same text.
+        #
+        # Why dropped the v1.1.6 `is_empty` precondition: Smart Mode
+        # mis-parses lines like `open "site.com?date={now}"` into a
+        # truncated entry (URL stops at `{`) instead of empty. The user
+        # clearly meant Plus Mode (Smart has no `open` verb), so the
+        # presence of a Plus verb word at line start is a stronger
+        # signal than 'Smart found nothing'. Calendar events still
+        # REQUIRE the marker — auto-promote is custom-script-only.
+        if parsed.mode == "smart" and _looks_like_plus(script):
             print()
-            print("[WARN] Script has no executable content as Smart mode.")
-            print("[WARN] Plus mode command detected. Auto-switching to Plus mode.")
-            print("[WARN] Add `+CalFlow+` header at the top in the calendar event.")
+            print("[WARN] Plus mode command detected (line starts with a Plus verb).")
+            print("[WARN] Auto-switching to Plus mode for this run.")
+            print("[WARN] Add `+CalFlow+` header at the top to suppress this warning,")
+            print("       or to use Plus mode in calendar events.")
             parsed = parse("+CalFlow+\n" + script, title="Custom script")
 
         print()
