@@ -306,6 +306,66 @@ a no-op Apple Event (`tell application "X" to get name`) for each
 known TARGET app on first run, so users approve all required apps in
 one batch rather than one prompt per script execution.
 
+## 7.4 Missed-events pane (sleep-recovery surface)
+
+CalFlow's daemon trigger window is:
+
+    [event_time − ALERT_OFFSET − EARLY_TOLERANCE,
+     event_time − ALERT_OFFSET + GRACE_SECONDS]
+
+…with defaults `ALERT_OFFSET=300s`, `EARLY_TOLERANCE=30s`,
+`GRACE_SECONDS=600s` — so the daemon catches events firing in a
+roughly 10½-minute window centred 5 minutes before start.
+
+**Sleep gap:** if the lid is closed before that window opens and the
+laptop wakes after it closes, the event is **silently skipped**. There's
+no backfill — `get_upcoming_events()` only queries `[now, now+
+FETCH_WINDOW_HOURS]`, and the trigger window check (`cli/main.py:185`)
+runs **before** `is_done()`, so missed events never reach the state
+check that could resurrect them.
+
+This is invisible to the user today — they only notice when "the thing
+didn't open."
+
+**The menubar should expose a "Missed events" pane:**
+
+- Default look-back window: **past 12 hours** (configurable; long
+  enough to cover an overnight sleep, short enough that the list
+  doesn't become noise after a long weekend).
+- Source data: re-query Google Calendar with `timeMin=now-12h`,
+  `timeMax=now`. (Existing `get_upcoming_events` is forward-only;
+  add a sibling `get_recent_events(hours)`.)
+- Filter to events where:
+    - the description has a `+CalFlow+` block OR at least one Smart-
+      mode URL, AND
+    - the trigger window has already closed (`now > event_time +
+      GRACE_SECONDS - ALERT_OFFSET`), AND
+    - the event is NOT in `state["done"]` (so we don't surface things
+      that DID fire).
+- Each row shows:
+    - title + scheduled start
+    - parsed mode (Smart / Plus) + verb count
+    - `[Run now]` button → calls the same `run_event(ev)` dry-runnable
+      entry point the menubar will use for manual triggers (§2.3).
+    - `[Dismiss]` → marks done in state without executing, suppresses
+      future surfacing.
+- Background ping every ~5 min while the menubar is open so the list
+  refreshes without the user clicking around.
+
+**Why a manual "Run now" button instead of auto-firing on wake:**
+
+- Some events are time-bound (a 9 AM standup is irrelevant at 10 AM).
+- Auto-firing missed events on wake violates the principle of least
+  surprise — the user expects "the calendar event opened my Zoom
+  link" to mean "right around the meeting time", not "any time the
+  laptop comes back".
+- The pane gives the user agency: see what was missed, decide what's
+  still useful, click through.
+
+Lightweight CLI fallback (could ship before the menubar):
+`python3 -m cli.main missed [--hours 12]` listing the same data and
+offering an interactive `[r]un / [d]ismiss / [s]kip` prompt per row.
+
 ---
 
 # 💡 Principle
