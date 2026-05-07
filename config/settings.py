@@ -11,6 +11,8 @@ Defines:
 - permissions
 """
 
+from __future__ import annotations
+
 # =========================================================
 # ⏱️ EXECUTION TIMING (USER LOGIC)
 # =========================================================

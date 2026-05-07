@@ -3,6 +3,8 @@ Validator error type — surfaced by core.validator and bubbled up
 through ParseResult so the dispatcher stays IO-free.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 

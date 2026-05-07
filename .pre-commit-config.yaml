@@ -1,0 +1,48 @@
+# CalFlow pre-commit hooks.
+#
+# Install once per clone:
+#     pip install -r requirements-dev.txt
+#     pre-commit install
+#
+# Hooks then run on every `git commit` and can be triggered manually:
+#     pre-commit run --all-files
+#
+# CI (.github/workflows/ci.yml) runs the same `ruff check` + `ruff format`
+# checks as advisory-only — that way external contributors don't get
+# blocked, but maintainers see the issues in the PR conversation.
+
+repos:
+  # ─── Generic hygiene ───────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ─── Python lint + format (single tool) ────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # ─── Type checking (advisory while we tighten coverage) ────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        # `--ignore-missing-imports` keeps mypy quiet about google-*
+        # stubs we don't ship. Toggle to `--strict` once v1.1.27
+        # finishes the strict-typing pass.
+        args: [--ignore-missing-imports]
+        additional_dependencies:
+          - types-python-dateutil
+        exclude: "^(tests/|scripts/|playbooks/)"

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .resolver import (
     resolve_autofill,
     resolve_chrome_profile,

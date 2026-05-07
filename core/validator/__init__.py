@@ -6,6 +6,8 @@ unknown commands, malformed arguments, and arity errors so the
 parser can build a typed AST from already-clean input.
 """
 
+from __future__ import annotations
+
 from .validator import (
     KNOWN_COMMANDS,
     validate_plus_block,

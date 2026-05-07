@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, v2.0]
+  pull_request:
+    branches: [main, v2.0]
+
+# v1.1.26 — minimal CI: install deps, run the unittest suite, lint.
+# CalFlow's tests run on Linux because every macOS-specific path
+# (osascript, AppKit, Accessibility) is mocked or skip-on-import.
+# When the smoke tests need real google-auth they stub it; when they
+# need cli.main they import the real code.
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unittest suite
+        run: python -m unittest discover tests/ --verbose
+
+      - name: Report test count
+        if: always()
+        run: |
+          python -c "
+          import unittest
+          loader = unittest.TestLoader()
+          suite = loader.discover('tests/')
+          n = suite.countTestCases()
+          print(f'CalFlow test suite size: {n} tests')
+          "
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: ruff check
+        run: ruff check . --output-format=github
+        continue-on-error: true   # advisory while the codebase is being cleaned up
+      - name: ruff format --check
+        run: ruff format --check .
+        continue-on-error: true

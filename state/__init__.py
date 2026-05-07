@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .state_manager import (
     load_state,
     save_state,

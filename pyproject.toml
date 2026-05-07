@@ -1,0 +1,80 @@
+# CalFlow project configuration.
+#
+# This file is the single source of truth for tooling settings:
+#   ruff      — linter + formatter
+#   mypy      — static type checker (advisory in v1.1.x; strict in v1.1.27+)
+#   pytest    — once we migrate from unittest in v1.1.27
+#
+# Project metadata (name, version, dependencies) lives elsewhere for now:
+#   __version__         → core/version.py
+#   runtime deps        → requirements.txt
+#   dev / test deps     → requirements-dev.txt
+
+# ─── Ruff ──────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "data",
+    "secrets",
+    "scripts/__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line-too-long — many docstrings exceed 100 cols on purpose
+    "B008",  # function call in default arg — used intentionally for set()
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]   # tests insert sys.path before imports
+"core/parser/*" = ["UP032"]  # f-strings inside regex strings — keep readable
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+
+# ─── Mypy ──────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true   # no stubs for googleapiclient, AppKit, etc.
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# Relax strictness here while v1.1.x is iterating.
+# v1.1.27 will flip these to true:
+#   disallow_untyped_defs = true
+#   disallow_any_generics = true
+#   strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*", "scripts.*"]
+ignore_errors = true
+
+
+# ─── Pytest (planned migration in v1.1.27) ─────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["*Tests", "*Test", "Test*", "*Suite", "*Spec"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+filterwarnings = [
+    "error",                                # fail on warnings — keeps suite honest
+    "ignore::DeprecationWarning:google.*",  # google libs warn on import; out of our control
+]

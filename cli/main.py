@@ -1007,7 +1007,8 @@ def print_display_inventory() -> None:
 # =========================================================
 
 def main() -> None:
-    log("[INFO] CalFlow started")
+    from core.version import version_string
+    log(f"[INFO] CalFlow {version_string()} started")
 
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -1159,6 +1160,10 @@ if __name__ == "__main__":
         sys.exit(0)
     if cmd == "test":
         run_test()
+        sys.exit(0)
+    if cmd in ("--version", "-V", "version"):
+        from core.version import version_string
+        print(f"CalFlow {version_string()}")
         sys.exit(0)
 
     if not acquire_lock():

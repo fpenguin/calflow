@@ -13,6 +13,8 @@ Design Principles:
 - layout applied AFTER open
 """
 
+from __future__ import annotations
+
 import subprocess
 import webbrowser
 import time

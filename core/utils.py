@@ -22,6 +22,8 @@ Migration note (v1.0 → v2.0):
   config from the canonical `config.settings` package.
 """
 
+from __future__ import annotations
+
 import re
 import sys
 import time

@@ -8,6 +8,8 @@ Public surface:
     - ValidationError (returned by core.validator)
 """
 
+from __future__ import annotations
+
 from .commands import (
     BaseCommand,
     ClickCommand,

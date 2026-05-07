@@ -4,6 +4,8 @@ CalFlow Internal Configuration (v2.0)
 DO NOT EDIT unless developing CalFlow itself.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 import os
 

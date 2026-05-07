@@ -1,3 +1,23 @@
+# CalFlow runtime dependencies (pinned for reproducible installs).
+#
+# Regenerate from a clean venv:
+#     python3 -m venv .venv
+#     source .venv/bin/activate
+#     pip install \
+#         google-api-python-client \
+#         google-auth \
+#         google-auth-oauthlib \
+#         python-dateutil
+#     pip freeze > requirements.txt
+#
+# Direct deps (everything else is a transitive pin):
+#   google-api-python-client  — Google Calendar API client
+#   google-auth               — OAuth 2.0 + token refresh
+#   google-auth-oauthlib      — InstalledAppFlow for the desktop OAuth dance
+#   python-dateutil           — ISO 8601 parsing of event start/end fields
+#
+# Optional (dev) deps live in requirements-dev.txt.
+
 certifi==2026.2.25
 cffi==2.0.0
 charset-normalizer==3.4.7
