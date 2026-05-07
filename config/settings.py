@@ -127,6 +127,36 @@ FORCE_SUBMIT_TAG = "#submit"
 
 
 # =========================================================
+# 🎯 TITLE-URL DEFAULTS (v1.1.22)
+# =========================================================
+# Calendar events sometimes carry the meeting / target URL in the
+# event TITLE rather than (or in addition to) the description body.
+# These two settings let you control what CalFlow does with such a
+# title-URL when no per-line tags spell it out.
+#
+# They apply ONLY to URLs found in the event title — body URLs keep
+# their existing behaviour (autofill via AUTOFILL_MODE, tab unless
+# layout is present).
+
+# Autofill mode for title URLs.
+#   "submit"  → press fill + submit (e.g. complete a login form)
+#   "fill"    → press fill only (don't submit)
+#   "none"    → no autofill keystroke
+#
+# If the user has a global #fill / #submit / #no-autofill tag in the
+# event body, that wins over this default.
+TITLE_URL_AUTOFILL_DEFAULT = "submit"
+
+# Open mode for title URLs WHEN no layout/display tag is present.
+# When a layout/display tag IS present (`#left`, `#grid(...)`,
+# `#display(...)` etc., either globally or attached), this default
+# is IGNORED — layout always implies a new window per v1.1.20.
+#   "tab"     → new tab in the existing browser window (macOS default)
+#   "window"  → fresh browser window
+TITLE_URL_OPEN_DEFAULT = "tab"
+
+
+# =========================================================
 # ⏳ AUTOFILL TIMING
 # =========================================================
 

@@ -150,5 +150,119 @@ class NoTitleUrlNoChange(unittest.TestCase):
         self.assertEqual(entries, [])
 
 
+class TitleUrlDefaultsV1_1_22(unittest.TestCase):
+    """v1.1.22 — TITLE_URL_AUTOFILL_DEFAULT and TITLE_URL_OPEN_DEFAULT
+    apply to title URLs unless overridden by explicit body tags."""
+
+    def setUp(self) -> None:
+        # Snapshot + reset for each test so ordering doesn't leak.
+        from config import settings
+        self._snap = (
+            settings.TITLE_URL_AUTOFILL_DEFAULT,
+            settings.TITLE_URL_OPEN_DEFAULT,
+        )
+
+    def tearDown(self) -> None:
+        from config import settings
+        settings.TITLE_URL_AUTOFILL_DEFAULT, settings.TITLE_URL_OPEN_DEFAULT = self._snap
+        # Re-import smart_parser to refresh module-level binding from settings.
+        # smart_parser reads them at call time via the imported names, so we
+        # also need to refresh those.
+        import core.parser.smart_parser as sp
+        sp.TITLE_URL_AUTOFILL_DEFAULT = settings.TITLE_URL_AUTOFILL_DEFAULT
+        sp.TITLE_URL_OPEN_DEFAULT = settings.TITLE_URL_OPEN_DEFAULT
+
+    def _set(self, autofill=None, open_mode=None):
+        from config import settings
+        import core.parser.smart_parser as sp
+        if autofill is not None:
+            settings.TITLE_URL_AUTOFILL_DEFAULT = autofill
+            sp.TITLE_URL_AUTOFILL_DEFAULT = autofill
+        if open_mode is not None:
+            settings.TITLE_URL_OPEN_DEFAULT = open_mode
+            sp.TITLE_URL_OPEN_DEFAULT = open_mode
+
+    # ── Autofill default ─────────────────────────────────────────
+    def test_default_submit(self) -> None:
+        self._set(autofill="submit", open_mode="tab")
+        e = extract_url_entries("", title="https://example.com")[0]
+        self.assertIn("#submit", e["tags"])
+        self.assertNotIn("#fill", e["tags"])
+        self.assertNotIn("#no-autofill", e["tags"])
+
+    def test_default_fill(self) -> None:
+        self._set(autofill="fill", open_mode="tab")
+        e = extract_url_entries("", title="https://example.com")[0]
+        self.assertIn("#fill", e["tags"])
+        self.assertNotIn("#submit", e["tags"])
+
+    def test_default_none(self) -> None:
+        self._set(autofill="none", open_mode="tab")
+        e = extract_url_entries("", title="https://example.com")[0]
+        self.assertIn("#no-autofill", e["tags"])
+        self.assertNotIn("#submit", e["tags"])
+        self.assertNotIn("#fill", e["tags"])
+
+    def test_global_body_autofill_tag_wins(self) -> None:
+        # Body's standalone `#fill` line should win over the
+        # title-URL default (which would otherwise add #submit).
+        self._set(autofill="submit", open_mode="tab")
+        e = extract_url_entries("#fill", title="https://example.com")[0]
+        self.assertIn("#fill", e["tags"])
+        self.assertNotIn("#submit", e["tags"])
+
+    # ── Open-mode default ────────────────────────────────────────
+    def test_default_open_tab(self) -> None:
+        self._set(autofill="submit", open_mode="tab")
+        e = extract_url_entries("", title="https://example.com")[0]
+        self.assertIn("#tab", e["tags"])
+        self.assertNotIn("#window", e["tags"])
+
+    def test_default_open_window(self) -> None:
+        self._set(autofill="submit", open_mode="window")
+        e = extract_url_entries("", title="https://example.com")[0]
+        self.assertIn("#window", e["tags"])
+        self.assertNotIn("#tab", e["tags"])
+
+    def test_layout_overrides_open_default(self) -> None:
+        # User has TITLE_URL_OPEN_DEFAULT=tab, but global #left layout
+        # is set in body — layout always implies window, so we should
+        # NOT add #tab.
+        self._set(autofill="submit", open_mode="tab")
+        e = extract_url_entries("#left(50%)", title="https://example.com")[0]
+        self.assertNotIn("#tab", e["tags"])
+        # The layout tag itself is what flips the window decision in
+        # wants_new_window — no #window tag injected here.
+
+    def test_explicit_window_tag_in_body_preserved(self) -> None:
+        # If user already added #window globally, don't double-write.
+        self._set(autofill="submit", open_mode="tab")
+        e = extract_url_entries("#window", title="https://example.com")[0]
+        self.assertIn("#window", e["tags"])
+        self.assertNotIn("#tab", e["tags"])
+
+
+# v1.1.22 — wants_new_window honours #window / #tab tags
+class WindowTabTagOverride(unittest.TestCase):
+    def test_window_tag(self) -> None:
+        from runtime.actions.browser import wants_new_window
+        self.assertTrue(wants_new_window(tags={"#window"}))
+        self.assertTrue(wants_new_window(tags={"#new-window"}))
+
+    def test_tab_tag(self) -> None:
+        from runtime.actions.browser import wants_new_window
+        self.assertFalse(wants_new_window(tags={"#tab"}))
+        self.assertFalse(wants_new_window(tags={"#new-tab"}))
+
+    def test_tab_overrides_layout(self) -> None:
+        # Layout would normally imply window; explicit #tag wins.
+        from runtime.actions.browser import wants_new_window
+        self.assertFalse(wants_new_window(tags={"#left(50%)", "#tab"}))
+
+    def test_window_with_layout_still_window(self) -> None:
+        from runtime.actions.browser import wants_new_window
+        self.assertTrue(wants_new_window(tags={"#grid(1@3x2)", "#window"}))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)

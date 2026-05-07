@@ -52,16 +52,20 @@ def wants_new_window(tags=None, functions=None) -> bool:
     """
     Compute whether an open should force a NEW WINDOW vs land in a tab.
 
-    Rule (v1.1.20):
-      1. Explicit `new(window)` / `new(tab)` always wins.
-      2. Otherwise: any layout / display tag implies window mode
+    Rule (v1.1.22):
+      1. Explicit Plus-mode `new(window)` / `new(tab)` function call wins.
+      2. Explicit tag `#window` / `#new-window` / `#tab` / `#new-tab`
+         wins (for Smart Mode + the # drop sugar in Plus Mode).
+      3. Otherwise: any layout / display tag implies window mode
          (because layout cannot be applied to a tab independently).
-      3. Default: tab.
+      4. Default: tab.
 
     `tags`     — iterable of `#tag` strings (mixed case OK)
     `functions`— iterable of (name, value) tuples from the parser
     """
-    # 1. Explicit override
+    tag_set = {str(t).lower() for t in (tags or ())}
+
+    # 1. Explicit Plus-mode function call
     if functions:
         for name, value in functions:
             if name == "new":
@@ -75,9 +79,14 @@ def wants_new_window(tags=None, functions=None) -> bool:
                     "new(tab); ignoring and using default"
                 )
 
-    # 2. Layout / display tag → window
-    for t in tags or ():
-        tl = str(t).lower()
+    # 2. Explicit tag override (v1.1.22 — works in Smart + Plus)
+    if tag_set & {"#window", "#new-window"}:
+        return True
+    if tag_set & {"#tab", "#new-tab"}:
+        return False
+
+    # 3. Layout / display tag → window
+    for tl in tag_set:
         for prefix in _WINDOW_TRIGGER_PREFIXES:
             if tl == prefix.rstrip("(") or tl.startswith(prefix):
                 return True

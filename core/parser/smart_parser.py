@@ -28,12 +28,17 @@ from config.settings import (
     BLACKLIST_ONLY_IF_MULTIPLE,
     BLACKLIST_REGEX,
     DEFAULT_ALERT_SECONDS,
+    FORCE_FILL_TAG,
+    FORCE_SUBMIT_TAG,
     FORCE_URL_TAG,
     IGNORE_BLACKLIST_FOR_TITLE_URLS,
     IGNORE_MAP_LINKS,
     IGNORED_PROTOCOLS,
     MAP_DOMAINS,
     MAX_URLS,
+    NO_AUTOFILL_TAG,
+    TITLE_URL_AUTOFILL_DEFAULT,
+    TITLE_URL_OPEN_DEFAULT,
 )
 from core.utils import log, strip_inline_comment
 
@@ -313,18 +318,14 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
             entries.append({"url": url, "tags": merged_tags})
 
     # --- v1.1.17 — Title URLs become implicit entries (Option B) --------
-    # Any URL in the title that DIDN'T appear in the body is appended
-    # as its own entry, so a meeting like
-    #     title: "Standup — https://zoom.us/j/12345"
-    #     body : (empty)
-    # still opens the join link. The dedup is handled by the same
-    # `seen` set used for the body loop, so a URL repeated in title
-    # AND body opens exactly once.
+    # v1.1.22 — title URLs now also get configurable autofill + open-mode
+    # defaults via TITLE_URL_AUTOFILL_DEFAULT and TITLE_URL_OPEN_DEFAULT.
+    # See config/settings.py for the rationale.
     #
-    # Title URLs inherit only the GLOBAL state (no per-line tags,
-    # since the title isn't a body line). The forced-URL exemption
-    # still applies (they ARE title URLs by definition), so they
-    # bypass blacklist + map-filter regardless of count.
+    # The per-URL dedup (vs the body's `seen` set) means a URL that
+    # appears in BOTH title and body opens exactly once — and the body
+    # entry wins (it has line-level tags), so the title-URL defaults
+    # don't override an explicit body line.
     for turl in title_urls:
         if turl in seen:
             continue
@@ -333,6 +334,43 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
         merged_tags = set(global_tags_by_cat.values())
         if global_target:
             merged_tags.add(global_target)
+
+        # v1.1.22 — autofill default for title URLs
+        already_set_autofill = bool(
+            merged_tags & {FORCE_FILL_TAG, FORCE_SUBMIT_TAG, NO_AUTOFILL_TAG}
+        )
+        if not already_set_autofill:
+            af = (TITLE_URL_AUTOFILL_DEFAULT or "").strip().lower()
+            if af == "submit":
+                merged_tags.add(FORCE_SUBMIT_TAG)
+            elif af == "fill":
+                merged_tags.add(FORCE_FILL_TAG)
+            elif af == "none":
+                merged_tags.add(NO_AUTOFILL_TAG)
+            # any other value: silently fall through to AUTOFILL_MODE default
+
+        # v1.1.22 — open-mode default for title URLs.
+        # Layout/display tag presence ALREADY implies window via
+        # wants_new_window — only act here when no such tag is set
+        # AND the user hasn't explicitly tagged #window/#tab somewhere.
+        layout_prefixes = (
+            "#left", "#right", "#middle", "#top", "#bottom", "#full",
+            "#grid(", "#area(", "#display",
+        )
+        has_layout = any(
+            any(t.lower().startswith(p) for p in layout_prefixes)
+            for t in merged_tags
+        )
+        has_explicit_open = bool(
+            merged_tags & {"#window", "#new-window", "#tab", "#new-tab"}
+        )
+        if not has_layout and not has_explicit_open:
+            om = (TITLE_URL_OPEN_DEFAULT or "").strip().lower()
+            if om == "window":
+                merged_tags.add("#window")
+            elif om == "tab":
+                merged_tags.add("#tab")
+            # any other value: silently fall through to global default (tab)
 
         log(f"[INFO] Title URL → entry: {turl}")
         entries.append({"url": turl, "tags": merged_tags})
