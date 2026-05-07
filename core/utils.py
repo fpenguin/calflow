@@ -24,6 +24,25 @@ Migration note (v1.0 → v2.0):
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. Anything not in this list is treated
+# as private (underscore-prefixed) by external consumers.
+__all__ = [
+    "debug",
+    "extract_tokens",
+    "is_ignored_protocol",
+    "is_map_url",
+    "is_valid_url",
+    "log",
+    "lower_safe",
+    "normalize_url",
+    "now_ts",
+    "safe_strip",
+    "seconds_until",
+    "should_process_url",
+    "strip_inline_comment",
+    "within_window",
+]
+
 import re
 import sys
 import time

@@ -20,6 +20,12 @@ Design:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'resolve_autofill_provider',
+    'trigger_autofill',
+]
+
 import json
 import os
 import subprocess

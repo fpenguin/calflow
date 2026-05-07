@@ -247,6 +247,60 @@ _AVAILABLE_COMMANDS = """
 """.rstrip()
 
 
+def collect_status() -> Dict:
+    """
+    Gather status data WITHOUT printing.
+
+    v1.1.27 — single source of truth for both the human dashboard
+    (`print_status_summary`) and the machine-readable `--json` output.
+    Future menubar consumers can call this directly.
+
+    Returns a dict with these keys (all guaranteed present):
+
+        version       str            — CalFlow version (e.g. "1.1.27")
+        daemon        dict           — {loaded: bool, pid?: int, raw_line?: str}
+        calendars     list[str]      — selected calendar IDs
+        next_event    dict | None    — {title, start, seconds_until, calendar_id}
+                                       (None if no event in the lookahead window)
+        google_error  str | None     — human-readable error if calendar fetch failed
+        lookahead_hours int          — STATUS_LOOKAHEAD_HOURS (e.g. 24)
+    """
+    from core.version import version_string
+
+    daemon = _daemon_state()
+    calendars = get_selected_calendars()
+
+    out: Dict = {
+        "version": version_string(),
+        "daemon": daemon,
+        "calendars": calendars,
+        "next_event": None,
+        "google_error": None,
+        "lookahead_hours": STATUS_LOOKAHEAD_HOURS,
+    }
+
+    try:
+        service = build_service()
+        ev = next_event_across_calendars(
+            service, calendars, hours=STATUS_LOOKAHEAD_HOURS,
+        )
+        if ev is not None:
+            now = datetime.now(timezone.utc).astimezone(ev["start"].tzinfo)
+            delta = ev["start"] - now
+            out["next_event"] = {
+                "title": (ev.get("title") or "(untitled)").strip() or "(untitled)",
+                "start": ev["start"].isoformat(),
+                "seconds_until": int(delta.total_seconds()),
+                "calendar_id": ev.get("calendar_id"),
+            }
+    except RuntimeError as exc:
+        out["google_error"] = f"not connected: {exc}"
+    except Exception as exc:
+        out["google_error"] = f"{type(exc).__name__}: {exc}"
+
+    return out
+
+
 def print_status_summary() -> None:
     """
     Friendly multi-line status output:
@@ -257,59 +311,52 @@ def print_status_summary() -> None:
 
     Degrades gracefully on missing creds, expired token, network error,
     no events, or daemon not loaded.
+
+    v1.1.27 — backed by `collect_status()` for parity with the JSON
+    output. Pass `as_json=True` to print machine-readable output instead.
     """
-    daemon = _daemon_state()
-    calendars = get_selected_calendars()
-    cal_count = len(calendars)
+    s = collect_status()
+    daemon = s["daemon"]
+    cal_count = len(s["calendars"])
 
     # ------------------ daemon line ------------------
     if daemon["loaded"]:
-        head = f"🟢 CalFlow is active with {cal_count} connected calendar{'s' if cal_count != 1 else ''}."
+        head = (
+            f"🟢 CalFlow is active with {cal_count} connected calendar"
+            f"{'s' if cal_count != 1 else ''}."
+        )
     else:
         head = "🟡 CalFlow is installed but the daemon is not loaded."
     print(head)
 
     # ------------------ next event line --------------
-    next_line: Optional[str] = None
-    try:
-        service = build_service()
-        ev = next_event_across_calendars(
-            service, calendars, hours=STATUS_LOOKAHEAD_HOURS,
-        )
-        if ev is None:
-            next_line = (
-                f"📅 No upcoming events in the next {STATUS_LOOKAHEAD_HOURS}h."
-            )
+    if s["google_error"]:
+        if "not connected" in s["google_error"]:
+            print(f"🔐 Not connected to Google Calendar yet.\n    {s['google_error']}")
         else:
-            now = datetime.now(timezone.utc).astimezone(ev["start"].tzinfo)
-            delta = ev["start"] - now
-            title = (ev.get("title") or "(untitled)").strip() or "(untitled)"
-            next_line = (
-                f"📅 Next event starts {_format_duration(delta)}  "
-                f"(Event title: {title})"
-            )
-    except RuntimeError as exc:
-        # build_service raises this when credentials.json is missing
-        next_line = (
-            "🔐 Not connected to Google Calendar yet.\n"
-            f"    {exc}"
+            print(f"⚠  Could not fetch upcoming events:\n    {s['google_error']}")
+    elif s["next_event"] is None:
+        print(f"📅 No upcoming events in the next {s['lookahead_hours']}h.")
+    else:
+        ev = s["next_event"]
+        from datetime import timedelta
+        delta = timedelta(seconds=ev["seconds_until"])
+        print(
+            f"📅 Next event starts {_format_duration(delta)}  "
+            f"(Event title: {ev['title']})"
         )
-    except Exception as exc:
-        # Token expired without refresh, network failure, API down, …
-        next_line = (
-            "⚠  Could not fetch upcoming events:\n"
-            f"    {type(exc).__name__}: {exc}"
-        )
-
-    if next_line:
-        print(next_line)
 
     # ------------------ launchctl detail (if loaded) -
-    if daemon["loaded"] and daemon["raw_line"]:
+    if daemon["loaded"] and daemon.get("raw_line"):
         print(f"   ↳ launchctl: {daemon['raw_line']}")
 
     # ------------------ available commands -----------
     print(_AVAILABLE_COMMANDS)
+
+
+def print_status_json() -> None:
+    """v1.1.27 — `cli.main status --json`. Stable contract for menubar consumers."""
+    print(json.dumps(collect_status(), indent=2, default=str))
 
 
 def _lookup_window_hours() -> int:
@@ -1153,7 +1200,12 @@ if __name__ == "__main__":
         restart_launchd()
         sys.exit(0)
     if cmd == "status":
-        print_status_summary()
+        # v1.1.27 — `--json` flag gives machine-readable output for the
+        # future menubar app. The contract is `cli.main.collect_status()`.
+        if "--json" in sys.argv:
+            print_status_json()
+        else:
+            print_status_summary()
         sys.exit(0)
     if cmd == "display":
         print_display_inventory()

@@ -15,6 +15,13 @@ Design Principles:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'open_target',
+    'parse_layout_tag',
+    'wants_new_window',
+]
+
 import subprocess
 import webbrowser
 import time

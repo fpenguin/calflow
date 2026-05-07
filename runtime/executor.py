@@ -15,6 +15,11 @@ Design:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'execute_entries',
+]
+
 import time
 from typing import Dict, List, Set
 

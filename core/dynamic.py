@@ -32,6 +32,12 @@ Public surface:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'resolve_dynamic',
+    'resolve_dynamic_expr',
+]
+
 import re
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Optional

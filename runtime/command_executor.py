@@ -25,6 +25,11 @@ Backend status:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'execute_commands',
+]
+
 import time
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Union
 

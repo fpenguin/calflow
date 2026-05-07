@@ -20,6 +20,17 @@ Public API:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'apply_layout',
+    'compute_rect',
+    'enumerate_displays',
+    'hide_apps_on_display',
+    'move_app_to_display',
+    'resolve_display_target',
+    'set_window_bounds',
+]
+
 import json
 import math
 import re

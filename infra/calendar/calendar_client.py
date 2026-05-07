@@ -24,6 +24,13 @@ Design:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'build_service',
+    'get_upcoming_events',
+    'next_event_across_calendars',
+]
+
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional

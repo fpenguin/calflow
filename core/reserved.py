@@ -21,6 +21,15 @@ Usage:
 
 from __future__ import annotations
 
+# v1.1.27 — public surface lock. See pyproject.toml for the rationale.
+__all__ = [
+    'RESERVED_KEYWORDS',
+    'ReservedKeywordError',
+    'enforce_or_exit',
+    'is_reserved',
+    'validate_user_config',
+]
+
 import sys
 from typing import FrozenSet, Mapping
 
