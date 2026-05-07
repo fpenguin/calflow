@@ -432,23 +432,33 @@ class S13_Determinism(unittest.TestCase):
 # =============================================================
 
 class S9_LayoutGrid(unittest.TestCase):
-    def test_grid_NxM_at_D(self):
+    """v1.1.19 — canonical grid grammar is `#grid(<cell>@<cols>x<rows>)`."""
+
+    def test_grid_canonical_D_at_NxM(self):
+        from runtime.actions.browser import parse_layout_tag
+        self.assertEqual(
+            parse_layout_tag("#grid(1@3x2)"),
+            {"type": "grid", "cell": 1, "cols": 3, "rows": 2},
+        )
+
+    def test_grid_canonical_case_insensitive(self):
+        from runtime.actions.browser import parse_layout_tag
+        self.assertEqual(
+            parse_layout_tag("#GRID(7@2X4)")["type"], "grid"
+        )
+
+    def test_grid_canonical_with_whitespace(self):
+        from runtime.actions.browser import parse_layout_tag
+        self.assertEqual(
+            parse_layout_tag("#grid( 1 @ 3 x 2 )")["cell"], 1
+        )
+
+    def test_grid_legacy_form_still_accepted(self):
+        # v1.1.19 keeps the old order working as a fallback (with a [WARN]).
         from runtime.actions.browser import parse_layout_tag
         self.assertEqual(
             parse_layout_tag("#grid(3x2@1)"),
             {"type": "grid", "cols": 3, "rows": 2, "cell": 1},
-        )
-
-    def test_grid_case_insensitive(self):
-        from runtime.actions.browser import parse_layout_tag
-        self.assertEqual(
-            parse_layout_tag("#GRID(2X4@7)")["type"], "grid"
-        )
-
-    def test_grid_with_whitespace(self):
-        from runtime.actions.browser import parse_layout_tag
-        self.assertEqual(
-            parse_layout_tag("#grid( 3 x 2 @ 1 )")["cell"], 1
         )
 
 

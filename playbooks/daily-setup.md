@@ -93,10 +93,10 @@ open notion.so #full
 ### 📈 Trading / dashboards
 
 ```text
-open dashboard1.com #grid(2x2@1)
-open dashboard2.com #grid(2x2@2)
-open dashboard3.com #grid(2x2@3)
-open dashboard4.com #grid(2x2@4)
+open dashboard1.com #grid(1@2x2)
+open dashboard2.com #grid(2@2x2)
+open dashboard3.com #grid(3@2x2)
+open dashboard4.com #grid(4@2x2)
 ```
 
 → instant multi-panel layout  

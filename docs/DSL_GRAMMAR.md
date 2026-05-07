@@ -809,7 +809,7 @@ press [{shift_down},({left})x5,{shift_up}]
 ## Grid
 
 ```text
-#grid(3x2@1)
+#grid(1@3x2)
 ```
 
 ---

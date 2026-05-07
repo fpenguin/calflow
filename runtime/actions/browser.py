@@ -237,9 +237,16 @@ def _apply_layout(
 
 _LAYOUT_NAMES = ("left", "right", "middle", "top", "bottom", "full")
 
-# #grid(NxM@D)  — N cols × M rows, occupy cell D (1-indexed, row-major).
+# v1.1.19 — grid grammar:
+#   CANONICAL : #grid(D @ NxM)   D = 1-indexed cell (row-major), NxM = cols × rows
+#   FALLBACK  : #grid(NxM @ D)   old form (pre-v1.1.19), accepted with [WARN]
 import re as _re
-_GRID_RE = _re.compile(r"^#grid\(\s*(\d+)\s*x\s*(\d+)\s*@\s*(\d+)\s*\)$", _re.IGNORECASE)
+_GRID_RE_CANON = _re.compile(
+    r"^#grid\(\s*(\d+)\s*@\s*(\d+)\s*x\s*(\d+)\s*\)$", _re.IGNORECASE
+)
+_GRID_RE_LEGACY = _re.compile(
+    r"^#grid\(\s*(\d+)\s*x\s*(\d+)\s*@\s*(\d+)\s*\)$", _re.IGNORECASE
+)
 
 # #area(x,y,w,h)  — pixel default; '%'-suffixed values are relative; mixed allowed.
 _AREA_RE = _re.compile(r"^#area\(([^)]*)\)$", _re.IGNORECASE)
@@ -258,11 +265,12 @@ def parse_layout_tag(tag: str) -> Optional[Dict]:
         #right(30)            → {"type": "right", "value": 0.3}
         #full                 → {"type": "full",  "value": 1.0}
         #middle / #top / #bottom — same shape as #left
-        #grid(3x2@1)          → {"type": "grid",  "cols": 3, "rows": 2, "cell": 1}
+        #grid(1@3x2)          → {"type": "grid",  "cell": 1, "cols": 3, "rows": 2}
+        #grid(3x2@1)          → fallback (legacy order); same dict, [WARN] logged
         #area(0,0,1920,1080)  → {"type": "area",  "x": ..., "y": ..., "w": ..., "h": ...}
         #area(0,0,50%,50%)    → percentage components (mixed units allowed)
 
-    Anything else (`#left30`, `#leftish`, …) → None.
+    Anything else (`#left30`, `#leftish`, …) → None + [WARN].
     """
     if not tag:
         return None
@@ -270,9 +278,24 @@ def parse_layout_tag(tag: str) -> Optional[Dict]:
     try:
         tag_lower = tag.lower().strip()
 
-        # ---- #grid(NxM@D) -------------------------------------------
-        m = _GRID_RE.match(tag_lower)
+        # ---- #grid(D@NxM) ─ canonical (v1.1.19+) --------------------
+        m = _GRID_RE_CANON.match(tag_lower)
         if m:
+            return {
+                "type": "grid",
+                "cell": int(m.group(1)),
+                "cols": int(m.group(2)),
+                "rows": int(m.group(3)),
+            }
+
+        # ---- #grid(NxM@D) ─ legacy fallback (pre-v1.1.19) -----------
+        m = _GRID_RE_LEGACY.match(tag_lower)
+        if m:
+            log(
+                f"[WARN] {tag!r} uses the legacy grid order — canonical is "
+                f"`#grid(<cell>@<cols>x<rows>)` (v1.1.19+). Interpreting as "
+                f"#grid({m.group(3)}@{m.group(1)}x{m.group(2)})."
+            )
             return {
                 "type": "grid",
                 "cols": int(m.group(1)),
@@ -313,6 +336,19 @@ def parse_layout_tag(tag: str) -> Optional[Dict]:
                 if name == "full":
                     return {"type": "full", "value": 1.0}
                 return {"type": name, "value": _parse_percent(tag_lower)}
+
+        # ---- v1.1.19 — surface unrecognised layout-shaped tags ------
+        # If the tag looks like one of our layout names (so the user
+        # clearly INTENDED a layout) but didn't match any of the regexes
+        # above, log a WARN with a hint instead of silently dropping it.
+        layout_prefixes = ("#grid(", "#area(") + tuple(f"#{n}(" for n in _LAYOUT_NAMES)
+        if any(tag_lower.startswith(p) for p in layout_prefixes):
+            hint = ""
+            if tag_lower.startswith("#grid("):
+                hint = " — expected `#grid(<cell>@<cols>x<rows>)`, e.g. #grid(1@3x2)"
+            elif tag_lower.startswith("#area("):
+                hint = " — expected `#area(x,y,w,h)` (4 comma-separated values)"
+            log(f"[WARN] Unrecognised layout tag {tag!r}{hint}")
 
     except Exception as e:
         log(f"[WARN] Failed to parse layout tag '{tag}': {e}")

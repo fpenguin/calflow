@@ -45,10 +45,11 @@ class HashDropPromotion(unittest.TestCase):
         self.assertIn("#area(0,0,1920,1080)", cmd.tags)
 
     def test_grid_without_hash_promotes(self) -> None:
+        # v1.1.19 — canonical grid order is cell@cols x rows.
         cmd = parse(
-            "+CalFlow+\nopen https://x.com @chrome grid(3x2@1)"
+            "+CalFlow+\nopen https://x.com @chrome grid(1@3x2)"
         ).commands[0]
-        self.assertIn("#grid(3x2@1)", cmd.tags)
+        self.assertIn("#grid(1@3x2)", cmd.tags)
 
     def test_profile_without_hash_promotes(self) -> None:
         cmd = parse(

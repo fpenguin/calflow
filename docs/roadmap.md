@@ -82,7 +82,7 @@ Make Plus Mode actually drive the GUI on macOS.
 # v2.2 — Layout Application Backend
 
 ## Goal
-Make `#left(50%)`, `#right(50%)`, `#grid(3x2@1)`, `#area(...)`, `#display(N)`
+Make `#left(50%)`, `#right(50%)`, `#grid(1@3x2)`, `#area(...)`, `#display(N)`
 actually move + resize windows. Currently they parse cleanly and the
 resolver returns the right dict — but the action layer logs `[INFO]
 Applying layout` and stops.

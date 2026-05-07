@@ -390,7 +390,7 @@ Tags modify:
 #display(2)
 #profile(1)
 #area(0,0,1920,1080)
-#grid(3x2@1)
+#grid(1@3x2)
 #full
 ```
 
@@ -945,7 +945,7 @@ run "./script.sh"
 #middle(40%)
 #right(30%)
 #full
-#grid(3x2@1)
+#grid(1@3x2)
 #area(0,0,1920,1080)
 #display(2)
 ```
@@ -1091,7 +1091,7 @@ In Plus Mode, attached function-shaped tags MAY drop the `#` prefix:
 open zoom.us @chrome display(2)     ≡  open zoom.us @chrome #display(2)
 open zoom.us @chrome left(50%)      ≡  open zoom.us @chrome #left(50%)
 open zoom.us @chrome area(0,0,1,1)  ≡  open zoom.us @chrome #area(0,0,1,1)
-open zoom.us @chrome grid(3x2@1)    ≡  open zoom.us @chrome #grid(3x2@1)
+open zoom.us @chrome grid(1@3x2)    ≡  open zoom.us @chrome #grid(1@3x2)
 open zoom.us @chrome profile(2)     ≡  open zoom.us @chrome #profile(2)
 ```
 
