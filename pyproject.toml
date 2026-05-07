@@ -45,20 +45,36 @@ indent-style = "space"
 
 
 # ─── Mypy ──────────────────────────────────────────────────────
+# v1.1.29 — strict mode is configured but not yet enforced in CI.
+# Local strict run:
+#     pip install -r requirements-dev.txt
+#     mypy core/ runtime/ infra/ state/ config/ cli/
+# Expect ~50–150 findings on first run. Triage them in batches:
+#   - Trivial annotation gaps (missing -> None, missing param hints) → fix.
+#   - Genuine type holes (Optional handling, Any escapes) → fix.
+#   - Third-party stub gaps (googleapiclient, AppKit) → already
+#     suppressed via ignore_missing_imports.
+# Once the count is zero locally, flip CI to gate on `mypy --strict`.
 [tool.mypy]
 python_version = "3.10"
-ignore_missing_imports = true   # no stubs for googleapiclient, AppKit, etc.
-check_untyped_defs = true
+ignore_missing_imports = true     # no stubs for googleapiclient, AppKit, etc.
+
+# Strict-mode flags. Toggle individual ones off if a category is too
+# noisy on the first run, then re-enable as the codebase tightens.
+strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
-
-# Relax strictness here while v1.1.x is iterating.
-# v1.1.27 will flip these to true:
-#   disallow_untyped_defs = true
-#   disallow_any_generics = true
-#   strict_equality = true
+warn_unreachable = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+strict_equality = true
+strict_optional = true
+no_implicit_optional = true
 
 [[tool.mypy.overrides]]
+# Tests routinely use Mocks / Anys / setattr — strict mode there is
+# busywork without bug-finding value. Skip for now.
 module = ["tests.*", "scripts.*"]
 ignore_errors = true
 
