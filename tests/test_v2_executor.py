@@ -34,10 +34,11 @@ class FakeActions:
         self.sleeps: List[float] = []
 
     def open_target(self, url=None, app=None, layout=None, display_spec=None,
-                    chrome_profile=None) -> None:
+                    chrome_profile=None, new_window=False) -> None:
         self.opens.append({
             "url": url, "app": app, "layout": layout,
             "display_spec": display_spec, "chrome_profile": chrome_profile,
+            "new_window": new_window,
         })
 
     def take_screenshot(self, path=None):

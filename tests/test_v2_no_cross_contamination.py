@@ -92,8 +92,9 @@ class SmartExecutorContamination(unittest.TestCase):
         ex.open_target, ex.time.sleep, af.trigger_autofill = self._saves
 
     def _fake_open(self, url=None, app=None, layout=None, display_spec=None,
-                   chrome_profile=None):
-        self.captured.append({"url": url, "app": app, "layout": layout})
+                   chrome_profile=None, new_window=False):
+        self.captured.append({"url": url, "app": app, "layout": layout,
+                              "new_window": new_window})
 
     # -----------------------------------------------------
 

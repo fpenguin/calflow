@@ -33,6 +33,58 @@ except ImportError:
 
 
 # =========================================================
+# 🪟 NEW-WINDOW DECISION (v1.1.20)
+# =========================================================
+
+# Tag prefixes that imply window-level control. Their presence flips
+# the `new(window)` default ON because layout / display tags are
+# meaningless for a tab — you can't position a tab independently of
+# the window it lives in. `#profile` is NOT in this list: profile is a
+# session selector, not a placement modifier, and the existing -na
+# path keeps its current behaviour for back-compat.
+_WINDOW_TRIGGER_PREFIXES = (
+    "#left", "#right", "#middle", "#top", "#bottom", "#full",
+    "#grid(", "#area(", "#display",
+)
+
+
+def wants_new_window(tags=None, functions=None) -> bool:
+    """
+    Compute whether an open should force a NEW WINDOW vs land in a tab.
+
+    Rule (v1.1.20):
+      1. Explicit `new(window)` / `new(tab)` always wins.
+      2. Otherwise: any layout / display tag implies window mode
+         (because layout cannot be applied to a tab independently).
+      3. Default: tab.
+
+    `tags`     — iterable of `#tag` strings (mixed case OK)
+    `functions`— iterable of (name, value) tuples from the parser
+    """
+    # 1. Explicit override
+    if functions:
+        for name, value in functions:
+            if name == "new":
+                s = str(value).strip().lower().strip("\"'")
+                if s == "window":
+                    return True
+                if s == "tab":
+                    return False
+                log(
+                    f"[WARN] new({value!r}) — expected new(window) or "
+                    "new(tab); ignoring and using default"
+                )
+
+    # 2. Layout / display tag → window
+    for t in tags or ():
+        tl = str(t).lower()
+        for prefix in _WINDOW_TRIGGER_PREFIXES:
+            if tl == prefix.rstrip("(") or tl.startswith(prefix):
+                return True
+    return False
+
+
+# =========================================================
 # 🚀 PUBLIC API
 # =========================================================
 
@@ -43,6 +95,7 @@ def open_target(
     display_spec=None,
     *,
     chrome_profile: Optional[str] = None,
+    new_window: bool = False,
 ) -> None:
     """
     Open one target (URL, app, or file) and optionally apply layout.
@@ -62,6 +115,11 @@ def open_target(
         display_spec:   target display from core.resolver.resolve_display()
         chrome_profile: optional Chrome --profile-directory value
                         ("Default", "Profile 1", "Profile 2", …)
+        new_window:     v1.1.20 — when True, force the URL into a fresh
+                        browser window (--new-window for Chromium,
+                        AppleScript for Safari, --new-window for Firefox).
+                        When False, macOS default behaviour applies
+                        (typically a new tab in an existing window).
     """
     if not url and not app:
         log("[WARN] open_target: no primary or app provided")
@@ -72,7 +130,8 @@ def open_target(
         kind = _classify_primary(url) if url else None
 
         if kind == "url":
-            _open_url(url, app, chrome_profile=chrome_profile)
+            _open_url(url, app, chrome_profile=chrome_profile,
+                      new_window=new_window)
         elif kind == "file":
             _open_file(url)
         elif kind == "app":
@@ -143,16 +202,75 @@ def _strip_quotes(text: str) -> str:
 # 🌐 URL HANDLING
 # =========================================================
 
-def _open_url(url: str, app: Optional[str], *, chrome_profile: Optional[str] = None) -> None:
+_CHROMIUM_BROWSERS = ("Google Chrome", "Brave Browser", "Microsoft Edge", "Arc")
+
+
+def _open_url(
+    url: str,
+    app: Optional[str],
+    *,
+    chrome_profile: Optional[str] = None,
+    new_window: bool = False,
+) -> None:
     """
     Open URL in specified browser or fallback.
 
-    Resolution:
-        1. app == 'Google Chrome' AND chrome_profile set
-           → open -na "Google Chrome" --args --profile-directory=… url
-        2. app provided → open via macOS `open -a app url`
-        3. fallback → default browser
+    v1.1.20 semantics for `new_window`:
+        True  → guarantee the URL lands in a fresh BROWSER WINDOW
+        False → default macOS behaviour (tab in existing window if any)
+
+    Per-browser mechanics for `new_window=True`:
+        Chromium (Chrome, Brave, Edge, Arc) — `-na <app> --args --new-window <url>`
+                  (with `--profile-directory=…` appended for Chrome+profile)
+        Safari   — AppleScript: `tell app "Safari" to make new document with properties {URL:…}`
+        Firefox  — `-a Firefox --args --new-window <url>`
+        anything else / unknown → fall back to `-na <app> <url>` (best-effort
+                  new instance) and log [INFO] that we couldn't guarantee window mode.
     """
+    # ── new_window=True path ─────────────────────────────────────────
+    if new_window and app:
+        try:
+            if app in _CHROMIUM_BROWSERS:
+                args = ["open", "-na", app, "--args", "--new-window"]
+                if app == "Google Chrome" and chrome_profile:
+                    args.append(f"--profile-directory={chrome_profile}")
+                args.append(url)
+                subprocess.run(args, check=False)
+                log(
+                    f"[INFO] Opened URL in {app} (new window"
+                    f"{', ' + chrome_profile if app == 'Google Chrome' and chrome_profile else ''}"
+                    f"): {url}"
+                )
+                return
+            if app == "Safari":
+                escaped = url.replace('"', '\\"')
+                script = (
+                    'tell application "Safari"\n'
+                    '    activate\n'
+                    f'    make new document with properties {{URL:"{escaped}"}}\n'
+                    'end tell\n'
+                )
+                subprocess.run(["osascript", "-e", script], check=False)
+                log(f"[INFO] Opened URL in Safari (new window): {url}")
+                return
+            if app == "Firefox":
+                subprocess.run(
+                    ["open", "-a", "Firefox", "--args", "--new-window", url],
+                    check=False,
+                )
+                log(f"[INFO] Opened URL in Firefox (new window): {url}")
+                return
+            # Unknown browser — best-effort: -na (new instance)
+            subprocess.run(["open", "-na", app, url], check=False)
+            log(
+                f"[INFO] Opened URL in {app} (-na fallback; "
+                "new-window not guaranteed): {url}"
+            )
+            return
+        except Exception as e:
+            log(f"[WARN] new-window launch for {app} failed, falling back: {e}")
+
+    # ── new_window=False (or no app) path ────────────────────────────
     if app == "Google Chrome" and chrome_profile:
         try:
             subprocess.run(

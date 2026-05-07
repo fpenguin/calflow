@@ -127,6 +127,9 @@ def _execute_single(
     delay = resolve_delay(tags)
     should_fill, should_submit = resolve_autofill(tags)
     chrome_profile = resolve_chrome_profile(tags)
+    # v1.1.20 — layout/display tags imply new window in Smart Mode too
+    from runtime.actions.browser import wants_new_window
+    new_win = wants_new_window(tags=tags)
 
     # =====================================================
     # 🌐 OPEN
@@ -138,6 +141,7 @@ def _execute_single(
         layout=layout,
         display_spec=display_spec,
         chrome_profile=chrome_profile,
+        new_window=new_win,
     )
 
     # =====================================================

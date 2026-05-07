@@ -189,7 +189,7 @@ class SmartModeDynamic(unittest.TestCase):
         captured = {}
 
         def fake_open(url=None, app=None, layout=None, display_spec=None,
-                      chrome_profile=None):
+                      chrome_profile=None, new_window=False):
             captured["url"] = url
 
         orig_open = ex.open_target

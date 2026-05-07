@@ -150,8 +150,16 @@ def _do_open(params: Dict[str, Any]) -> None:
         return
 
     tags = set(params.get("tags") or frozenset())
+    functions = params.get("functions") or {}
     display_spec = resolve_display(tags)
     chrome_profile = resolve_chrome_profile(tags)
+    # v1.1.20 — layout/display tag implies new window; new(window)/new(tab)
+    # explicitly overrides. See runtime.actions.browser.wants_new_window.
+    from runtime.actions.browser import wants_new_window
+    new_win = wants_new_window(
+        tags=tags,
+        functions=list(functions.items()) if isinstance(functions, dict) else functions,
+    )
 
     # Bundle expansion: if the primary itself is `@bundle`, the resolver
     # populated `apps` with multiple items. Each bundle item becomes its
@@ -171,6 +179,7 @@ def _do_open(params: Dict[str, Any]) -> None:
                 layout=params.get("layout"),
                 display_spec=display_spec,
                 chrome_profile=chrome_profile,
+                new_window=new_win,
             )
         return
 
@@ -185,6 +194,7 @@ def _do_open(params: Dict[str, Any]) -> None:
             layout=params.get("layout"),
             display_spec=display_spec,
             chrome_profile=chrome_profile,
+            new_window=new_win,
         )
 
     time.sleep(max(0.0, AUTOFILL_BUFFER))
