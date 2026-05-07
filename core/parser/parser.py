@@ -69,9 +69,16 @@ def is_plus_mode(text: str) -> bool:
 def parse(text: str, title: Optional[str] = None) -> ParseResult:
     """
     Unified parser entrypoint. Never None, never raises.
+
+    v1.1.21 — when `text` is empty, we no longer short-circuit to
+    MODE_NONE. The smart parser's v1.1.17 title-URL extraction fires
+    on the title argument alone, so an event with a URL ONLY in its
+    title (and an empty body) still produces a Smart-Mode entry.
     """
-    if not text:
+    if not text and not title:
         return ParseResult(mode=MODE_NONE)
+
+    text = text or ""
 
     try:
         if is_plus_mode(text):

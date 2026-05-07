@@ -692,7 +692,17 @@ def _list_test_candidates(hours: int = 2) -> List[Dict]:
     for cal_id in get_selected_calendars():
         for ev in get_upcoming_events(service, cal_id, hours=hours):
             text = (ev.get("text") or "").strip()
-            title = (ev.get("title") or "").strip().lower()
+            title_raw = (ev.get("title") or "").strip()
+            title = title_raw.lower()
+
+            # v1.1.21 — also probe the title for URLs. A title-URL-only
+            # event (empty body, URL in title) used to score as
+            # `[empty]` because the old logic looked at body text only.
+            # Now any URL — body or title — counts as a Smart signal.
+            import re as _re_local
+            title_has_url = bool(
+                _re_local.search(r"https?://", title_raw, _re_local.IGNORECASE)
+            )
 
             # Score
             if "+calflow+" in text.lower():
@@ -700,8 +710,8 @@ def _list_test_candidates(hours: int = 2) -> List[Dict]:
                 mode = "plus"
             elif "calflow" in title or "test" in title:
                 score = 2
-                mode = "smart" if text else "empty"
-            elif text:
+                mode = "smart" if (text or title_has_url) else "empty"
+            elif text or title_has_url:
                 score = 1
                 mode = "smart"
             else:

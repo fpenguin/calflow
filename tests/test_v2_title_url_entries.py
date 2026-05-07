@@ -125,6 +125,26 @@ class NoTitleUrlNoChange(unittest.TestCase):
         entries = extract_url_entries("https://a.com")
         self.assertEqual(_urls(entries), ["https://a.com"])
 
+    def test_parse_with_empty_body_and_title_url(self) -> None:
+        """v1.1.21 — parse() must NOT short-circuit on empty body when
+        the title still carries a URL. Earlier the dispatcher returned
+        MODE_NONE before smart_parser ever saw the title."""
+        from core.parser.parser import parse
+        result = parse(
+            "",
+            title="https://zone.fizz.ca/dce/customer-ui-prod/loyalty;preserveFragment=true#badges",
+        )
+        self.assertEqual(result.mode, "smart")
+        self.assertFalse(result.is_empty)
+        self.assertEqual(len(result.entries), 1)
+        self.assertIn("zone.fizz.ca", result.entries[0]["url"])
+
+    def test_parse_with_no_text_and_no_title(self) -> None:
+        from core.parser.parser import parse
+        self.assertEqual(parse("").mode, "none")
+        self.assertEqual(parse("", title=None).mode, "none")
+        self.assertEqual(parse("", title="").mode, "none")
+
     def test_no_title_no_body(self) -> None:
         entries = extract_url_entries("")
         self.assertEqual(entries, [])
