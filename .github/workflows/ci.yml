@@ -33,21 +33,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Run unittest suite
-        run: python -m unittest discover tests/ --verbose
-
-      - name: Report test count
-        if: always()
-        run: |
-          python -c "
-          import unittest
-          loader = unittest.TestLoader()
-          suite = loader.discover('tests/')
-          n = suite.countTestCases()
-          print(f'CalFlow test suite size: {n} tests')
-          "
+      - name: Run pytest
+        # v1.1.28 — pytest auto-discovers and runs unittest-style tests.
+        # New tests should be written in pytest style (plain `assert` +
+        # @pytest.fixture). Migration of legacy unittest tests is
+        # deferred — see TESTING.md.
+        run: pytest tests/ -v
 
   lint:
     name: Lint (ruff)
