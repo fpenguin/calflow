@@ -50,22 +50,21 @@ class SmartModeRegression(unittest.TestCase):
         self.assertEqual(len(result.entries), 1)
         self.assertIn("#force", result.entries[0]["tags"])
 
-    def test_empty_text_is_none_mode(self) -> None:
-        result = parse("")
-        self.assertTrue(result.is_empty)
+
+
+
+# v1.1.25 — three Plus-Mode-detection tests removed:
+#   - test_header_first_line_triggers_plus
+#   - test_header_case_insensitive
+#   - test_empty_text_is_none_mode (above)
+# All three were exact duplicates of S1_ModeDetection in test_v2_spec.py.
+# `test_header_anywhere_in_doc_triggers_plus` is kept because the
+# substring-match rule (v1.1.6) isn't tested in the spec file.
 
 
 class PlusModeDetection(unittest.TestCase):
-    def test_header_first_line_triggers_plus(self) -> None:
-        text = "+CalFlow+\nOPEN https://example.com"
-        self.assertEqual(parse(text).mode, MODE_PLUS)
-
-    def test_header_case_insensitive(self) -> None:
-        text = "+calflow+\nWAIT 1"
-        self.assertEqual(parse(text).mode, MODE_PLUS)
-
     def test_header_anywhere_in_doc_triggers_plus(self) -> None:
-        # Per DSL_GRAMMAR §1.2 / parser-behavior §2.4, the header
+        # Per DSL_GRAMMAR §1.2 (v1.1.6 substring rule), the header
         # switches the WHOLE document to Plus Mode regardless of position.
         text = "zoom.us\n\n+CalFlow+\nopen notion.so"
         self.assertEqual(parse(text).mode, MODE_PLUS)
