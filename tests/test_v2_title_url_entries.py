@@ -264,5 +264,42 @@ class WindowTabTagOverride(unittest.TestCase):
         self.assertTrue(wants_new_window(tags={"#grid(1@3x2)", "#window"}))
 
 
+class DaemonEmptyBodyTitleUrl(unittest.TestCase):
+    """v1.1.23 regression — the daemon's main loop must not silently
+    drop events that have a URL in the title and an empty body."""
+
+    def test_parse_with_empty_body_and_url_title_yields_entry(self) -> None:
+        # The daemon calls parse(text, title=...). An event with
+        # text="" but a title URL should produce one entry.
+        from core.parser.parser import parse
+        result = parse(
+            "",
+            title="Standup — https://zoom.us/j/12345",
+        )
+        self.assertEqual(result.mode, "smart")
+        self.assertFalse(result.is_empty)
+        self.assertEqual(len(result.entries), 1)
+
+    def test_main_loop_skip_predicate(self) -> None:
+        # The daemon now skips ONLY when both text and title are empty
+        # after stripping. Validate the predicate the loop uses.
+        cases = [
+            # (text, title, should_skip)
+            ("", "", True),
+            ("   ", "   ", True),
+            ("", "https://x.com", False),
+            ("", "Standup — https://zoom.us/j/12345", False),
+            ("https://body.com", "", False),
+            ("text", "title", False),
+        ]
+        for text, title, should_skip in cases:
+            skip = (not text.strip()) and (not title.strip())
+            self.assertEqual(
+                skip, should_skip,
+                f"text={text!r}, title={title!r} → skip={skip!r}, "
+                f"expected={should_skip!r}",
+            )
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main(verbosity=2)

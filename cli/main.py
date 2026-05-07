@@ -1060,7 +1060,14 @@ def main() -> None:
             continue
 
         text = event.get("text") or ""
-        if not text.strip():
+        title = event.get("title") or ""
+
+        # v1.1.23 — DO NOT skip when text.strip() is empty. v1.1.21
+        # made the parser fall through to title-URL extraction, but
+        # this early filter was bypassing it for the daemon. The
+        # `parsed.is_empty` check below (after parse()) handles the
+        # truly-empty case correctly.
+        if not text.strip() and not title.strip():
             continue
 
         global_tags = extract_tags(text)
