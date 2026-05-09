@@ -7,3 +7,19 @@ data/
 .vscode/
 secrets/
 *.json
+
+# v1.1.30 — AI agent scratch space. specs/ stays tracked (design history);
+# everything else is volatile per-session work.
+_workspace/scratchpads/
+_workspace/tasks/
+_workspace/architecture/
+_workspace/prompts/
+_workspace/diffs/
+_workspace/outputs/
+_workspace/reviews/
+
+# mypy / pytest / ruff caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+scripts/typecheck.log
