@@ -1184,6 +1184,14 @@ if __name__ == "__main__":
     cmd = _first_non_flag_arg(args)
     full = "--full" in args
 
+    # v1.2.0 — flag-only invocations (no subcommand). `cmd` strips flags
+    # via `_first_non_flag_arg`, so `python -m cli.main --version` would
+    # otherwise fall through to the daemon path. Check sys.argv directly.
+    if any(flag in args for flag in ("--version", "-V")):
+        from core.version import version_string
+        print(f"CalFlow {version_string()}")
+        sys.exit(0)
+
     if cmd in ("setup", "--setup"):
         run_onboarding()
         sys.exit(0)
