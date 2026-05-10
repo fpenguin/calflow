@@ -255,7 +255,26 @@ session. Don't violate silently.
 
 ---
 
-## 10. Pointers
+## 10. Cowork vs Code coordination
+
+When both sessions are available:
+
+- Cowork is for visual design, research, and quick exploration.
+- Code is the source of truth for specs, implementation, and commits.
+- Cowork MUST NOT modify tracked source files (`cli/`, `core/`,
+  `runtime/`, `state/`, `tests/`, `infra/`, `config/`) — if it does, the
+  next Code session must commit immediately or the work is lost.
+- Cowork MAY write to `_workspace/scratchpads/` (gitignored) for handoff
+  notes, and to `_workspace/specs/` for spec drafts (but the spec must
+  be committed by Code before implementation begins).
+- Mockup HTML rendered in Cowork is for review only, not for editing
+  the real `runtime/menubar/*.html` files.
+
+If forced to choose only one tool: use Code. Cowork is the sketchpad.
+
+---
+
+## 11. Pointers
 
 - `docs/DSL_SPEC.md` — DSL reference
 - `docs/DSL_GRAMMAR.md` — formal grammar
