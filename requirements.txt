@@ -16,6 +16,13 @@
 #   google-auth-oauthlib      — InstalledAppFlow for the desktop OAuth dance
 #   python-dateutil           — ISO 8601 parsing of event start/end fields
 #
+# Menubar deps (v1.3.0 — only required for `python -m cli.main menubar`;
+# CLI keeps working without them via lazy imports):
+#   pyobjc-framework-Cocoa     — NSStatusBar, NSPopover, NSApplication
+#   pyobjc-framework-WebKit    — WKWebView for the popover UI
+#   rumps                      — convenience wrappers (currently unused;
+#                                reserved for future menu-item helpers)
+#
 # Optional (dev) deps live in requirements-dev.txt.
 
 certifi==2026.2.25
@@ -44,3 +51,8 @@ six==1.17.0
 typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.6.3
+
+# v1.3.0 — menubar companion (lazy-imported; CLI works without these).
+pyobjc-framework-Cocoa>=10.0
+pyobjc-framework-WebKit>=10.0
+rumps>=0.4.0

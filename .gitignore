@@ -18,6 +18,10 @@ _workspace/diffs/
 _workspace/outputs/
 _workspace/reviews/
 
+# v1.3.14 — Settings writer .bak files (PII); Claude Code worktrees.
+*.bak
+.claude/worktrees/
+
 # mypy / pytest / ruff caches
 .mypy_cache/
 .pytest_cache/

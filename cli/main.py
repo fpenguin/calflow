@@ -49,6 +49,7 @@ from cli.onboarding import (
 # Infra
 from infra.calendar.calendar_client import (
     build_service,
+    get_recent_events,
     get_upcoming_events,
     next_event_across_calendars,
 )
@@ -357,6 +358,655 @@ def print_status_summary() -> None:
 def print_status_json() -> None:
     """v1.1.27 — `cli.main status --json`. Stable contract for menubar consumers."""
     print(json.dumps(collect_status(), indent=2, default=str))
+
+
+# =========================================================
+# 📊 STATS / EVENTS / RUN-EVENT JSON ENDPOINTS  (v1.3.0)
+# =========================================================
+#
+# These power the menubar popover. Each prints a single JSON object
+# to stdout, exits 0 on success, non-zero with `{"error": "..."}` on
+# failure. Stable contract documented in docs/menubar.md.
+
+
+def _summarise_event(ev: Dict, *, now: datetime) -> Dict:
+    """
+    Project a calendar-client event dict into the JSON shape the
+    menubar consumes. Pure function (no IO).
+
+    Mode detection mirrors the test runner's _list_test_candidates
+    scoring so what the menubar shows == what the daemon would do.
+    """
+    title = (ev.get("title") or "").strip()
+    text = (ev.get("text") or "").strip()
+    start = ev.get("start")
+    if start is not None and start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+
+    # Mode detection — keep cheap; full parse happens at run-time.
+    import re as _re
+    title_has_url = bool(_re.search(r"https?://", title, _re.IGNORECASE))
+    if "+calflow+" in text.lower():
+        mode = "plus"
+    elif text or title_has_url:
+        mode = "smart"
+    else:
+        mode = "empty"
+
+    delta = (start - now).total_seconds() if start is not None else None
+
+    # Preview line — best-effort one-liner for the popover row. We
+    # never want to leak the full body (PII), so we cap at 1 line +
+    # 60 chars and never emit URLs verbatim — host-only.
+    preview: Optional[str] = None
+    if mode == "smart":
+        urls = _re.findall(r"https?://([^\s/?#]+)", title + "\n" + text)
+        if urls:
+            preview = f"Opens {urls[0]}"
+    elif mode == "plus":
+        # First non-blank line after the +CalFlow+ header.
+        for raw in text.splitlines():
+            ln = raw.strip()
+            if not ln or ln.lower().startswith("+calflow+") or ln.startswith("##"):
+                continue
+            preview = ln if len(ln) <= 60 else ln[:57] + "…"
+            break
+
+    return {
+        "id":             ev.get("id") or "",
+        "calendar_id":    ev.get("calendar_id") or "",
+        "title":          title or "(untitled)",
+        "start":          start.isoformat() if start is not None else None,
+        "seconds_until":  int(delta) if delta is not None else None,
+        "mode":           mode,
+        "preview":        preview,
+    }
+
+
+def _hours_arg(args: List[str], default: int) -> int:
+    """Parse `--hours N` from args, falling back to `default`."""
+    for i, arg in enumerate(args):
+        if arg == "--hours" and i + 1 < len(args):
+            try:
+                return max(1, int(args[i + 1]))
+            except ValueError:
+                pass
+        if arg.startswith("--hours="):
+            try:
+                return max(1, int(arg.split("=", 1)[1]))
+            except ValueError:
+                pass
+    return default
+
+
+def print_stats_json() -> None:
+    """`cli.main stats --json` — lifetime stats for the menubar header card."""
+    from state.stats_store import snapshot
+    print(json.dumps(snapshot(), indent=2, default=str))
+
+
+def print_upcoming_json(hours: int = 24) -> None:
+    """`cli.main upcoming --json [--hours N]` — populates the menubar 'Today' list."""
+    out: Dict = {"events": [], "google_error": None, "hours": hours}
+    try:
+        service = build_service()
+    except RuntimeError as exc:
+        out["google_error"] = f"not connected: {exc}"
+        print(json.dumps(out, indent=2, default=str))
+        return
+    except Exception as exc:
+        out["google_error"] = f"{type(exc).__name__}: {exc}"
+        print(json.dumps(out, indent=2, default=str))
+        return
+
+    now = datetime.now(timezone.utc)
+    rows: List[Dict] = []
+    for cal_id in get_selected_calendars():
+        for ev in get_upcoming_events(service, cal_id, hours=hours):
+            rows.append(_summarise_event(ev, now=now))
+    rows.sort(key=lambda r: r.get("start") or "")
+    out["events"] = rows
+    print(json.dumps(out, indent=2, default=str))
+
+
+def print_missed_json(hours: int = 12) -> None:
+    """
+    `cli.main missed --json [--hours N]` — events whose start was in the
+    past `hours` window AND whose run_key is NOT in state. The menubar
+    renders these in its "Missed · last 12 h" pane.
+    """
+    out: Dict = {"events": [], "google_error": None, "hours": hours}
+    try:
+        service = build_service()
+    except RuntimeError as exc:
+        out["google_error"] = f"not connected: {exc}"
+        print(json.dumps(out, indent=2, default=str))
+        return
+    except Exception as exc:
+        out["google_error"] = f"{type(exc).__name__}: {exc}"
+        print(json.dumps(out, indent=2, default=str))
+        return
+
+    state = load_state()
+    now = datetime.now(timezone.utc)
+    rows: List[Dict] = []
+    for cal_id in get_selected_calendars():
+        for ev in get_recent_events(service, cal_id, hours=hours):
+            start = ev.get("start")
+            if start is not None and start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+                ev["start"] = start
+            run_key = f"{ev.get('id')}_{start.isoformat() if start else ''}"
+            if is_done(state, run_key):
+                continue  # already executed — not "missed"
+            row = _summarise_event(ev, now=now)
+            if row["mode"] == "empty":
+                continue  # no automation → nothing to "miss"
+            rows.append(row)
+    # Most recent first — the user cares most about what just happened.
+    rows.sort(key=lambda r: r.get("start") or "", reverse=True)
+    out["events"] = rows
+    print(json.dumps(out, indent=2, default=str))
+
+
+def run_event_by_id(event_id: str) -> None:
+    """
+    `cli.main run-event <id> --json` — locate a calendar event by id
+    in the upcoming OR missed window, parse it, execute it, mark done,
+    print result JSON.
+
+    Used by the menubar play-icon buttons. Does NOT consult the daemon
+    lock — manual run-now is intentional and overrides idempotency
+    checks (the user just clicked Run).
+    """
+    out: Dict = {"id": event_id, "success": False, "mode": None, "error": None}
+    if not event_id:
+        out["error"] = "missing event id"
+        print(json.dumps(out)); return
+
+    try:
+        service = build_service()
+    except Exception as exc:
+        out["error"] = f"calendar: {type(exc).__name__}: {exc}"
+        print(json.dumps(out)); return
+
+    target: Optional[Dict] = None
+    for cal_id in get_selected_calendars():
+        for ev in get_upcoming_events(service, cal_id, hours=24):
+            if ev.get("id") == event_id:
+                target = ev; break
+        if target: break
+        for ev in get_recent_events(service, cal_id, hours=12):
+            if ev.get("id") == event_id:
+                target = ev; break
+        if target: break
+
+    if target is None:
+        out["error"] = "event not found in upcoming/missed window"
+        print(json.dumps(out)); return
+
+    text = target.get("text") or ""
+    title = target.get("title") or ""
+    parsed = parse(text, title=title)
+    out["mode"] = parsed.mode
+
+    if parsed.is_empty:
+        out["error"] = "no executable content"
+        print(json.dumps(out)); return
+
+    try:
+        if parsed.is_smart:
+            execute_entries(
+                entries=parsed.entries,
+                global_tags=extract_tags(text),
+                debug=DEBUG,
+            )
+        elif parsed.is_plus:
+            execute_commands(
+                commands=parsed.commands,
+                global_tags=extract_tags(text),
+                debug=DEBUG,
+            )
+    except Exception as exc:
+        out["error"] = f"{type(exc).__name__}: {exc}"
+        print(json.dumps(out)); return
+
+    # Mark done so the daemon won't re-fire it.
+    start = target.get("start")
+    if start is not None and start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if start is not None:
+        state = load_state()
+        run_key = f"{event_id}_{start.isoformat()}"
+        mark_done(state, run_key)
+        save_state(state)
+
+    out["success"] = True
+    print(json.dumps(out))
+
+
+def _daemon_loaded() -> bool:
+    return _daemon_state().get("loaded", False)
+
+
+def print_daemon_action_json(action: str) -> None:
+    """
+    `cli.main daemon-{start|stop|restart}` (v1.3.6) — actually run the
+    launchctl operation and return the resulting state as JSON.
+
+    Per CLAUDE.md the prohibition on auto-modifying launchd applies to
+    the AI agent editing code; a UI button is explicit user approval —
+    same trust as the user typing `python -m cli.main start` themselves.
+    """
+    out: Dict[str, Any] = {"action": action, "ok": False}
+    try:
+        if action == "start":
+            start_launchd()
+        elif action == "stop":
+            stop_launchd()
+        elif action == "restart":
+            restart_launchd()
+        else:
+            out["error"] = f"unknown action {action!r}"
+            print(json.dumps(out)); return
+        out["ok"] = True
+        out["loaded_after"] = _daemon_loaded()
+    except FileNotFoundError as exc:
+        out["error"] = f"launchd plist missing: {exc}"
+    except Exception as exc:
+        out["error"] = f"{type(exc).__name__}: {exc}"
+    print(json.dumps(out))
+
+
+def print_pause_hint() -> None:
+    """`cli.main pause` — back-compat alias for `daemon-stop`."""
+    print_daemon_action_json("stop")
+
+
+def print_resume_hint() -> None:
+    """`cli.main resume` — back-compat alias for `daemon-start`."""
+    print_daemon_action_json("start")
+
+
+# =========================================================
+# 📚 RECIPES JSON ENDPOINTS  (v1.3.1 — menubar Recipes window)
+# =========================================================
+
+def print_recipes_json() -> None:
+    """`cli.main recipes --json` — stock catalog + user recipes for the Recipes window."""
+    from core.recipes import all_recipes
+    print(json.dumps(all_recipes(), indent=2, default=str))
+
+
+def save_recipe_from_stdin() -> None:
+    """
+    `cli.main save-recipe --json` — read a JSON payload from stdin,
+    upsert into data/my_recipes.json, print the canonical saved dict.
+
+    Stdin shape: `{"id"?: "...", "name": "...", "category": "...", "body": "..."}`
+    """
+    from core.recipes import save_my_recipe
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw or "{}")
+        if not isinstance(payload, dict):
+            raise ValueError("stdin must be a JSON object")
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": f"bad payload: {exc}"}))
+        sys.exit(1)
+    print(json.dumps(save_my_recipe(payload), default=str))
+
+
+def delete_recipe_by_id(rid: str) -> None:
+    """`cli.main delete-recipe <id> --json`."""
+    from core.recipes import delete_my_recipe
+    print(json.dumps(delete_my_recipe(rid), default=str))
+
+
+def run_script_from_stdin() -> None:
+    """
+    `cli.main run-script --json` — execute a literal script string from
+    stdin via the existing parser → executor pipeline.
+
+    Used by the menubar Recipes window's "Try it" button. Same execution
+    surface as a calendar event; no new permissions. The script body
+    is NEVER logged (PII discipline) — only an entry marker is emitted.
+    """
+    out: Dict = {"success": False, "mode": None, "error": None}
+    try:
+        body = sys.stdin.read()
+    except Exception as exc:
+        out["error"] = f"could not read stdin: {exc}"
+        print(json.dumps(out)); sys.exit(1)
+    if not body or not body.strip():
+        out["error"] = "empty script body"
+        print(json.dumps(out)); return
+
+    log("[INFO] Sandbox run from menubar Recipes window")
+    parsed = parse(body, title="Recipes sandbox")
+    out["mode"] = parsed.mode
+
+    if parsed.is_empty:
+        out["error"] = "no executable content"
+        print(json.dumps(out)); return
+
+    try:
+        if parsed.is_smart:
+            execute_entries(
+                entries=parsed.entries,
+                global_tags=extract_tags(body),
+                debug=DEBUG,
+            )
+        elif parsed.is_plus:
+            execute_commands(
+                commands=parsed.commands,
+                global_tags=extract_tags(body),
+                debug=DEBUG,
+            )
+    except Exception as exc:
+        out["error"] = f"{type(exc).__name__}: {exc}"
+        print(json.dumps(out)); return
+
+    out["success"] = True
+    print(json.dumps(out))
+
+
+# =========================================================
+# ⚙️  SETTINGS JSON ENDPOINT  (v1.3.1 — menubar Settings window)
+# =========================================================
+#
+# READ-ONLY in v1.3.1. Native form-based editing is deferred to v1.4.x
+# (needs a settings.json refactor first). Each section shows the value
+# and a "Edit in settings.py" affordance.
+#
+# Hidden fields (security / size):
+#   - AUTOFILL_SHORTCUTS    (binding table; large, key-centric)
+#   - BLACKLIST_REGEX       (security; surface count only)
+#   - MAP_DOMAINS           (large list; surface count only)
+
+def print_settings_json() -> None:
+    """`cli.main settings --json` — beginner-friendly view of config/settings.py.
+
+    v1.3.7 — removed Show-menu-bar / Theme / Notifications surfaces;
+    real probes for accessibility, apple events, google account.
+    """
+    from config import settings as S
+
+    def _count_or_none(seq):
+        try:
+            return len(seq)
+        except Exception:
+            return None
+
+    payload = {
+        "schema_version": 2,
+        "general": {
+            "auto_start_at_login": _launchd_loaded(),
+        },
+        "calendar": {
+            "google_account":     _google_account_label(),
+            "google_status":      "ok" if _has_oauth_token() else "missing",
+            "calendars_watched":  _calendar_count_label(),
+        },
+        "events": {
+            "open_minutes_early":   getattr(S, "DEFAULT_ALERT_SECONDS", 300) // 60,
+            "default_browser":      _default_browser_label(),
+            "default_profile":      _default_profile_label(),
+            "fetch_window_hours":   getattr(S, "FETCH_WINDOW_HOURS", 2),
+            "status_lookahead_h":   getattr(S, "STATUS_LOOKAHEAD_HOURS", 24),
+        },
+        "title_links": {
+            "use_title_url_when_present": True,    # always-on in current parser
+            "open_mode": getattr(S, "TITLE_URL_OPEN_DEFAULT", "tab"),
+            "autofill":  getattr(S, "TITLE_URL_AUTOFILL_DEFAULT", "submit"),
+        },
+        "passwords": {
+            "provider":         getattr(S, "AUTOFILL_PROVIDER", "apple"),
+            "autofill_on_open": getattr(S, "AUTOFILL_MODE", "semi-auto") != "off",
+        },
+        # Notifications section removed in v1.3.7 — feature not yet built.
+        "permissions": _probe_permissions(),
+        "advanced": {
+            "trigger_grace_seconds":  getattr(S, "GRACE_SECONDS", 600),
+            "early_tolerance_sec":    getattr(S, "EARLY_TOLERANCE", 30),
+            "max_urls_per_event":     getattr(S, "MAX_URLS", 5),
+            "blocked_url_patterns":   _count_or_none(getattr(S, "BLACKLIST_REGEX", [])),
+            "ignored_protocols":      list(getattr(S, "IGNORED_PROTOCOLS", [])),
+            "log_mode":               getattr(S, "LOG_MODE", "both"),
+            "plus_max_commands":      getattr(S, "PLUS_MAX_COMMANDS", 50),
+            "plus_inter_command_delay_sec": getattr(S, "PLUS_INTER_COMMAND_DELAY", 0.3),
+            "plus_screenshot_dir":    getattr(S, "PLUS_SCREENSHOT_DIR", "~/Downloads/CalFlow"),
+            "settings_file_path":     str(Path(__file__).resolve().parent.parent / "config" / "settings.py"),
+        },
+    }
+    print(json.dumps(payload, indent=2, default=str))
+
+
+# --- helpers for settings dump --------------------------------
+
+def _launchd_loaded() -> bool:
+    return _daemon_state().get("loaded", False)
+
+
+def _google_account_label() -> str:
+    """
+    Best-effort: parse the email out of `data/oauth_token.json`, falling
+    back to 'Connected' / 'Not connected' if we can't extract it.
+
+    google-auth-oauthlib stores the granted email in the credentials
+    JSON when the userinfo scope is included; we ALSO check `data/config.json`
+    in case onboarding stashed it there. Never raises.
+    """
+    # 1) Onboarding-written hint.
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        addr = cfg.get("google_account") or cfg.get("account") or ""
+        if addr and "@" in addr:
+            return addr
+    except Exception:
+        pass
+    # 2) Token file.
+    try:
+        from config.config import TOKEN_PATH
+        if Path(TOKEN_PATH).exists():
+            with open(TOKEN_PATH, "r", encoding="utf-8") as f:
+                token = json.load(f)
+            for k in ("account", "email", "user_email", "client_id"):
+                v = token.get(k)
+                if v and isinstance(v, str) and "@" in v:
+                    return v
+            return "Connected"
+    except Exception:
+        pass
+    return "Not connected"
+
+
+def _default_profile_label() -> str:
+    """Profile is per-event (#profile(N)). Surface a friendly note."""
+    return "per-event tag"
+
+
+def _probe_permissions() -> Dict[str, Any]:
+    """
+    Run osascript probes for Apple Events + Accessibility, plus check
+    OAuth token. Each probe returns 'granted' | 'denied' | 'unknown'.
+
+    `python_binary` is included so the UI can show the exact path the
+    user must add manually in System Settings → Privacy & Security
+    → Accessibility (since the OS doesn't auto-list Python until we
+    can trigger an AX prompt — see v1.3.9 roadmap).
+    """
+    return {
+        "calendar_oauth":  "granted" if _has_oauth_token() else "denied",
+        "apple_events":    _probe_apple_events(),
+        "accessibility":   _probe_accessibility(),
+        "python_binary":   sys.executable,
+    }
+
+
+def _probe_apple_events() -> str:
+    """Try a benign osascript that sends an Apple Event to System Events."""
+    import subprocess as _sp
+    try:
+        result = _sp.run(
+            ["osascript", "-e",
+             'tell application "System Events" to count of every process'],
+            capture_output=True, text=True, timeout=4,
+        )
+        if result.returncode == 0 and result.stdout.strip().isdigit():
+            return "granted"
+        msg = (result.stderr or "").lower()
+        if "-1743" in msg or "not authorized" in msg or "not allowed" in msg:
+            return "denied"
+        return "unknown"
+    except FileNotFoundError:
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _probe_accessibility() -> str:
+    """
+    Probe Accessibility (separate from Apple Events) by reading an AX
+    attribute. Apple Events must be granted first; if it's denied this
+    returns 'unknown' rather than 'denied' (we can't tell yet).
+    """
+    import subprocess as _sp
+    try:
+        result = _sp.run(
+            ["osascript", "-e",
+             'tell application "System Events" to '
+             'get value of attribute "AXEnabled" of UI element 1 '
+             'of process "Finder"'],
+            capture_output=True, text=True, timeout=4,
+        )
+        if result.returncode == 0:
+            return "granted"
+        msg = (result.stderr or "").lower()
+        if "assistive" in msg or "accessibility" in msg or "1719" in msg:
+            return "denied"
+        if "-1743" in msg or "not authorized" in msg:
+            return "unknown"   # Apple Events denied — can't probe AX
+        return "unknown"
+    except FileNotFoundError:
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _calendar_count_label() -> str:
+    cals = get_selected_calendars()
+    return f"{len(cals)} selected"
+
+
+def _default_browser_label() -> str:
+    """Best-effort pull from settings.TARGETS — surface the @chrome target."""
+    from config.settings import TARGETS
+    chrome = TARGETS.get("@chrome")
+    if isinstance(chrome, str):
+        return chrome
+    return "Default"
+
+
+def _has_oauth_token() -> bool:
+    from config.config import TOKEN_PATH
+    return Path(TOKEN_PATH).exists()
+
+
+# Local "open settings.py in user's editor" — used by the bridge.
+
+def open_settings_file() -> None:
+    """`cli.main edit-settings-file` — open config/settings.py in default editor."""
+    path = Path(__file__).resolve().parent.parent / "config" / "settings.py"
+    try:
+        import subprocess as _sp
+        _sp.Popen(["open", "-t", str(path)])
+        print(json.dumps({"ok": True, "opened": str(path)}))
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+
+
+_SYSTEM_PREFS_PANES = {
+    "accessibility":
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    "automation":
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation",
+    "appleevents":
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation",
+    "calendar":
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
+}
+
+
+def open_system_prefs(pane: str) -> None:
+    """`cli.main open-system-prefs <pane>` — open System Settings to a pane.
+
+    Used by the Settings page Permissions section "Open System Settings"
+    buttons. macOS uses the deep-link URL scheme to jump to the right pane.
+    """
+    url = _SYSTEM_PREFS_PANES.get(pane.lower())
+    if not url:
+        print(json.dumps({"ok": False, "error": f"unknown pane: {pane!r}",
+                          "valid": list(_SYSTEM_PREFS_PANES.keys())}))
+        return
+    try:
+        import subprocess as _sp
+        _sp.Popen(["open", url])
+        print(json.dumps({"ok": True, "opened": url}))
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+
+
+def apply_settings_from_stdin() -> None:
+    """
+    `cli.main apply-settings --json` (v1.3.2) — read a JSON object of
+    {ui_key: new_value} from stdin and write back to settings.py.
+
+    Returns a result dict (see core.settings_writer.apply_settings).
+    """
+    from core.settings_writer import apply_settings
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw or "{}")
+        if not isinstance(payload, dict):
+            raise ValueError("stdin must be a JSON object")
+    except Exception as exc:
+        print(json.dumps({
+            "applied": [], "rejected": [{"key": "", "reason": f"bad payload: {exc}"}],
+            "requires_terminal": [], "backup_path": None,
+        }))
+        sys.exit(1)
+    result = apply_settings(payload)
+    print(json.dumps(result, default=str))
+
+
+def print_targets_json() -> None:
+    """`cli.main targets --json` (v1.3.9) — return current TARGETS dict."""
+    from core.targets_writer import read_targets
+    out = {"targets": read_targets(), "schema_version": 1}
+    print(json.dumps(out, indent=2, default=str))
+
+
+def apply_targets_from_stdin() -> None:
+    """
+    `cli.main apply-targets --json` (v1.3.9) — read a JSON object
+    `{"targets": {alias: "App"|["App",…], …}}` from stdin and replace
+    the TARGETS dict in settings.py atomically.
+    """
+    from core.targets_writer import apply_targets
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw or "{}")
+        if not isinstance(payload, dict):
+            raise ValueError("stdin must be a JSON object")
+    except Exception as exc:
+        print(json.dumps({
+            "ok": False,
+            "errors": [{"alias": "", "reason": f"bad payload: {exc}"}],
+        }))
+        sys.exit(1)
+    print(json.dumps(apply_targets(payload), default=str))
 
 
 def _lookup_window_hours() -> int:
@@ -1220,6 +1870,92 @@ if __name__ == "__main__":
         sys.exit(0)
     if cmd == "test":
         run_test()
+        sys.exit(0)
+    if cmd == "stats":
+        print_stats_json()
+        sys.exit(0)
+    if cmd == "recipes":
+        print_recipes_json()
+        sys.exit(0)
+    if cmd == "save-recipe":
+        save_recipe_from_stdin()
+        sys.exit(0)
+    if cmd == "delete-recipe":
+        # Find first non-flag arg AFTER `delete-recipe`.
+        rid = None
+        seen = False
+        for a in args:
+            if a == "delete-recipe":
+                seen = True; continue
+            if seen and not a.startswith("-"):
+                rid = a; break
+        delete_recipe_by_id(rid or "")
+        sys.exit(0)
+    if cmd == "run-script":
+        run_script_from_stdin()
+        sys.exit(0)
+    if cmd == "settings":
+        print_settings_json()
+        sys.exit(0)
+    if cmd == "edit-settings-file":
+        open_settings_file()
+        sys.exit(0)
+    if cmd == "apply-settings":
+        apply_settings_from_stdin()
+        sys.exit(0)
+    if cmd == "targets":
+        print_targets_json()
+        sys.exit(0)
+    if cmd == "apply-targets":
+        apply_targets_from_stdin()
+        sys.exit(0)
+    if cmd in ("daemon-start", "daemon-stop", "daemon-restart"):
+        print_daemon_action_json(cmd.split("-", 1)[1])
+        sys.exit(0)
+    if cmd == "open-system-prefs":
+        # Find the pane arg AFTER the verb.
+        pane = None; seen = False
+        for a in args:
+            if a == "open-system-prefs":
+                seen = True; continue
+            if seen and not a.startswith("-"):
+                pane = a; break
+        open_system_prefs(pane or "accessibility")
+        sys.exit(0)
+    if cmd == "upcoming":
+        print_upcoming_json(hours=_hours_arg(args, default=24))
+        sys.exit(0)
+    if cmd == "missed":
+        print_missed_json(hours=_hours_arg(args, default=12))
+        sys.exit(0)
+    if cmd == "run-event":
+        # Find the event id — first non-flag arg AFTER the verb.
+        ev_id: Optional[str] = None
+        seen_verb = False
+        for a in args:
+            if a == "run-event":
+                seen_verb = True; continue
+            if seen_verb and not a.startswith("-"):
+                ev_id = a; break
+        run_event_by_id(ev_id or "")
+        sys.exit(0)
+    if cmd == "pause":
+        print_pause_hint()
+        sys.exit(0)
+    if cmd == "resume":
+        print_resume_hint()
+        sys.exit(0)
+    if cmd == "menubar":
+        # Lazy import — rumps + pyobjc are optional runtime deps.
+        try:
+            from cli.menubar import main as menubar_main
+        except ImportError as exc:
+            print(json.dumps({
+                "error": f"menubar deps missing: {exc}",
+                "install": "pip install rumps pyobjc-framework-WebKit pyobjc-framework-Cocoa",
+            }, indent=2))
+            sys.exit(2)
+        menubar_main()
         sys.exit(0)
     if cmd in ("--version", "-V", "version"):
         from core.version import version_string

@@ -50,6 +50,7 @@ from core.utils import log
 from runtime.actions.autofill import trigger_autofill
 from runtime.actions.browser import open_target
 from runtime.actions.screenshot import take_screenshot
+from state.stats_store import record_action  # v1.3.0 — lifetime stats
 
 
 # Fields that may carry user-facing strings with `{…}` dynamic blocks.
@@ -201,6 +202,10 @@ def _do_open(params: Dict[str, Any]) -> None:
             chrome_profile=chrome_profile,
             new_window=new_win,
         )
+        # v1.3.0 — count once per app routed (bundle expansion → N counts).
+        record_action("open_profile" if chrome_profile else "open_url")
+        if params.get("layout") is not None:
+            record_action("arrange")
 
     time.sleep(max(0.0, AUTOFILL_BUFFER))
 
@@ -211,6 +216,7 @@ def _do_open(params: Dict[str, Any]) -> None:
             trigger_autofill(mode="fill")
             if should_submit:
                 trigger_autofill(mode="submit")
+            record_action("autofill")
 
 
 def _do_focus(params: Dict[str, Any]) -> None:
@@ -247,6 +253,10 @@ def _do_focus(params: Dict[str, Any]) -> None:
             focus_app(app_name)
         if display_target is not None:
             move_app_to_display(app_name, display_target)
+        # v1.3.0 — focus is a 1-second-saved manual action.
+        record_action("focus")
+        if display_target is not None:
+            record_action("arrange")
 
 
 def _do_close(params: Dict[str, Any]) -> None:
@@ -266,12 +276,14 @@ def _do_close(params: Dict[str, Any]) -> None:
         name = get_frontmost_app_name()
         if name:
             close_app(name)
+            record_action("hide")  # v1.3.0 — close == hide for time-saving purposes
         else:
             log("[WARN] CLOSE active: could not determine frontmost app")
         return
     if target_keyword == "all":
         # Note: `close_all` keeps frontmost for safety, even with `all`.
         close_all(except_apps=())
+        record_action("hide")
         return
 
     items = params.get("items") or ()
@@ -282,6 +294,7 @@ def _do_close(params: Dict[str, Any]) -> None:
         for item in items:
             name = item.lstrip("@") if isinstance(item, str) else item
             close_app(name)
+            record_action("hide")
         return
 
     # v1.1.14 — refuse to fall through to close_all when the user
@@ -297,6 +310,7 @@ def _do_close(params: Dict[str, Any]) -> None:
     if keep is not None:  # except(<arg>) form — even empty keep is valid here
         # close everything visible except the keep set + frontmost
         close_all(except_apps=keep)
+        record_action("hide")
         return
 
     log("[WARN] CLOSE missing arguments (validator should have caught)")
@@ -324,6 +338,7 @@ def _do_hide(params: Dict[str, Any]) -> None:
         name = get_frontmost_app_name()
         if name:
             hide_app(name)
+            record_action("hide")
         else:
             log("[WARN] HIDE active: could not determine frontmost app")
         return
@@ -337,6 +352,7 @@ def _do_hide(params: Dict[str, Any]) -> None:
         front = get_frontmost_app_name()
         if front:
             hide_app(front)
+        record_action("hide")
         return
 
     items = params.get("items") or ()
@@ -348,6 +364,7 @@ def _do_hide(params: Dict[str, Any]) -> None:
         for item in items:
             name = item.lstrip("@") if isinstance(item, str) else item
             hide_app(name)
+            record_action("hide")
         return
 
     # v1.1.14 — refuse to fall through to hide_all when the user
@@ -381,9 +398,11 @@ def _do_hide(params: Dict[str, Any]) -> None:
             except_apps=tuple(keep),
             keep_frontmost=keep_active,
         )
+        record_action("hide")
         return
 
     hide_all(except_apps=keep)
+    record_action("hide")
 
 
 # =========================================================
@@ -465,6 +484,9 @@ def _do_screenshot(params: Dict[str, Any]) -> None:
     saved = take_screenshot(params.get("path"))
     if saved is None:
         log("[WARN] Screenshot failed (best-effort)")
+        record_action("screenshot", success=False)
+    else:
+        record_action("screenshot")
 
 
 # =========================================================

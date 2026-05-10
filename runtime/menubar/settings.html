@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CalFlow — Settings</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-2: #f5f5f7;
+  --bg-3: #efeff1;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #8e8e93;
+  --border: rgba(0,0,0,0.10);
+  --border-2: rgba(0,0,0,0.18);
+  --accent: #1d1d1f;
+  --on-accent: #ffffff;
+  --info-bg: #e6f1fb;
+  --info-fg: #185fa5;
+  --green-bg: #e1f5ee;
+  --green-fg: #085041;
+  --green: #1d9e75;
+  --amber-bg: #faeeda;
+  --amber-fg: #854f0b;
+  --red-bg: #fcebeb;
+  --red-fg: #a32d2d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --bg-2: #2c2c2e;
+    --bg-3: #3a3a3c;
+    --text: #f5f5f7;
+    --text-2: #98989d;
+    --text-3: #6e6e73;
+    --border: rgba(255,255,255,0.12);
+    --border-2: rgba(255,255,255,0.20);
+    --accent: #f5f5f7;
+    --on-accent: #1d1d1f;
+    --info-bg: #143456;
+    --info-fg: #85b7eb;
+    --green-bg: #15302a;
+    --green-fg: #5dcaa5;
+    --amber-bg: #3a2e15;
+    --amber-fg: #f0c980;
+    --red-bg: #3a1818;
+    --red-fg: #f09595;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+               "Helvetica Neue", sans-serif;
+  font-size: 14px; color: var(--text); background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none; -webkit-user-select: none;
+}
+
+.app { display: grid; grid-template-columns: 180px 1fr; height: 100vh; }
+
+.col-cats { background: var(--bg-2); border-right: 0.5px solid var(--border);
+            padding: 10px 8px; overflow-y: auto; }
+.grp { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em;
+       padding: 8px 8px 4px; font-weight: 500; }
+.grp:first-child { padding-top: 0; }
+.nav { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+       border-radius: 5px; font-size: 12px; color: var(--text-2); cursor: default; }
+.nav:hover { background: var(--bg); color: var(--text); }
+.nav.on { background: var(--bg); color: var(--text); position: relative; font-weight: 500; }
+.nav.on::before { content: ""; position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
+                  width: 2px; height: 14px; background: var(--text); border-radius: 1px; }
+
+/* v1.3.10 — flex layout so the actionbar pins to the bottom of the
+   viewport instead of "sticky bottom:0" (which collapses to the top
+   when #sections is empty and there's nothing taller than the parent). */
+.col-content {
+  display: flex; flex-direction: column;
+  overflow: hidden; padding: 0; position: relative;
+  min-height: 0;
+}
+#sections {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  min-height: 0;
+}
+.actionbar {
+  flex: 0 0 auto;
+  background: var(--bg); border-top: 0.5px solid var(--border);
+  padding: 10px 24px; display: flex; justify-content: space-between; align-items: center;
+  z-index: 10;
+}
+.actionbar .left  { font-size: 13px; color: var(--text-2); }
+.actionbar .right { display: flex; gap: 8px; }
+.actionbar.dirty .left { color: var(--amber-fg); font-weight: 500; }
+#diagnostics-wrap, #btn-diag-toggle-wrap { flex: 0 0 auto; }
+
+button {
+  font: inherit; font-size: 12px; padding: 6px 14px; border-radius: 6px;
+  border: 0.5px solid var(--border-2); background: transparent; color: var(--text);
+  display: inline-flex; align-items: center; gap: 5px; cursor: default;
+}
+button:hover:not(:disabled) { background: var(--bg-2); }
+button:active { transform: scale(0.98); }
+button:disabled { opacity: 0.4; }
+button.primary { background: var(--accent); color: var(--on-accent); border: none; }
+button.primary:not(:disabled):hover { opacity: 0.85; background: var(--accent); }
+
+.section { padding: 18px 24px; border-bottom: 0.5px solid var(--border); scroll-margin-top: 8px; }
+.section:last-of-type { border-bottom: none; }
+.section h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px;
+              display: flex; align-items: center; gap: 10px; }
+.section .lead { font-size: 12px; color: var(--text-2); margin-bottom: 14px; line-height: 1.5; }
+
+.row { display: flex; justify-content: space-between; align-items: center;
+       padding: 10px 12px; border: 0.5px solid var(--border);
+       border-radius: 8px; gap: 12px; margin-bottom: 6px; }
+.row:last-child { margin-bottom: 0; }
+.row.dirty { border-color: var(--amber-fg); background: var(--amber-bg); }
+.row.dirty .lbl::after {
+  content: "edited"; font-size: 9px; color: var(--amber-fg);
+  background: var(--bg); padding: 1px 5px; border-radius: 3px;
+  margin-left: 6px; vertical-align: 1px; font-weight: 500; letter-spacing: 0.03em;
+}
+.row.readonly { opacity: 0.85; }
+.row .lbl { font-size: 12.5px; }
+.row .desc { font-size: 11px; color: var(--text-2); margin-top: 2px;
+             line-height: 1.45; max-width: 360px; }
+.row .control { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* Inputs */
+input[type="number"], input[type="text"], select {
+  font: inherit; font-size: 12px; padding: 5px 9px;
+  border: 0.5px solid var(--border-2); border-radius: 5px;
+  background: var(--bg); color: var(--text); outline: none;
+  min-width: 90px;
+}
+input[type="number"] { width: 80px; text-align: right; }
+input[type="text"]   { width: 200px; }
+select               { min-width: 110px; }
+input:focus, select:focus { border-color: var(--text); }
+.unit { font-size: 11px; color: var(--text-2); }
+
+.tag { font-size: 11px; padding: 3px 8px; border-radius: 5px;
+       background: var(--bg-2); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.tag.ok    { background: var(--green-bg); color: var(--green-fg); }
+.tag.warn  { background: var(--amber-bg); color: var(--amber-fg); }
+.tag.info  { background: var(--info-bg); color: var(--info-fg); }
+.tag.err   { background: var(--red-bg);  color: var(--red-fg); }
+
+.tog { width: 36px; height: 20px; border-radius: 999px; position: relative;
+       background: var(--bg-3); cursor: default; flex: none;
+       border: 0.5px solid var(--border); }
+.tog.on { background: var(--green); border-color: var(--green); }
+.tog::after { content: ""; position: absolute; width: 16px; height: 16px;
+              border-radius: 50%; background: #fff; top: 1px; left: 1px;
+              transition: left 0.15s ease;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.tog.on::after { left: 18px; }
+
+.toast {
+  position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; padding: 8px 16px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  max-width: 360px; text-align: center;
+}
+.toast.show { opacity: 1; }
+.toast.err  { background: var(--red-fg); color: #fff; }
+.toast.ok   { background: var(--green); color: #fff; }
+
+dialog {
+  border: none; border-radius: 12px; padding: 16px 20px;
+  background: var(--bg); color: var(--text); font: inherit;
+  max-width: 420px;
+}
+dialog::backdrop { background: rgba(0,0,0,0.4); }
+dialog h3 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+dialog p  { font-size: 12px; color: var(--text-2); margin-bottom: 6px; line-height: 1.5; }
+dialog code {
+  display: block; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; padding: 8px 10px; background: var(--bg-2);
+  border-radius: 6px; user-select: text; -webkit-user-select: text;
+  margin: 8px 0; word-break: break-all;
+}
+dialog .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="col-cats" id="cats">
+    <!-- Static fallback so user sees SOMETHING even if JS doesn't run.
+         Re-rendered by renderCats() on boot. -->
+    <div class="grp">General</div>
+    <div class="nav on">General</div>
+    <div class="nav">Calendar</div>
+    <div class="nav">Events</div>
+    <div class="grp">Behaviour</div>
+    <div class="nav">Title links</div>
+    <div class="nav">Passwords</div>
+    <div class="nav">Notifications</div>
+    <div class="grp">Power user</div>
+    <div class="nav">Permissions</div>
+    <div class="nav">Advanced</div>
+  </div>
+  <div class="col-content" id="content">
+    <div id="sections">
+      <div style="padding:24px;color:var(--text-2);font-size:12px">
+        Loading settings… (if this persists for more than a few seconds,
+        something is wrong — open Terminal and run
+        <code style="font-family:ui-monospace,Menlo,monospace;background:var(--bg-2);padding:2px 5px;border-radius:3px">
+        python3 -m cli.main settings
+        </code> from the project folder)
+      </div>
+    </div>
+    <div id="btn-diag-toggle-wrap" style="padding:14px 24px 12px;display:flex;gap:8px;align-items:center">
+      <button id="btn-diag-toggle"
+              style="font-size:12px;padding:5px 12px">Show diagnostics</button>
+      <button id="btn-diag-copy"
+              style="font-size:12px;padding:5px 12px">Copy to clipboard</button>
+      <span id="diag-copied" style="font-size:11px;color:var(--text-3);opacity:0;transition:opacity 0.2s">copied</span>
+    </div>
+    <div id="diagnostics-wrap" style="padding:0 24px 16px;display:none">
+      <pre id="diagnostics-body"
+           style="font-family:ui-monospace,Menlo,monospace;font-size:12px;
+                  background:var(--bg-2);padding:10px 12px;border-radius:6px;
+                  white-space:pre-wrap;user-select:text;-webkit-user-select:text;
+                  max-height:280px;overflow:auto;line-height:1.45;color:var(--text)">Click to refresh.</pre>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">
+        Paste this when reporting bugs — shows what data the bridge actually returned.
+      </div>
+    </div>
+
+    <div class="actionbar" id="actionbar">
+      <div class="left" id="dirty-count">No changes</div>
+      <div class="right">
+        <button id="btn-discard" disabled>Discard</button>
+        <button class="primary" id="btn-apply" disabled>Apply &amp; restart</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  var diagState = { errors: [], started: Date.now() };
+  function pushErr(label, err) {
+    var stack = (err && err.stack) || String(err || "");
+    diagState.errors.push({ at: new Date().toISOString(), label: label, error: stack });
+    paintIfOpen();
+  }
+  window.addEventListener("error", function (e) {
+    pushErr("uncaught", e.error || e.message);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    pushErr("unhandledrejection", e.reason);
+  });
+  window._cfDiag = diagState;
+  window._cfPushDiag = pushErr;
+
+  function paintIfOpen() {
+    var wrap = document.getElementById("diagnostics-wrap");
+    if (!wrap || wrap.style.display === "none") return;
+    paint();
+  }
+  function paint() {
+    var el = document.getElementById("diagnostics-body");
+    if (!el) return;
+    var globals = {
+      uptime_ms: Date.now() - diagState.started,
+      bridge_available: !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cf),
+      cf_resolve_defined: typeof window.cf_resolve === "function",
+      cf_reject_defined:  typeof window.cf_reject  === "function",
+      sections_html_len:  (document.getElementById("sections") || {}).innerHTML
+                            ? document.getElementById("sections").innerHTML.length : 0,
+    };
+    var bridgeLog = (window._bridgeLog || []).slice(-5).reverse();
+    /* v1.3.14 — keep this list in sync with cli/main.py::print_settings_json
+       payload keys. Notifications was dropped in v1.3.7 — don't probe for it. */
+    var stateSnapshot = (window.state && {
+      data_keys: window.state.data ? Object.keys(window.state.data) : null,
+      data_section_counts: window.state.data ? (function () {
+        var o = {};
+        ["general","calendar","events","title_links","passwords",
+         "permissions","advanced"].forEach(function (k) {
+          o[k] = (window.state.data[k] && Object.keys(window.state.data[k]).length) || 0;
+        });
+        return o;
+      })() : null,
+      edits: window.state.edits || {},
+      targets: window.state.targets ? Object.keys(window.state.targets).length + " aliases" : "(not loaded)",
+    }) || "(state not initialised)";
+    el.textContent = JSON.stringify({
+      runtime: globals,
+      errors_caught: diagState.errors,
+      bridge_log_recent: bridgeLog,
+      state: stateSnapshot,
+    }, null, 2);
+  }
+
+  function toggle() {
+    var wrap = document.getElementById("diagnostics-wrap");
+    var btn  = document.getElementById("btn-diag-toggle");
+    if (!wrap || !btn) return;
+    var open = wrap.style.display !== "none";
+    wrap.style.display = open ? "none" : "block";
+    btn.textContent = open ? "Show diagnostics" : "Hide diagnostics";
+    if (!open) paint();
+  }
+  window.toggleDiagnostics = toggle;
+
+  function wireBtns() {
+    var btn = document.getElementById("btn-diag-toggle");
+    if (btn) btn.addEventListener("click", toggle);
+    var copyBtn = document.getElementById("btn-diag-copy");
+    if (copyBtn) copyBtn.addEventListener("click", function () {
+      paint();
+      var text = (document.getElementById("diagnostics-body") || {}).textContent || "";
+      var done = function () {
+        var note = document.getElementById("diag-copied");
+        if (!note) return;
+        note.style.opacity = "1";
+        setTimeout(function () { note.style.opacity = "0"; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cf) {
+            try {
+              window.webkit.messageHandlers.cf.postMessage({
+                id: "diag-copy-" + Date.now(), op: "copy-to-clipboard",
+                args: { text: text },
+              });
+              done();
+            } catch (_) {}
+          }
+        });
+      } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cf) {
+        try {
+          window.webkit.messageHandlers.cf.postMessage({
+            id: "diag-copy-" + Date.now(), op: "copy-to-clipboard",
+            args: { text: text },
+          });
+          done();
+        } catch (_) {}
+      }
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireBtns);
+  } else {
+    wireBtns();
+  }
+})();
+</script>
+
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function mainScript() {
+try {
+"use strict";
+
+/* ─── Bridge ───────────────────────────────────────────── */
+const _pending = new Map();
+let _nextId = 1;
+function bridge(op, args) {
+  // Longer timeout for ops that touch settings.py (apply-settings can
+  // be slow on cold-start) or that subprocess into the daemon pipeline.
+  const TIMEOUT = (op === "apply-settings" || op === "run-script") ? 30000 : 12000;
+  return new Promise((resolve, reject) => {
+    const id = String(_nextId++);
+    _pending.set(id, { resolve, reject, op, sentAt: Date.now() });
+    try { window.webkit.messageHandlers.cf.postMessage({ id, op, args: args || {} }); }
+    catch (e) { _pending.delete(id); reject(new Error("bridge unavailable")); }
+    setTimeout(() => {
+      if (_pending.has(id)) {
+        _pending.delete(id);
+        reject(new Error("bridge timeout (" + (TIMEOUT/1000) + "s): " + op));
+      }
+    }, TIMEOUT);
+  });
+}
+
+/* Diagnostics — every bridge call records its result here so the user
+   can paste it back. Mirrored to window._bridgeLog so the independent
+   diagnostics script (above the main one in this file) can read it
+   even if the main script's render flow is broken.
+   NOTE: window.state is wired LATER (after `const state = {…}`). Putting
+   `window.state = state` here used to throw a TDZ ReferenceError under
+   strict mode and crash the entire script before any function ran. */
+const _bridgeLog = [];
+window._bridgeLog = _bridgeLog;
+function logBridge(entry) {
+  _bridgeLog.push(entry);
+  if (_bridgeLog.length > 20) _bridgeLog.shift();
+}
+window.cf_resolve = (id, payload) => { const p = _pending.get(id); if (p) { _pending.delete(id); p.resolve(payload); } };
+window.cf_reject  = (id, err)     => { const p = _pending.get(id); if (p) { _pending.delete(id); p.reject(new Error(String(err))); } };
+
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast" + (kind ? " " + kind : "");
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+/* ─── Section schema ───────────────────────────────────── */
+/* Each row:
+     lbl, desc, key      — UI key (dotted)
+     control: "toggle" | "tag" | "status" | "number" | "text" | "select"
+     editable: bool      — false ⇒ read-only display
+     unit?: string       — for number rows
+     min?, max?: number  — for number rows
+     choices?: [string]  — for select rows
+*/
+
+const SECTIONS = [
+  { id:"general", label:"General", group:"General", title:"General", lead:"Core app behaviour. Apply & restart at the bottom of this page also restarts the daemon, so changes take effect immediately.",
+    rows: [
+      { lbl:"Auto-start at login", desc:"CalFlow runs in the background after you log in. Toggling this loads / unloads the launchd agent immediately.", key:"general.auto_start_at_login", control:"toggle", editable:true },
+    ] },
+  { id:"calendar", label:"Calendar", group:"General", title:"Calendar", lead:"Which Google account and calendars CalFlow watches. Set during onboarding — run `python -m cli.main setup` from Terminal to change.",
+    rows: [
+      { lbl:"Google account",    desc:"The account whose calendar CalFlow polls. Read from data/oauth_token.json.", key:"calendar.google_account",    control:"tag", editable:false },
+      { lbl:"Calendars to watch",desc:"How many of your Google calendars are wired up. To pick a different set, re-run setup.", key:"calendar.calendars_watched", control:"tag", editable:false },
+    ] },
+  { id:"events", label:"Events", group:"General", title:"Events", lead:"How and when calendar events become automations.",
+    rows: [
+      { lbl:"Open how many minutes early",  desc:"Lead time before the event starts.", key:"events.open_minutes_early",  control:"number", editable:true, unit:"min", min:0, max:60 },
+      { lbl:"Per-cycle fetch window",       desc:"How far ahead each daemon poll looks for events.", key:"events.fetch_window_hours", control:"number", editable:true, unit:"h", min:1, max:24 },
+      { lbl:"Status look-ahead window",     desc:"How far ahead the status / menubar dashboards look.", key:"events.status_lookahead_h", control:"number", editable:true, unit:"h", min:1, max:168 },
+    ] },
+
+  { id:"aliases", label:"Aliases", group:"Behaviour",
+    title:"Aliases (TARGETS)",
+    lead:"Map @aliases to apps. Single-app: '@chrome' → 'Google Chrome'. Workflow alias opens several apps in order, e.g. '@work' → Chrome + Notion + Figma.",
+    customRenderer:"aliases" },
+
+  { id:"title-links", label:"Title links", group:"Behaviour", title:"Title links", lead:"What CalFlow does when the event title contains a URL.",
+    rows: [
+      { lbl:"Use title URL when present", desc:"Always on in v1.3 — the parser falls back to the title's URL when the description is empty. Edit core/parser/smart_parser.py to disable.", key:"title_links.use_title_url_when_present", control:"toggle", editable:false },
+      { lbl:"Open mode",                  desc:"How a title URL opens — new tab or new window.",          key:"title_links.open_mode", control:"select", editable:true, choices:["tab","window"] },
+      { lbl:"Autofill behaviour",         desc:"How CalFlow handles password forms on title-URL pages.",  key:"title_links.autofill",  control:"select", editable:true, choices:["none","fill","submit"] },
+    ] },
+  { id:"passwords", label:"Passwords", group:"Behaviour", title:"Passwords", lead:"Password manager integration for autofill.",
+    rows: [
+      { lbl:"Password manager",  desc:"Used to fill saved credentials.",                 key:"passwords.provider",         control:"select", editable:true, choices:["apple","1password","bitwarden","default"] },
+      { lbl:"Autofill on open",  desc:"Press the manager's fill shortcut after opening a URL.", key:"passwords.autofill_on_open", control:"toggle", editable:true },
+    ] },
+  /* Notifications section removed in v1.3.7 — feature not yet built. */
+
+  { id:"permissions", label:"Permissions", group:"Power user", title:"Permissions", lead:"macOS access CalFlow needs to do its job. If you don't see CalFlow's Python in the access list, copy the path below and click + in System Settings to add it manually.",
+    rows: [
+      { lbl:"Calendar OAuth",  desc:"Grant once via `python -m cli.main setup`.", key:"permissions.calendar_oauth", control:"status", editable:false },
+      { lbl:"Accessibility",   desc:"Required for hide-by-display, type, click. Add the Python path below to System Settings → Accessibility.", key:"permissions.accessibility",  control:"status", editable:false, grantPane:"accessibility" },
+      { lbl:"Apple Events",    desc:"Required for closing / hiding apps. Granted automatically on first probe.", key:"permissions.apple_events",   control:"status", editable:false, grantPane:"appleevents" },
+      { lbl:"Python binary path",desc:"This is the binary CalFlow runs as. Copy it, then in System Settings click + in the Accessibility list and paste this path.", key:"permissions.python_binary",  control:"copyable", editable:false },
+    ] },
+  { id:"advanced", label:"Advanced", group:"Power user", title:"Advanced", lead:"Tuning knobs. Touch only if you know what you're doing.",
+    rows: [
+      { lbl:"Trigger grace seconds",        desc:"How long after start CalFlow may still fire.",   key:"advanced.trigger_grace_seconds", control:"number", editable:true, unit:"s", min:0, max:3600 },
+      { lbl:"Early tolerance",              desc:"How early before start CalFlow may fire.",       key:"advanced.early_tolerance_sec",   control:"number", editable:true, unit:"s", min:0, max:600 },
+      { lbl:"Max URLs per event",           desc:"Hard cap to protect against runaway pastes.",    key:"advanced.max_urls_per_event",    control:"number", editable:true, min:1, max:50 },
+      { lbl:"Blocked URL patterns",         desc:"Regex rules that filter out junk URLs.",         key:"advanced.blocked_url_patterns",  control:"tag",    editable:false },
+      { lbl:"Ignored protocols",            desc:"URI schemes CalFlow ignores entirely.",          key:"advanced.ignored_protocols",     control:"tag",    editable:false },
+      { lbl:"Log mode",                     desc:"Where CalFlow writes its log lines.",            key:"advanced.log_mode",              control:"select", editable:true, choices:["stdout","stderr","both"] },
+      { lbl:"Plus: max commands",           desc:"Hard cap on commands per +CalFlow+ block.",      key:"advanced.plus_max_commands",     control:"number", editable:true, min:1, max:200 },
+      { lbl:"Plus: inter-command delay",    desc:"Pause between Plus-Mode verbs.",                  key:"advanced.plus_inter_command_delay_sec", control:"number", editable:true, unit:"s", min:0, max:10, step:0.1 },
+      { lbl:"Plus: screenshot directory",   desc:"Where SCREENSHOT verb writes by default.",       key:"advanced.plus_screenshot_dir",   control:"folder", editable:true },
+      { lbl:"settings.py path",             desc:"Source-of-truth file for everything above.",     key:"advanced.settings_file_path",    control:"tag",    editable:false },
+    ] },
+];
+
+/* Flatten for fast key lookup. Custom-renderer sections (e.g. Aliases)
+   own their state separately and have no `rows` array — skip them. */
+const ROWS_BY_KEY = {};
+for (const sec of SECTIONS) {
+  if (!Array.isArray(sec.rows)) continue;
+  for (const r of sec.rows) ROWS_BY_KEY[r.key] = r;
+}
+
+/* ─── State ─────────────────────────────────────────────── */
+const state = {
+  data: null, edits: {}, activeId: "general",
+  // v1.3.9 — Aliases editor sub-state. Loaded on demand via cli.main targets.
+  targets: null,           // {alias: "App"|[apps], …} — last-known server state
+  editingAlias: null,      // key being edited, or "__new__" for a fresh row
+  draft: null,             // {name, apps:[…]} working copy during edit
+  aliasFilter: "",
+};
+// Expose for the independent diagnostics script.
+window.state = state;
+
+function isDirtyKey(key, current) {
+  if (!(key in state.edits)) return false;
+  const orig = current === undefined ? getKey(state.data, key) : current;
+  return state.edits[key] !== orig;
+}
+
+function dirtyCount() {
+  let n = 0;
+  for (const k of Object.keys(state.edits)) {
+    if (isDirtyKey(k)) n++;
+  }
+  return n;
+}
+
+function refreshActionbar() {
+  // v1.3.14 — defensive lookups: if any of these elements is removed
+  // from the static HTML in a future edit, the page must keep rendering.
+  // The v1.3.12 / v1.3.13 crashes proved that one bad getElementById
+  // takes down the whole script.
+  const n = dirtyCount();
+  const bar = document.getElementById("actionbar");
+  if (bar) bar.classList.toggle("dirty", n > 0);
+  const counter = document.getElementById("dirty-count");
+  if (counter) counter.textContent =
+    n === 0 ? "No changes" : (n + " unsaved change" + (n === 1 ? "" : "s"));
+  const apply = document.getElementById("btn-apply");
+  if (apply) apply.disabled = n === 0;
+  const discard = document.getElementById("btn-discard");
+  if (discard) discard.disabled = n === 0;
+}
+
+/* ─── Render: sidebar ──────────────────────────────────── */
+function renderCats() {
+  let html = "";
+  let lastGroup = null;
+  for (const sec of SECTIONS) {
+    if (sec.group !== lastGroup) {
+      html += '<div class="grp">'+esc(sec.group)+'</div>';
+      lastGroup = sec.group;
+    }
+    const on = sec.id === state.activeId ? " on" : "";
+    html += '<div class="nav'+on+'" data-id="'+esc(sec.id)+'">'+esc(sec.label)+'</div>';
+  }
+  document.getElementById("cats").innerHTML = html;
+  document.querySelectorAll("#cats .nav").forEach(el =>
+    el.addEventListener("click", () => jumpTo(el.dataset.id))
+  );
+}
+
+/* ─── Helpers ─────────────────────────────────────────── */
+function getKey(obj, path) { return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj); }
+
+function effectiveValue(key) {
+  return (key in state.edits) ? state.edits[key] : getKey(state.data, key);
+}
+
+/* ─── Render: control widgets ──────────────────────────── */
+function renderControl(row) {
+  const k = row.key;
+  const v = effectiveValue(k);
+  switch (row.control) {
+    case "toggle": {
+      const on = !!v;
+      const editable = row.editable;
+      return '<div class="tog '+(on?"on":"")+'" data-key="'+esc(k)+'" data-control="toggle"'
+           + (editable?'':' style="opacity:0.5;cursor:not-allowed"') + '></div>';
+    }
+    case "number": {
+      const step = row.step || 1;
+      return '<input type="number" data-key="'+esc(k)+'" data-control="number" '
+           + 'min="'+(row.min!=null?row.min:"")+'" max="'+(row.max!=null?row.max:"")+'" step="'+step+'" '
+           + 'value="'+esc(v==null?"":v)+'"' + (row.editable?'':' disabled') + '>'
+           + (row.unit ? '<span class="unit">'+esc(row.unit)+'</span>' : '');
+    }
+    case "text": {
+      return '<input type="text" data-key="'+esc(k)+'" data-control="text" '
+           + 'value="'+esc(v==null?"":v)+'"' + (row.editable?'':' disabled') + '>';
+    }
+    case "select": {
+      let html = '<select data-key="'+esc(k)+'" data-control="select"' + (row.editable?'':' disabled') + '>';
+      for (const c of row.choices) {
+        const sel = (String(v)===String(c))?' selected':'';
+        html += '<option value="'+esc(c)+'"'+sel+'>'+esc(c)+'</option>';
+      }
+      html += '</select>';
+      return html;
+    }
+    case "action": {
+      const label = row.actionLabel || "Run";
+      return '<button data-key="'+esc(k)+'" data-control="action" '
+           + 'data-action="'+esc(row.action)+'" class="primary" style="font-size:12px">'
+           + esc(label) + '</button>';
+    }
+    case "folder": {
+      // Text input + folder-picker icon button.
+      const val = (v == null) ? "" : v;
+      return '<input type="text" data-key="'+esc(k)+'" data-control="text" '
+           + 'value="'+esc(val)+'"' + (row.editable?'':' disabled')
+           + ' style="width:180px">'
+           + (row.editable
+               ? '<button data-key="'+esc(k)+'" data-control="folder-pick" '
+                 + 'title="Pick folder" aria-label="Pick folder" '
+                 + 'style="margin-left:6px;padding:5px 9px;font-size:12px">'
+                 + '<span aria-hidden="true">📁</span></button>'
+               : '');
+    }
+    case "copyable": {
+      // Read-only text + Copy button (for paths the user must paste elsewhere).
+      const val = (v == null) ? "" : v;
+      return '<code style="font-family:ui-monospace,Menlo,monospace;font-size:11px;'
+           + 'background:var(--bg-2);padding:4px 8px;border-radius:4px;'
+           + 'user-select:text;-webkit-user-select:text;max-width:280px;'
+           + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+           + 'display:inline-block;vertical-align:middle">'
+           + esc(val) + '</code>'
+           + '<button data-control="copy-text" data-text="'+esc(val)+'" '
+           + 'title="Copy" aria-label="Copy" '
+           + 'style="margin-left:6px;padding:5px 9px;font-size:12px">'
+           + 'Copy</button>';
+    }
+    case "status": {
+      let badge;
+      if (v === "ok" || v === "granted")      badge = '<span class="tag ok">Granted</span>';
+      else if (v === "denied" || v === "missing") badge = '<span class="tag err">Denied</span>';
+      else                                        badge = '<span class="tag">Unknown</span>';
+      // Add a "Open System Settings" deep-link button when not granted
+      // and the row knows which pane to open.
+      const grantBtn = (row.grantPane && (v === "denied" || v === "unknown" || v == null))
+        ? '<button data-control="grant" data-pane="'+esc(row.grantPane)+'" '
+        + 'style="font-size:11px;padding:4px 9px;margin-left:6px">Open System Settings</button>'
+        : '';
+      return badge + grantBtn;
+    }
+    case "tag":
+    default: {
+      if (v === undefined || v === null) return '<span class="tag">—</span>';
+      if (typeof v === "boolean") return '<span class="tag">'+(v?"On":"Off")+'</span>';
+      if (Array.isArray(v))       return '<span class="tag">'+v.length+' items</span>';
+      if (typeof v === "number" && row.unit) return '<span class="tag">'+v+' '+esc(row.unit)+'</span>';
+      return '<span class="tag">'+esc(v)+'</span>';
+    }
+  }
+}
+
+function renderSections() {
+  let html = "";
+  for (const sec of SECTIONS) {
+    html += '<section class="section" id="sec-'+esc(sec.id)+'">'
+          +   '<h2>'+esc(sec.title)+'</h2>'
+          +   '<div class="lead">'+esc(sec.lead)+'</div>';
+    if (sec.customRenderer === "aliases") {
+      html += renderAliasesTable();
+    } else if (Array.isArray(sec.rows)) {
+      for (const r of sec.rows) {
+        const dirty = isDirtyKey(r.key) ? " dirty" : "";
+        const ro    = r.editable ? "" : " readonly";
+        html += '<div class="row'+dirty+ro+'" data-key="'+esc(r.key)+'">'
+              +   '<div><div class="lbl">'+esc(r.lbl)+'</div>'
+              +     '<div class="desc">'+esc(r.desc)+'</div></div>'
+              +   '<div class="control">'+renderControl(r)+'</div>'
+              + '</div>';
+      }
+    }
+    html += '</section>';
+  }
+  document.getElementById("sections").innerHTML = html;
+  attachInputHandlers();
+  attachAliasesHandlers();
+  refreshActionbar();
+}
+
+/* ─── Aliases editor (v1.3.9) ─────────────────────────── */
+
+function renderAliasesTable() {
+  const targets = state.targets;
+  if (targets === null) {
+    return '<div class="lead" style="padding:8px 0">Loading aliases…</div>';
+  }
+  const filter = state.aliasFilter.trim().toLowerCase();
+  const keys = Object.keys(targets).sort((a, b) => {
+    const av = targets[a], bv = targets[b];
+    const aIsList = Array.isArray(av), bIsList = Array.isArray(bv);
+    if (aIsList !== bIsList) return aIsList ? 1 : -1;  // single-apps first
+    return a.localeCompare(b);
+  }).filter(k => !filter || k.toLowerCase().includes(filter)
+                 || JSON.stringify(targets[k]).toLowerCase().includes(filter));
+
+  let html = ''
+    + '<div style="display:flex;justify-content:space-between;align-items:center;'
+    + 'padding:6px 0 10px;gap:10px">'
+    +   '<input type="text" id="alias-filter" placeholder="Filter aliases…" '
+    +     'value="'+esc(state.aliasFilter)+'" '
+    +     'style="flex:1;font:inherit;font-size:12px;padding:6px 9px;'
+    +     'border:0.5px solid var(--border-2);border-radius:6px;'
+    +     'background:var(--bg);color:var(--text)">'
+    +   '<button id="alias-new" class="primary" style="font-size:12px">'
+    +     '<span aria-hidden="true">＋</span> New alias</button>'
+    + '</div>';
+
+  html += ''
+    + '<div style="border:0.5px solid var(--border);border-radius:8px;overflow:hidden">'
+    +   '<div style="display:grid;grid-template-columns:130px 1fr 100px;gap:10px;'
+    +   'padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;'
+    +   'color:var(--text-3);font-weight:500;border-bottom:0.5px solid var(--border);'
+    +   'background:var(--bg-2)">'
+    +     '<span>Alias</span><span>Apps</span><span style="text-align:right">Actions</span>'
+    +   '</div>';
+
+  // New-alias row at the top, only when entering "new" mode
+  if (state.editingAlias === "__new__") {
+    html += renderAliasEditRow(true);
+  }
+  for (const key of keys) {
+    const isEditing = state.editingAlias === key;
+    html += isEditing ? renderAliasEditRow(false, key) : renderAliasViewRow(key);
+  }
+  if (!keys.length && state.editingAlias !== "__new__") {
+    html += '<div style="padding:24px;text-align:center;font-size:12px;color:var(--text-2)">'
+          + (filter ? 'No aliases match "'+esc(filter)+'"' : 'No aliases yet — click + New alias')
+          + '</div>';
+  }
+  html += '</div>';
+
+  html += '<div style="font-size:11px;color:var(--text-3);margin-top:8px;line-height:1.5">'
+        + 'Reserved keywords <code style="font-family:ui-monospace,Menlo,monospace">@active · @all · @display · @except</code> '
+        + 'will be rejected. Apps can be any installed app name as it appears in /Applications '
+        + '(e.g. "Google Chrome", not "chrome"). Saving here writes to settings.py and restarts the daemon.'
+        + '</div>';
+
+  return html;
+}
+
+function renderAliasViewRow(key) {
+  const v = state.targets[key];
+  const apps = Array.isArray(v) ? v : [v];
+  let chips = "";
+  for (const a of apps) {
+    chips += '<span style="font-size:11px;padding:3px 8px;border-radius:4px;'
+           + 'background:#e6f1fb;color:#0c447c;font-family:ui-monospace,Menlo,monospace;'
+           + 'margin-right:4px">'+esc(a)+'</span>';
+  }
+  return ''
+    + '<div style="display:grid;grid-template-columns:130px 1fr 100px;gap:10px;'
+    + 'align-items:center;padding:9px 12px;border-bottom:0.5px solid var(--border)">'
+    +   '<span style="font-size:11px;padding:3px 8px;border-radius:4px;'
+    +     'background:#eeedfe;color:#3c3489;font-family:ui-monospace,Menlo,monospace;'
+    +     'font-weight:500;display:inline-block;width:fit-content">'+esc(key)+'</span>'
+    +   '<div style="display:flex;flex-wrap:wrap;gap:4px">'+chips+'</div>'
+    +   '<div style="display:flex;gap:4px;justify-content:flex-end">'
+    +     '<button class="alias-edit" data-alias="'+esc(key)+'" '
+    +       'aria-label="Edit" title="Edit" style="width:24px;height:24px;padding:0;'
+    +       'display:inline-flex;align-items:center;justify-content:center">✎</button>'
+    +     '<button class="alias-delete" data-alias="'+esc(key)+'" '
+    +       'aria-label="Delete" title="Delete" style="width:24px;height:24px;padding:0;'
+    +       'display:inline-flex;align-items:center;justify-content:center;'
+    +       'color:#a32d2d">×</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+function renderAliasEditRow(isNew, originalKey) {
+  const draft = state.draft || {name: "", apps: [""]};
+  let appsHtml = "";
+  for (let i = 0; i < draft.apps.length; i++) {
+    appsHtml += ''
+      + '<span style="display:inline-flex;align-items:center;gap:4px;'
+      + 'background:#e6f1fb;color:#0c447c;border-radius:4px;padding:2px 4px 2px 8px;'
+      + 'font-family:ui-monospace,Menlo,monospace;font-size:11px">'
+      + '<input type="text" class="alias-app" data-idx="'+i+'" '
+      + 'value="'+esc(draft.apps[i])+'" placeholder="App name" '
+      + 'style="border:none;background:transparent;color:#0c447c;'
+      + 'font-family:inherit;font-size:11px;width:'
+      + Math.max(80, (draft.apps[i] || '').length * 8 + 20)
+      + 'px;padding:2px 0;outline:none">'
+      + '<button class="alias-app-rm" data-idx="'+i+'" '
+      + 'aria-label="Remove" style="border:none;background:transparent;color:#0c447c;'
+      + 'cursor:default;padding:0 2px;font-size:13px;line-height:1">×</button>'
+      + '</span>';
+  }
+  appsHtml += '<button id="alias-app-add" class="" '
+            + 'style="font-size:11px;padding:3px 8px;border-style:dashed;'
+            + 'color:var(--info-fg)">+ App</button>';
+
+  return ''
+    + '<div style="display:grid;grid-template-columns:130px 1fr 100px;gap:10px;'
+    + 'align-items:center;padding:9px 12px;background:var(--bg-2);'
+    + 'border-bottom:0.5px solid var(--border)">'
+    +   '<input type="text" id="alias-name" placeholder="@alias" '
+    +     'value="'+esc(draft.name || originalKey || "")+'" '
+    +     'style="font:inherit;font-family:ui-monospace,Menlo,monospace;font-size:11px;'
+    +     'padding:4px 8px;border:0.5px solid var(--border-2);border-radius:5px;'
+    +     'background:var(--bg);color:var(--text);width:120px">'
+    +   '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">'+appsHtml+'</div>'
+    +   '<div style="display:flex;gap:4px;justify-content:flex-end">'
+    +     '<button id="alias-save" class="primary" style="font-size:11px;padding:4px 10px">Save</button>'
+    +     '<button id="alias-cancel" style="font-size:11px;padding:4px 10px">Cancel</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+function attachAliasesHandlers() {
+  const filterEl = document.getElementById("alias-filter");
+  if (filterEl) {
+    filterEl.addEventListener("input", e => {
+      state.aliasFilter = e.target.value;
+      renderSections();
+      // Re-focus the filter so typing isn't interrupted.
+      const f = document.getElementById("alias-filter");
+      if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+    });
+  }
+  const newBtn = document.getElementById("alias-new");
+  if (newBtn) newBtn.addEventListener("click", aliasNew);
+
+  document.querySelectorAll(".alias-edit").forEach(el =>
+    el.addEventListener("click", () => aliasEdit(el.dataset.alias)));
+  document.querySelectorAll(".alias-delete").forEach(el =>
+    el.addEventListener("click", () => aliasDelete(el.dataset.alias)));
+
+  const nameEl = document.getElementById("alias-name");
+  if (nameEl) {
+    nameEl.addEventListener("input", () => { state.draft.name = nameEl.value; });
+    nameEl.focus();
+  }
+  document.querySelectorAll(".alias-app").forEach(el =>
+    el.addEventListener("input", () => {
+      state.draft.apps[parseInt(el.dataset.idx, 10)] = el.value;
+    }));
+  document.querySelectorAll(".alias-app-rm").forEach(el =>
+    el.addEventListener("click", () => {
+      const idx = parseInt(el.dataset.idx, 10);
+      state.draft.apps.splice(idx, 1);
+      if (state.draft.apps.length === 0) state.draft.apps.push("");
+      renderSections();
+    }));
+
+  const addAppBtn = document.getElementById("alias-app-add");
+  if (addAppBtn) addAppBtn.addEventListener("click", () => {
+    state.draft.apps.push("");
+    renderSections();
+  });
+
+  const saveBtn = document.getElementById("alias-save");
+  if (saveBtn) saveBtn.addEventListener("click", aliasSave);
+  const cancelBtn = document.getElementById("alias-cancel");
+  if (cancelBtn) cancelBtn.addEventListener("click", aliasCancel);
+}
+
+function aliasNew() {
+  state.editingAlias = "__new__";
+  state.draft = {name: "@", apps: [""]};
+  renderSections();
+}
+
+function aliasEdit(key) {
+  const v = state.targets[key];
+  state.editingAlias = key;
+  state.draft = {
+    name: key,
+    apps: Array.isArray(v) ? v.slice() : [v],
+  };
+  renderSections();
+}
+
+function aliasCancel() {
+  state.editingAlias = null;
+  state.draft = null;
+  renderSections();
+}
+
+async function aliasDelete(key) {
+  if (!confirm('Delete alias ' + key + '? Calendar events that reference it will fall back to the literal app name.')) return;
+  // Build new targets dict without this key.
+  const next = {};
+  for (const k of Object.keys(state.targets)) {
+    if (k !== key) next[k] = state.targets[k];
+  }
+  await persistTargets(next, "Alias " + key + " deleted");
+}
+
+async function aliasSave() {
+  if (!state.draft) return;
+  const draft = state.draft;
+  const name = (draft.name || "").trim();
+  const apps = (draft.apps || []).map(a => (a || "").trim()).filter(a => a.length > 0);
+
+  if (!name.startsWith("@")) {
+    toast("Alias must start with @", "err"); return;
+  }
+  if (!/^@[a-zA-Z0-9_-]+$/.test(name)) {
+    toast("Only letters, numbers, _ and - allowed after @", "err"); return;
+  }
+  const reservedNames = ["@active", "@all", "@display", "@except"];
+  if (reservedNames.indexOf(name.toLowerCase()) >= 0) {
+    toast(name + " is a reserved keyword", "err"); return;
+  }
+  if (apps.length === 0) {
+    toast("At least one app required", "err"); return;
+  }
+
+  // Build the new targets dict.
+  const next = {};
+  for (const k of Object.keys(state.targets)) {
+    if (k === state.editingAlias) continue;  // skip the original key (we're renaming/replacing it)
+    next[k] = state.targets[k];
+  }
+  if (next[name] !== undefined && state.editingAlias !== name) {
+    toast("Alias " + name + " already exists", "err"); return;
+  }
+  next[name] = apps.length === 1 ? apps[0] : apps;
+
+  await persistTargets(next, state.editingAlias === "__new__"
+      ? ("Alias " + name + " created")
+      : ("Alias " + name + " saved"));
+  state.editingAlias = null;
+  state.draft = null;
+}
+
+async function persistTargets(next, successMsg) {
+  try {
+    const result = await bridge("apply-targets", {targets: next});
+    if (result && result.ok) {
+      state.targets = next;
+      toast(successMsg + " · daemon restarting", "ok");
+      try { await bridge("daemon-restart"); }
+      catch (e) { /* surfaced in next refresh anyway */ }
+      await refreshTargets();
+    } else {
+      const err = (result && result.errors && result.errors[0])
+                  ? result.errors[0].reason : "unknown";
+      toast("Save failed: " + err, "err");
+    }
+  } catch (e) {
+    toast("Save failed: " + e.message, "err");
+  }
+  renderSections();
+}
+
+async function refreshTargets() {
+  try {
+    const result = await bridge("targets");
+    if (result && result.targets) {
+      state.targets = result.targets;
+    }
+  } catch (e) {
+    toast("Couldn't load aliases: " + e.message, "err");
+  }
+  renderSections();
+}
+
+function attachInputHandlers() {
+  // Toggles
+  document.querySelectorAll('[data-control="toggle"]').forEach(el => {
+    el.addEventListener("click", () => {
+      const key = el.dataset.key;
+      const row = ROWS_BY_KEY[key];
+      if (!row || !row.editable) return;
+      const cur = effectiveValue(key);
+      onEdit(key, !cur);
+    });
+  });
+  // Numbers
+  document.querySelectorAll('[data-control="number"]').forEach(el => {
+    el.addEventListener("change", () => {
+      const key = el.dataset.key;
+      const v = el.value === "" ? null : Number(el.value);
+      onEdit(key, v);
+    });
+  });
+  // Text
+  document.querySelectorAll('[data-control="text"]').forEach(el => {
+    el.addEventListener("change", () => onEdit(el.dataset.key, el.value));
+  });
+  // Selects
+  document.querySelectorAll('[data-control="select"]').forEach(el => {
+    el.addEventListener("change", () => onEdit(el.dataset.key, el.value));
+  });
+  // Action buttons (one-shot ops like "Restart daemon")
+  document.querySelectorAll('[data-control="action"]').forEach(el => {
+    el.addEventListener("click", () => runActionRow(el));
+  });
+  // "Open System Settings" deep-link buttons for permission rows
+  document.querySelectorAll('[data-control="grant"]').forEach(el => {
+    el.addEventListener("click", async () => {
+      const pane = el.dataset.pane;
+      try {
+        await bridge("open-system-prefs", { pane });
+        toast("Opening System Settings…", "ok");
+      } catch (e) {
+        toast("Couldn't open: " + e.message, "err");
+      }
+    });
+  });
+  // Folder-pick buttons (NSOpenPanel)
+  document.querySelectorAll('[data-control="folder-pick"]').forEach(el => {
+    el.addEventListener("click", async () => {
+      const key = el.dataset.key;
+      const cur = effectiveValue(key) || "";
+      try {
+        const result = await bridge("pick-folder", {
+          current: cur, title: "Pick screenshot folder",
+        });
+        if (result && result.ok && result.path) {
+          // Programmatically update the matching input + record edit.
+          const input = document.querySelector('input[data-key="'+CSS.escape(key)+'"]');
+          if (input) input.value = result.path;
+          onEdit(key, result.path);
+        }
+      } catch (e) {
+        toast("Folder picker failed: " + e.message, "err");
+      }
+    });
+  });
+  // Copy-text buttons (read-only paths that need pasting elsewhere)
+  document.querySelectorAll('[data-control="copy-text"]').forEach(el => {
+    el.addEventListener("click", async () => {
+      const text = el.dataset.text || "";
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("Copied", "ok");
+      } catch (e) {
+        try { await bridge("copy-to-clipboard", { text }); toast("Copied", "ok"); }
+        catch (e2) { toast("Couldn't copy", "err"); }
+      }
+    });
+  });
+}
+
+async function runActionRow(btnEl) {
+  const action = btnEl.dataset.action;
+  if (!action) return;
+  const original = btnEl.textContent;
+  btnEl.disabled = true;
+  btnEl.textContent = "Running…";
+  try {
+    const result = await bridge(action);
+    if (result && result.ok) {
+      btnEl.textContent = "✓ Done";
+      toast(actionSuccessLabel(action, result), "ok");
+      // Auto-refresh so any state-derived rows (e.g. permissions) re-read.
+      refresh();
+    } else {
+      btnEl.textContent = original;
+      toast("Failed: " + ((result && result.error) || "unknown"), "err");
+    }
+  } catch (e) {
+    btnEl.textContent = original;
+    toast(action + " failed: " + e.message, "err");
+  } finally {
+    setTimeout(() => { btnEl.disabled = false; btnEl.textContent = original; }, 1400);
+  }
+}
+
+function actionSuccessLabel(action, result) {
+  if (action === "daemon-restart") return "Daemon restarted";
+  if (action === "daemon-stop")    return "Daemon stopped";
+  if (action === "daemon-start")   return "Daemon started";
+  return action + " ok";
+}
+
+function onEdit(key, value) {
+  const orig = getKey(state.data, key);
+  // Normalise: if it's the same as current value, drop from edits.
+  if (value === orig || (value === null && orig === undefined)) {
+    delete state.edits[key];
+  } else {
+    state.edits[key] = value;
+  }
+  renderSections();   // re-render to update dirty class + control values
+}
+
+/* ─── Scroll-spy ───────────────────────────────────────── */
+function setupScrollSpy() {
+  const content = document.getElementById("content");
+  const ids = SECTIONS.map(s => "sec-" + s.id);
+  let ticking = false;
+  content.addEventListener("scroll", () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const top = content.scrollTop + 16;
+      let active = ids[0];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el && el.offsetTop <= top) active = id;
+      }
+      const newActive = active.replace(/^sec-/, "");
+      if (newActive !== state.activeId) {
+        state.activeId = newActive;
+        renderCats();
+      }
+    });
+  });
+}
+
+function jumpTo(id) {
+  state.activeId = id;
+  renderCats();
+  const el = document.getElementById("sec-" + id);
+  if (el) document.getElementById("content").scrollTo({ top: el.offsetTop - 8, behavior: "smooth" });
+}
+
+/* ─── Boot ─────────────────────────────────────────────── */
+
+/* Visible-error wrapper — surfaces JS exceptions in the page itself
+   so we never see a blank pane without a hint of what went wrong. */
+function showFatal(label, err) {
+  try {
+    const stack = (err && err.stack) || String(err);
+    if (window._cfPushDiag) window._cfPushDiag(label, err);
+    document.getElementById("sections").innerHTML =
+        '<div style="padding:24px;color:#a32d2d;font-size:13px;line-height:1.5">'
+      +   '<b>Settings page failed to render (' + esc(label) + ').</b>'
+      +   '<pre style="margin-top:8px;background:var(--bg-2);padding:10px 12px;'
+      +     'border-radius:6px;white-space:pre-wrap;user-select:text;'
+      +     '-webkit-user-select:text;font-family:ui-monospace,Menlo,monospace;'
+      +     'font-size:12px;color:var(--text-2)">'
+      +     esc(stack)
+      +   '</pre>'
+      + '</div>';
+  } catch (_) { /* if even this fails, give up gracefully */ }
+}
+
+function boot() {
+  try {
+    document.getElementById("btn-apply").addEventListener("click", onApply);
+    document.getElementById("btn-discard").addEventListener("click", () => {
+      state.edits = {};
+      renderSections();
+      toast("Changes discarded");
+    });
+    // Render the structure FIRST with placeholder values, so the page is
+    // never blank even if the bridge call is slow / fails. Real values
+    // arrive via the async refresh() below and re-render the sections.
+    renderCats();
+    renderSections();
+    setupScrollSpy();
+
+    // Fire-and-forget; refresh() handles re-render on success.
+    refresh();
+    // Aliases load lives on its own subprocess call (TARGETS isn't part
+    // of the regular settings JSON because it needs special editing).
+    refreshTargets();
+  } catch (err) {
+    showFatal("boot", err);
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  // Document already parsed (script ran late) — boot immediately.
+  boot();
+}
+window.cf_onShow = () => { refresh(); refreshTargets(); };
+
+async function refresh() {
+  const t0 = Date.now();
+  try {
+    const data = await bridge("settings");
+    const dt = Date.now() - t0;
+    const keys = data && typeof data === "object" ? Object.keys(data) : [];
+    logBridge({op: "settings", ms: dt, ok: true, keys, raw: data});
+
+    if (data && typeof data === "object" && !data.error && keys.length > 0) {
+      state.data = data;
+      renderSections();
+      // If the response is suspiciously empty (no section keys), shout.
+      // v1.3.14 — Notifications dropped in v1.3.7; don't include it.
+      const sectionKeys = ["general","calendar","events","title_links","passwords",
+                           "permissions","advanced"];
+      const got = sectionKeys.filter(k => data[k] && Object.keys(data[k]).length > 0);
+      if (got.length < 3) {
+        toast("Settings load returned only " + got.length + " sections — see Diagnostics", "err");
+      }
+    } else {
+      toast("Settings load returned no data — see Diagnostics", "err");
+    }
+  } catch (e) {
+    logBridge({op: "settings", ms: Date.now() - t0, ok: false, error: e.message});
+    toast("Couldn't load settings: " + e.message, "err");
+  }
+}
+
+/* ─── Apply & restart ─────────────────────────────────── */
+async function onApply() {
+  const dirtyKeys = Object.keys(state.edits).filter(k => isDirtyKey(k));
+  if (!dirtyKeys.length) {
+    toast("Nothing to apply — no edits detected", "err");
+    return;
+  }
+
+  // Build payload of just the dirty edits.
+  const payload = {};
+  for (const k of dirtyKeys) payload[k] = state.edits[k];
+
+  const btn = document.getElementById("btn-apply");
+  const prevText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Applying…";
+  document.getElementById("dirty-count").textContent =
+      "Applying " + dirtyKeys.length + " change" + (dirtyKeys.length===1?"":"s") + "…";
+
+  const t0 = Date.now();
+  try {
+    const result = await bridge("apply-settings", payload);
+    const dt = Date.now() - t0;
+    logBridge({op: "apply-settings", ms: dt, ok: true, payload, raw: result});
+
+    const applied = (result && result.applied) || [];
+    const rejected = (result && result.rejected) || [];
+    const term = (result && result.requires_terminal) || [];
+
+    // Clear applied edits + any launchd-routed ones (we showed the dialog).
+    for (const k of applied) delete state.edits[k];
+    for (const t of term)    delete state.edits[t.key];
+
+    const daemonActions = (result && result.daemon_actions) || [];
+
+    // Did at least one change touch settings.py (vs. only launchd)?
+    const settingsTouched = applied.some(k =>
+        !daemonActions.find(a => a.key === k));
+
+    if (rejected.length) {
+      toast(rejected.length + " rejected · " + rejected[0].reason
+            + (applied.length ? " · " + applied.length + " saved" : ""), "err");
+    } else if (applied.length) {
+      let msg = "Saved " + applied.length + " change" + (applied.length===1?"":"s");
+      // v1.3.8 — auto-restart the daemon when settings.py was actually
+      // edited. Auto-start-at-login already loads/unloads launchd, so
+      // skip the second restart for launchd-only payloads.
+      if (settingsTouched) {
+        btn.textContent = "Restarting daemon…";
+        try {
+          await bridge("daemon-restart");
+          msg += " · daemon restarted";
+        } catch (e) {
+          // Apply succeeded; restart failed. Surface but don't undo the save.
+          msg += " · restart failed: " + e.message;
+        }
+      } else if (daemonActions.length) {
+        const acts = daemonActions.map(a => "daemon " + a.action).join(", ");
+        msg += " · " + acts;
+      }
+      if (result.backup_path && settingsTouched) {
+        msg += " · backup at config/settings.py.bak";
+      }
+      toast(msg, "ok");
+    } else {
+      toast("Apply returned no result — see Diagnostics", "err");
+    }
+
+    await refresh();
+  } catch (e) {
+    logBridge({op: "apply-settings", ms: Date.now() - t0, ok: false, error: e.message, payload});
+    toast("Apply failed: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prevText;
+    refreshActionbar();
+  }
+}
+
+/* Diagnostics panel — independent version lives in the inline script
+   block at the top of <body>. This is just a no-op alias kept for any
+   internal calls. */
+function refreshDiagnostics() { /* see independent script */ }
+
+} catch (mainScriptErr) {
+  var stack = (mainScriptErr && mainScriptErr.stack) || String(mainScriptErr);
+  if (window._cfPushDiag) window._cfPushDiag("main-script", mainScriptErr);
+  try {
+    var sec = document.getElementById("sections");
+    if (sec) {
+      var safe = stack.replace(/[<&>]/g, function (c) {
+        return { '<': '&lt;', '&': '&amp;', '>': '&gt;' }[c];
+      });
+      sec.innerHTML =
+        '<div style="padding:24px;color:#a32d2d;font-size:13px;line-height:1.5">'
+      + '<b>Settings page script failed to load.</b>'
+      + '<pre style="margin-top:8px;background:var(--bg-2);padding:10px 12px;'
+      +   'border-radius:6px;white-space:pre-wrap;user-select:text;'
+      +   '-webkit-user-select:text;font-family:ui-monospace,Menlo,monospace;'
+      +   'font-size:12px;color:var(--text-2)">' + safe + '</pre>'
+      + '<div style="margin-top:8px;font-size:12px">Open Diagnostics for the captured error.</div>'
+      + '</div>';
+    }
+  } catch (_) {}
+}
+})();
+</script>
+</body>
+</html>

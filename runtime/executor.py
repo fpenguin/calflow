@@ -46,6 +46,9 @@ from config.settings import (
     POST_AUTOFILL_DELAY,
 )
 
+# Stats counter (v1.3.0 — never raises; safe in hot path)
+from state.stats_store import record_action
+
 # Utils
 from core.utils import log
 
@@ -151,6 +154,13 @@ def _execute_single(
         new_window=new_win,
     )
 
+    # v1.3.0 — lifetime stats. Counted only when open_target returned
+    # without raising (the outer try/except in execute_entries catches
+    # raises before we reach this point).
+    record_action("open_profile" if chrome_profile else "open_url")
+    if layout is not None:
+        record_action("arrange")
+
     # =====================================================
     # ⏳ BUFFER (page load)
     # =====================================================
@@ -166,6 +176,10 @@ def _execute_single(
 
         if should_submit:
             trigger_autofill(mode="submit")
+
+        # v1.3.0 — count one autofill action regardless of fill/submit
+        # split (the user's manual flow is still one lookup + one paste).
+        record_action("autofill")
 
         time.sleep(POST_AUTOFILL_DELAY)
 

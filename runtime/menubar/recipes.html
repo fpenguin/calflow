@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CalFlow — Recipes</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-2: #f5f5f7;
+  --bg-3: #efeff1;
+  --bg-code: #1f1f1d;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #8e8e93;
+  --text-code: #f1efe8;
+  --border: rgba(0,0,0,0.10);
+  --border-2: rgba(0,0,0,0.18);
+  --accent: #1d1d1f;
+  --on-accent: #ffffff;
+  --green: #1d9e75;
+  --green-bg: #e1f5ee;
+  --green-fg: #085041;
+  --red: #e24b4a;
+  --red-bg: #fcebeb;
+  --red-fg: #a32d2d;
+  --info: #185fa5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --bg-2: #2c2c2e;
+    --bg-3: #3a3a3c;
+    --bg-code: #0c1419;
+    --text: #f5f5f7;
+    --text-2: #98989d;
+    --text-3: #6e6e73;
+    --border: rgba(255,255,255,0.12);
+    --border-2: rgba(255,255,255,0.20);
+    --accent: #f5f5f7;
+    --on-accent: #1d1d1f;
+    --green-bg: #15302a;
+    --green-fg: #5dcaa5;
+    --info: #85b7eb;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+               "Helvetica Neue", sans-serif;
+  font-size: 14px; color: var(--text); background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none; -webkit-user-select: none;
+}
+
+.app { display: grid; grid-template-columns: 150px 220px 1fr; height: 100vh; }
+
+/* ============ LEFT: Categories ============ */
+.col-cats { background: var(--bg-2); border-right: 0.5px solid var(--border); padding: 10px 8px; overflow-y: auto; }
+.grp { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em;
+       padding: 8px 8px 4px; font-weight: 500; }
+.grp:first-child { padding-top: 0; }
+.nav { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+       border-radius: 5px; font-size: 12px; color: var(--text-2); cursor: default; }
+.nav:hover { background: var(--bg); color: var(--text); }
+.nav.on { background: var(--bg); color: var(--text); position: relative; }
+.nav.on::before { content: ""; position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
+                  width: 2px; height: 14px; background: var(--text); border-radius: 1px; }
+.nav.add { color: var(--info); font-weight: 500; }
+
+/* ============ MIDDLE: Recipe list ============ */
+.col-list { border-right: 0.5px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
+.list-head { padding: 10px 12px; border-bottom: 0.5px solid var(--border); }
+.list-head input {
+  width: 100%; font: inherit; font-size: 12px;
+  padding: 6px 10px; border: 0.5px solid var(--border-2); border-radius: 6px;
+  background: var(--bg); color: var(--text); outline: none;
+}
+.list-head input:focus { border-color: var(--text); }
+.list-body { flex: 1; padding: 6px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.recipe { padding: 9px 11px; border-radius: 6px; cursor: default;
+          border: 0.5px solid transparent; }
+.recipe:hover { background: var(--bg-2); }
+.recipe.sel { background: var(--bg-2); border-color: var(--border); position: relative; }
+.recipe.sel::before { content: ""; position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
+                      width: 2px; height: 16px; background: var(--text); border-radius: 1px; }
+.recipe .t { font-size: 12px; font-weight: 500; }
+.recipe .d { font-size: 11px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+.list-empty { font-size: 12px; color: var(--text-2); text-align: center; padding: 20px; }
+
+/* ============ RIGHT: Sandbox ============ */
+.col-sandbox { display: flex; flex-direction: column; min-width: 0; }
+.sb-head { padding: 12px 16px; border-bottom: 0.5px solid var(--border);
+           display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.sb-head h2 { font-size: 14px; font-weight: 500; }
+.sb-head .desc { font-size: 12px; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
+.sb-actions { display: flex; gap: 6px; flex-shrink: 0; }
+button {
+  font: inherit; font-size: 12px; padding: 5px 11px; border-radius: 6px;
+  border: 0.5px solid var(--border-2); background: transparent; color: var(--text);
+  display: inline-flex; align-items: center; gap: 5px; cursor: default;
+}
+button:hover { background: var(--bg-2); }
+button:active { transform: scale(0.98); }
+button.primary { background: var(--accent); color: var(--on-accent); border: none; }
+button.primary:hover { opacity: 0.85; background: var(--accent); }
+button:disabled { opacity: 0.5; }
+
+.sb-body { flex: 1; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.status { display: flex; justify-content: space-between; align-items: center;
+          font-size: 11px; color: var(--text-2); }
+.status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+               display: inline-block; margin-right: 6px; vertical-align: 1px; }
+
+.editor-wrap { flex: 1; display: flex; flex-direction: column; min-height: 100px; }
+.editor {
+  flex: 1; min-height: 100px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px; line-height: 1.55;
+  padding: 10px 12px; border: 0.5px solid var(--border);
+  border-radius: 6px; background: var(--bg);
+  color: var(--text); resize: vertical; outline: none;
+  white-space: pre; tab-size: 2;
+  user-select: text; -webkit-user-select: text;
+}
+.editor:focus { border-color: var(--text); }
+
+.out-label { font-size: 11px; color: var(--text-2); margin-top: 4px;
+             display: flex; justify-content: space-between; align-items: center; }
+.console {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+  background: var(--bg-code); color: var(--text-code);
+  border-radius: 6px; padding: 10px 12px; line-height: 1.55;
+  max-height: 130px; overflow-y: auto; white-space: pre-wrap;
+  user-select: text; -webkit-user-select: text;
+}
+.console .ok   { color: #9fe1cb; }
+.console .warn { color: #fac775; }
+.console .err  { color: #f09595; }
+.console .info { color: #85b7eb; }
+.console .empty { color: var(--text-3); }
+
+.foot { padding: 6px 16px; border-top: 0.5px solid var(--border);
+        font-size: 11px; color: var(--text-3); display: flex;
+        justify-content: space-between; align-items: center; }
+.tag { font-size: 10px; padding: 2px 7px; border-radius: 4px;
+       background: var(--bg-2); color: var(--text-2); }
+.tag.mine { background: var(--green-bg); color: var(--green-fg); }
+
+.toast {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; padding: 7px 14px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  opacity: 0; transition: opacity 0.2s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+.toast.err { background: var(--red); color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- LEFT -->
+  <div class="col-cats" id="cats">
+    <div class="grp">Categories</div>
+    <div class="nav on" data-cat="">All</div>
+  </div>
+
+  <!-- MIDDLE -->
+  <div class="col-list">
+    <div class="list-head"><input id="search" type="text" placeholder="Search recipes…" autocomplete="off"></div>
+    <div class="list-body" id="list"></div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="col-sandbox">
+    <div class="sb-head">
+      <div style="min-width:0;flex:1">
+        <h2 id="rname">Pick a recipe</h2>
+        <div class="desc" id="rdesc">Choose one on the left to load it into the sandbox.</div>
+      </div>
+      <div class="sb-actions">
+        <button id="btn-copy">Copy</button>
+        <button id="btn-save">Save as mine</button>
+        <button id="btn-delete" style="display:none">Delete</button>
+        <button class="primary" id="btn-run">Try it</button>
+      </div>
+    </div>
+    <div class="sb-body">
+      <div class="status">
+        <span><span class="dot"></span><span id="sb-status">Sandbox · safe to edit</span></span>
+        <span id="sb-meta"></span>
+      </div>
+      <div class="editor-wrap">
+        <textarea class="editor" id="editor" spellcheck="false" placeholder="+CalFlow+&#10;open zoom.us @chrome #left(50%)&#10;…"></textarea>
+      </div>
+      <div class="out-label">
+        <span>Output</span>
+        <span><button id="btn-clear" style="font-size:10px;padding:3px 8px">Clear</button></span>
+      </div>
+      <div class="console" id="console"><span class="empty">Nothing run yet.</span></div>
+    </div>
+    <div class="foot">
+      <span id="foot-left">Untitled draft · auto-saves on Try it</span>
+      <span id="foot-right"></span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ─── Bridge ───────────────────────────────────────────── */
+const _pending = new Map();
+let _nextId = 1;
+function bridge(op, args) {
+  return new Promise((resolve, reject) => {
+    const id = String(_nextId++);
+    _pending.set(id, { resolve, reject });
+    try { window.webkit.messageHandlers.cf.postMessage({ id, op, args: args || {} }); }
+    catch (e) { _pending.delete(id); reject(new Error("bridge unavailable")); }
+    setTimeout(() => {
+      if (_pending.has(id)) { _pending.delete(id); reject(new Error("bridge timeout: " + op)); }
+    }, 30000);
+  });
+}
+window.cf_resolve = (id, payload) => { const p = _pending.get(id); if (p) { _pending.delete(id); p.resolve(payload); } };
+window.cf_reject  = (id, err)     => { const p = _pending.get(id); if (p) { _pending.delete(id); p.reject(new Error(String(err))); } };
+
+/* ─── Fallback / seed data ──────────────────────────────── */
+/* Inline copy of the stock catalog so the page renders content even
+   if the cli.main subprocess is slow or fails. The bridge refresh
+   replaces these as soon as live data arrives.                    */
+const FALLBACK_CATEGORIES = ["Meetings", "Focus", "Daily", "Multi-monitor"];
+const FALLBACK_STOCK = [
+  { id:"stock-zoom-notes",            name:"Zoom + notes side by side",
+    category:"Meetings",      owner:"stock",
+    description:"Opens the meeting on the left half, Notes on the right.",
+    body:"+CalFlow+\nopen zoom.us @chrome #left(50%)\nopen notes.app #right(50%)\nhide @slack\n" },
+  { id:"stock-standup-briefing",      name:"Standup briefing",
+    category:"Meetings",      owner:"stock",
+    description:"Opens your team's dashboard, Slack standup channel, and Zoom in one window.",
+    body:"+CalFlow+\nopen https://your-dashboard.example.com @chrome #left(33%)\nopen slack.com #middle\nopen zoom.us @chrome new(window) #right(33%)\n" },
+  { id:"stock-deep-work",             name:"Deep work mode",
+    category:"Focus",         owner:"stock",
+    description:"Hides Slack and Mail, opens your task list, full-screens the editor.",
+    body:"+CalFlow+\nhide @comm\nopen todoist.com @chrome #left(30%)\nfocus @editor\n" },
+  { id:"stock-pomodoro",              name:"Pomodoro start",
+    category:"Focus",         owner:"stock",
+    description:"25-minute Pomodoro: hides distractions, opens timer, takes a screenshot at the end.",
+    body:"+CalFlow+\nhide @comm\nopen https://pomofocus.io @chrome #right(25%)\nwait 25m\nscreenshot\n" },
+  { id:"stock-morning-routine",       name:"Morning routine",
+    category:"Daily",         owner:"stock",
+    description:"Calendar, email, news, and metrics — one tab each, in order.",
+    body:"+CalFlow+\nopen calendar.google.com @chrome\nopen mail.google.com @chrome\nopen news.ycombinator.com @chrome\n" },
+  { id:"stock-inbox-sweep",           name:"Inbox sweep",
+    category:"Daily",         owner:"stock",
+    description:"Opens Gmail and your task inbox side-by-side for a 10-minute triage.",
+    body:"+CalFlow+\nopen mail.google.com @chrome #left(60%)\nopen todoist.com @chrome #right(40%)\n" },
+  { id:"stock-triple-monitor-research", name:"Triple-monitor research",
+    category:"Multi-monitor", owner:"stock",
+    description:"Source on display 1, notes on display 2, reference on display 3.",
+    body:"+CalFlow+\nopen https://example.com @chrome #display(1)\nopen notes.app #display(2)\nopen https://reference.example.com @chrome #display(3)\n" },
+  { id:"stock-grid-dashboard",        name:"Quad dashboard",
+    category:"Multi-monitor", owner:"stock",
+    description:"Four panels in a 2×2 grid on your secondary display.",
+    body:"+CalFlow+\nopen https://dashboard1.example.com @chrome #grid(1,1@2x2) #display(2)\nopen https://dashboard2.example.com @chrome #grid(2,1@2x2) #display(2)\nopen https://dashboard3.example.com @chrome #grid(1,2@2x2) #display(2)\nopen https://dashboard4.example.com @chrome #grid(2,2@2x2) #display(2)\n" },
+];
+
+/* ─── State ─────────────────────────────────────────────── */
+const state = {
+  categories: FALLBACK_CATEGORIES,
+  stock: FALLBACK_STOCK,
+  mine: [],
+  filterCat: "", search: "", selectedId: null, dirty: false,
+};
+
+/* ─── Helpers ───────────────────────────────────────────── */
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+
+function toast(msg, isErr) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.toggle("err", !!isErr);
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+function allRecipes() { return state.stock.concat(state.mine); }
+
+function filtered() {
+  const q = state.search.trim().toLowerCase();
+  return allRecipes().filter(r => {
+    if (state.filterCat === "__mine__") { if (r.owner !== "mine") return false; }
+    else if (state.filterCat) { if (r.category !== state.filterCat) return false; }
+    if (q) {
+      const hay = (r.name + " " + (r.description||"") + " " + (r.body||"")).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function findById(id) {
+  return allRecipes().find(r => r.id === id) || null;
+}
+
+/* ─── Render: categories sidebar ───────────────────────── */
+function renderCats() {
+  const cats = document.getElementById("cats");
+  let html = '<div class="grp">Categories</div>';
+  html += '<div class="nav '+(state.filterCat===""?"on":"")+'" data-cat="">All</div>';
+  for (const c of state.categories) {
+    html += '<div class="nav '+(state.filterCat===c?"on":"")+'" data-cat="'+esc(c)+'">'+esc(c)+'</div>';
+  }
+  html += '<div class="grp">Yours</div>';
+  html += '<div class="nav '+(state.filterCat==="__mine__"?"on":"")+'" data-cat="__mine__">My saved <span class="tag mine" style="margin-left:auto">'+state.mine.length+'</span></div>';
+  html += '<div class="nav add" data-cat="__new__">+ New blank</div>';
+  cats.innerHTML = html;
+  cats.querySelectorAll(".nav").forEach(el => el.addEventListener("click", () => {
+    const c = el.dataset.cat;
+    if (c === "__new__") { newBlank(); return; }
+    state.filterCat = c; state.search = ""; document.getElementById("search").value = "";
+    renderCats(); renderList();
+  }));
+}
+
+/* ─── Render: middle list ──────────────────────────────── */
+function renderList() {
+  const list = document.getElementById("list");
+  const items = filtered();
+  if (!items.length) {
+    list.innerHTML = '<div class="list-empty">No recipes match.</div>';
+    return;
+  }
+  let html = "";
+  for (const r of items) {
+    const sel = r.id === state.selectedId ? " sel" : "";
+    const tag = r.owner === "mine" ? '<span class="tag mine" style="margin-left:6px">mine</span>' : "";
+    const lines = (r.body||"").split("\n").filter(Boolean).length;
+    html += '<div class="recipe'+sel+'" data-id="'+esc(r.id)+'">'
+          + '<div class="t">'+esc(r.name)+tag+'</div>'
+          + '<div class="d">'+esc(r.category)+' · '+lines+' lines</div>'
+          + '</div>';
+  }
+  list.innerHTML = html;
+  list.querySelectorAll(".recipe").forEach(el => el.addEventListener("click", () => {
+    selectRecipe(el.dataset.id);
+  }));
+  // Auto-select first if nothing selected.
+  if (!state.selectedId || !findById(state.selectedId)) {
+    if (items[0]) selectRecipe(items[0].id);
+  }
+}
+
+/* ─── Render: sandbox header + editor ──────────────────── */
+function selectRecipe(id) {
+  const r = findById(id);
+  if (!r) return;
+  state.selectedId = id;
+  state.dirty = false;
+  document.getElementById("rname").textContent = r.name;
+  document.getElementById("rdesc").textContent = r.description || "(no description)";
+  document.getElementById("editor").value = r.body || "";
+  document.getElementById("btn-delete").style.display = r.owner === "mine" ? "" : "none";
+  document.getElementById("foot-left").textContent =
+      r.owner === "mine" ? "Saved · last edited " + (r.updated_at || "just now") : "Stock recipe · edits stay local until you Save as mine";
+  document.getElementById("foot-right").textContent = r.owner === "mine" ? "id: " + r.id : "";
+  document.getElementById("sb-status").textContent = "Sandbox · safe to edit";
+  document.getElementById("sb-meta").textContent = (r.body||"").split("\n").filter(Boolean).length + " lines";
+  // Refresh sidebar selection bar
+  document.querySelectorAll(".recipe").forEach(el => el.classList.toggle("sel", el.dataset.id === id));
+}
+
+function newBlank() {
+  state.selectedId = null;
+  document.getElementById("rname").textContent = "New blank recipe";
+  document.getElementById("rdesc").textContent = "Type your script. Save as mine when ready.";
+  document.getElementById("editor").value = "+CalFlow+\n";
+  document.getElementById("btn-delete").style.display = "none";
+  document.getElementById("foot-left").textContent = "New draft";
+  document.getElementById("foot-right").textContent = "";
+  document.getElementById("editor").focus();
+}
+
+/* ─── Editor change tracking ───────────────────────────── */
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("editor").addEventListener("input", () => {
+    state.dirty = true;
+    const lines = document.getElementById("editor").value.split("\n").filter(Boolean).length;
+    document.getElementById("sb-meta").textContent = lines + " lines · unsaved";
+  });
+  document.getElementById("search").addEventListener("input", e => {
+    state.search = e.target.value; renderList();
+  });
+
+  document.getElementById("btn-copy").addEventListener("click", onCopy);
+  document.getElementById("btn-save").addEventListener("click", onSave);
+  document.getElementById("btn-delete").addEventListener("click", onDelete);
+  document.getElementById("btn-run").addEventListener("click", onRun);
+  document.getElementById("btn-clear").addEventListener("click", () => {
+    document.getElementById("console").innerHTML = '<span class="empty">Nothing run yet.</span>';
+  });
+
+  // Cmd+S → save, Cmd+Enter → run
+  document.addEventListener("keydown", e => {
+    if (e.metaKey && e.key === "s") { e.preventDefault(); onSave(); }
+    if (e.metaKey && e.key === "Enter") { e.preventDefault(); onRun(); }
+  });
+
+  // Render structure with fallback stock data IMMEDIATELY so the page
+  // is never blank. The async refreshAll() below replaces with live
+  // data (which adds the user's saved recipes too).
+  renderCats();
+  renderList();
+  if (state.stock.length) selectRecipe(state.stock[0].id);
+
+  refreshAll();
+});
+
+window.cf_onShow = () => refreshAll();
+
+/* ─── Data fetch ───────────────────────────────────────── */
+async function refreshAll() {
+  try {
+    const data = await bridge("recipes");
+    if (!data || typeof data !== "object" || data.error) {
+      // Live fetch failed — leave the fallback content in place.
+      if (data && data.error) toast("Live recipes load failed · using fallback", true);
+      return;
+    }
+    // Replace with live data. If the bridge returns a non-empty stock
+    // list, prefer it; otherwise keep the inline fallback.
+    state.categories = (data.categories && data.categories.length)
+                         ? data.categories : state.categories;
+    if (data.stock && data.stock.length) {
+      state.stock = data.stock.map(r => ({...r, owner: "stock"}));
+    }
+    state.mine = (data.mine || []).map(r => ({...r, owner: "mine"}));
+    renderCats(); renderList();
+    if (!state.selectedId && state.stock.length) selectRecipe(state.stock[0].id);
+  } catch (e) {
+    // Bridge timeout or other failure — keep fallback content.
+    toast("Live recipes load failed · using fallback", true);
+  }
+}
+
+/* ─── Actions ──────────────────────────────────────────── */
+async function onCopy() {
+  const body = document.getElementById("editor").value;
+  try {
+    await navigator.clipboard.writeText(body);
+    toast("Copied to clipboard");
+  } catch (e) {
+    // Fallback to native pbcopy via bridge.
+    try { await bridge("copy-to-clipboard", { text: body }); toast("Copied to clipboard"); }
+    catch (e2) { toast("Couldn't copy: " + e2.message, true); }
+  }
+}
+
+async function onSave() {
+  const body = document.getElementById("editor").value;
+  if (!body.trim()) { toast("Empty script — nothing to save", true); return; }
+  const sel = state.selectedId ? findById(state.selectedId) : null;
+  const isMine = sel && sel.owner === "mine";
+  const payload = {
+    id:       isMine ? sel.id : "",   // upsert if mine, new id otherwise
+    name:     sel ? (isMine ? sel.name : sel.name + " (copy)") : "Untitled",
+    category: sel ? sel.category : "Daily",
+    description: sel ? (sel.description || "") : "",
+    body,
+  };
+  try {
+    const result = await bridge("save-recipe", payload);
+    if (!result || !result.ok) {
+      toast("Save failed: " + (result && result.error || "unknown"), true);
+      return;
+    }
+    toast(isMine ? "Saved" : "Saved as mine");
+    state.dirty = false;
+    await refreshAll();
+    selectRecipe(result.id);
+  } catch (e) {
+    toast("Save failed: " + e.message, true);
+  }
+}
+
+async function onDelete() {
+  const sel = findById(state.selectedId);
+  if (!sel || sel.owner !== "mine") return;
+  if (!confirm("Delete \"" + sel.name + "\"? This can't be undone.")) return;
+  try {
+    const r = await bridge("delete-recipe", { id: sel.id });
+    if (!r || !r.ok) { toast("Delete failed: " + (r && r.error || "unknown"), true); return; }
+    toast("Deleted");
+    state.selectedId = null;
+    await refreshAll();
+  } catch (e) {
+    toast("Delete failed: " + e.message, true);
+  }
+}
+
+async function onRun() {
+  const body = document.getElementById("editor").value;
+  if (!body.trim()) { toast("Empty script", true); return; }
+  const cons = document.getElementById("console");
+  cons.innerHTML = '<span class="info">Running…</span>';
+  document.getElementById("btn-run").disabled = true;
+  try {
+    const result = await bridge("run-script", { body });
+    let html = "";
+    if (result && result.success) {
+      html = '<span class="ok">[OK]</span> Script completed (mode: '+esc(result.mode||"?")+')';
+    } else {
+      html = '<span class="err">[ERROR]</span> '+esc(result && result.error || "unknown");
+      if (result && result.mode) html += '\n  parsed mode: '+esc(result.mode);
+    }
+    cons.innerHTML = html;
+  } catch (e) {
+    cons.innerHTML = '<span class="err">[ERROR]</span> '+esc(e.message);
+  } finally {
+    document.getElementById("btn-run").disabled = false;
+  }
+}
+</script>
+</body>
+</html>

@@ -27,6 +27,7 @@ from __future__ import annotations
 # v1.1.27 — public surface lock. See pyproject.toml for the rationale.
 __all__ = [
     'build_service',
+    'get_recent_events',
     'get_upcoming_events',
     'next_event_across_calendars',
 ]
@@ -177,6 +178,92 @@ def get_upcoming_events(
             log(f"[WARN] [{calendar_id}] Failed to parse event: {exc}")
 
     log(f"[INFO] [{calendar_id}] Loaded {len(out)} events")
+    return out
+
+
+# =========================================================
+# 🕒 RECENT (BACKWARD) FETCH — menubar missed-events pane
+# =========================================================
+#
+# Mirror of `get_upcoming_events` but pointed BACKWARDS in time.
+# Used by:
+#   - `cli.main missed --json`              (menubar feed)
+#   - `cli/menubar.py` "Missed · last 12 h" pane
+#
+# Rationale: the daemon's trigger window is ~10½ minutes wide. If the
+# laptop sleeps across the entire window, the event is silently skipped.
+# The menubar surfaces these so the user can run them on demand.
+# Auto-firing on wake violates the principle of least surprise (a
+# 9 AM standup is irrelevant by 10 AM); the user picks. See
+# `_workspace/specs/v1.1.18-missed-events-pane.md`.
+
+def get_recent_events(
+    service,
+    calendar_id: str = "primary",
+    *,
+    hours: int = 12,
+) -> List[Dict]:
+    """
+    Fetch events from `calendar_id` whose START fell inside the last
+    `hours` hours (default 12 — long enough to cover overnight sleep,
+    short enough that the list doesn't become noise after a long
+    weekend).
+
+    The shape of returned dicts is identical to `get_upcoming_events`
+    so downstream consumers (parser, mode-detection, the menubar JS)
+    can treat both feeds uniformly.
+
+    Returns:
+        List[Dict]: events sorted ASCENDING by start (oldest first),
+        which the menubar reverses for display (most recent at top).
+
+    Returns [] on any API failure.
+    """
+    if hours <= 0:
+        return []
+    now = datetime.now(timezone.utc)
+    past = now - timedelta(hours=hours)
+
+    log(f"[INFO] [{calendar_id}] Checking recent events (last {hours}h)")
+
+    try:
+        items = (
+            service.events()
+            .list(
+                calendarId=calendar_id,
+                timeMin=past.isoformat(),
+                timeMax=now.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+            .get("items", [])
+        )
+    except Exception as exc:
+        log(f"[ERROR] [{calendar_id}] Failed to fetch recent events: {exc}")
+        return []
+
+    out: List[Dict] = []
+    for ev in items:
+        start = ev.get("start", {})
+        if "dateTime" not in start:
+            continue  # all-day events skipped — no precise trigger time
+        try:
+            description = ev.get("description", "") or ""
+            location = ev.get("location", "") or ""
+            description = normalize_description(description)
+            text = "\n".join(filter(None, [description, location]))
+            out.append({
+                "id":          ev["id"],
+                "calendar_id": calendar_id,
+                "title":       ev.get("summary", ""),
+                "text":        text,
+                "start":       dateparser.parse(start["dateTime"]),
+            })
+        except Exception as exc:
+            log(f"[WARN] [{calendar_id}] Failed to parse recent event: {exc}")
+
+    log(f"[INFO] [{calendar_id}] Loaded {len(out)} recent events")
     return out
 
 

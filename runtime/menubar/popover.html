@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CalFlow</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-2: #f5f5f7;
+  --bg-3: #efeff1;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #8e8e93;
+  --border: rgba(0,0,0,0.10);
+  --border-2: rgba(0,0,0,0.18);
+  --accent: #1d1d1f;
+  --on-accent: #ffffff;
+  --green: #1d9e75;
+  --green-deep: #085041;
+  --amber-bg: #faeeda;
+  --amber-fg: #854f0b;
+  --amber-border: #f0c980;
+  --coffee: #854f0b;
+  --tooltip-bg: #1f1f1d;
+  --tooltip-fg: #f1efe8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --bg-2: #2c2c2e;
+    --bg-3: #3a3a3c;
+    --text: #f5f5f7;
+    --text-2: #98989d;
+    --text-3: #6e6e73;
+    --border: rgba(255,255,255,0.12);
+    --border-2: rgba(255,255,255,0.20);
+    --accent: #f5f5f7;
+    --on-accent: #1d1d1f;
+    --green: #5dcaa5;
+    --green-deep: #9fe1cb;
+    --amber-bg: #3a2e15;
+    --amber-fg: #f0c980;
+    --amber-border: #6b4f1d;
+    --tooltip-bg: #f5f5f7;
+    --tooltip-fg: #1d1d1f;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+               "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body { padding: 10px 12px; line-height: 1.4; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0.5px solid var(--border-2);
+  border-radius: 6px;
+  padding: 4px 9px;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.12s ease;
+}
+button:hover { background: var(--bg-2); }
+button:active { transform: scale(0.98); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.icon {
+  width: 24px; height: 24px; padding: 0; justify-content: center;
+}
+button.play {
+  width: 26px; height: 26px; border-radius: 50%; padding: 0;
+  background: var(--accent); color: var(--on-accent); border: none;
+  justify-content: center;
+}
+button.play.disabled, button.play:disabled {
+  background: var(--bg-3); color: var(--text-3);
+}
+button.coffee {
+  background: var(--coffee); color: #fff; border: none;
+  font-weight: 500;
+}
+button.coffee:hover { background: #6b3f08; }
+
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.mini { font-size: 11px; color: var(--text-2); line-height: 1.5; }
+
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  display: inline-block; margin-right: 6px; vertical-align: 1px;
+}
+.dot.green  { background: var(--green); }
+.dot.amber  { background: var(--amber-fg); }
+.dot.gray   { background: var(--text-3); }
+
+.section {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-top: 8px;
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.badge {
+  text-transform: none; letter-spacing: 0;
+  color: var(--amber-fg); background: var(--amber-bg);
+  padding: 1px 6px; border-radius: 4px;
+}
+.divider { height: 0.5px; background: var(--border); margin: 4px 0; }
+
+.event {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 8px; border: 0.5px solid var(--border);
+  border-radius: 6px; gap: 8px;
+}
+.event-up {
+  background: var(--bg-2); border: none;
+  padding: 8px 10px; border-radius: 6px;
+}
+.event .title { font-size: 11px; font-weight: 500; }
+.event-up .title { font-size: 12px; font-weight: 500; margin-top: 1px; }
+
+.scrollable {
+  display: flex; flex-direction: column; gap: 5px;
+  max-height: 122px; overflow-y: auto;
+  padding-right: 2px;
+}
+.scrollable::-webkit-scrollbar { width: 5px; }
+.scrollable::-webkit-scrollbar-track { background: transparent; }
+.scrollable::-webkit-scrollbar-thumb {
+  background: var(--border-2); border-radius: 3px;
+}
+
+.banner {
+  background: var(--amber-bg); color: var(--amber-fg);
+  border: 0.5px solid var(--amber-border);
+  padding: 6px 9px; border-radius: 5px;
+  font-size: 10.5px; line-height: 1.5;
+}
+.banner.error { color: #a32d2d; background: #fcebeb; border-color: #f7c1c1; }
+
+.stats {
+  background: var(--bg-2); border-radius: 6px;
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 4px;
+}
+.stats h3 {
+  font-size: 11px; font-weight: 500; color: var(--text);
+}
+.stats-line {
+  font-size: 11px; color: var(--text);
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.stats-line .lbl { color: var(--text-2); }
+.stats-line b { font-weight: 500; color: var(--green-deep); }
+
+.info {
+  position: relative; display: inline-flex; align-items: center;
+  cursor: help; color: var(--text-3);
+}
+.info svg { width: 12px; height: 12px; }
+.info .tip {
+  position: absolute; bottom: 18px; left: -92px;
+  width: 220px;
+  background: var(--tooltip-bg); color: var(--tooltip-fg);
+  padding: 7px 9px; border-radius: 5px;
+  font-size: 10.5px; line-height: 1.45;
+  display: none; z-index: 5;
+}
+.info .tip::after {
+  content: ""; position: absolute; bottom: -5px; left: 96px;
+  border: 5px solid transparent;
+  border-top-color: var(--tooltip-bg); border-bottom: 0;
+}
+.info:hover .tip, .info:focus .tip { display: block; }
+
+.quit {
+  font-size: 10.5px; color: var(--text-3);
+  margin-top: 4px; cursor: default;
+}
+.quit:hover { color: var(--text); }
+
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--bg-2) 0%, var(--bg-3) 50%, var(--bg-2) 100%);
+  background-size: 200% 100%;
+  animation: pulse 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+@keyframes pulse { 0%{background-position:0% 0%;} 100%{background-position:-200% 0%;} }
+
+.flash-ok   { animation: flashOk   0.8s ease; }
+.flash-fail { animation: flashFail 0.8s ease; }
+@keyframes flashOk   { 0%{background:transparent;} 30%{background:rgba(29,158,117,0.20);} 100%{background:transparent;} }
+@keyframes flashFail { 0%{background:transparent;} 30%{background:rgba(226,75,75,0.20);} 100%{background:transparent;} }
+
+.empty-hint {
+  font-size: 11px; color: var(--text-2); padding: 8px 4px;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<!-- Reusable inline SVG icons (referenced by <use href="#..."/> below). -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-play" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3.5v9l8-4.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3h2v10H5zm4 0h2v10H9z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M3 8a5 5 0 0 1 9-3M13 8a5 5 0 0 1-9 3M12 2v3h-3M4 14v-3h3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1l1 1.6L11 2l1 1.7-1 1.6 1 1.6-1 1.6-1.6.4-1 1.6h-1.7l-1-1.6L4 8 3 8 2 6.4 3 4.7 4 3 5 1.4 6.4 1z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path fill="currentColor" d="M7.4 6.7h1.3v4.5H7.4zM8 4.4a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M3 3v10l5-1.5L13 13V3L8 4.5z"/></symbol>
+  <symbol id="i-coffee" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M3 5h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM11 6h1.5a1.5 1.5 0 0 1 0 3H11M5 2v1.5M7 2v1.5M9 2v1.5"/></symbol>
+</svg>
+
+<div id="root">
+  <!-- Filled by render() once first fetch returns. Skeleton in the meantime. -->
+  <div class="row">
+    <span><span class="dot gray"></span>Loading…</span>
+    <div style="display:flex;gap:5px">
+      <div class="skeleton" style="width:24px;height:24px"></div>
+      <div class="skeleton" style="width:24px;height:24px"></div>
+      <div class="skeleton" style="width:24px;height:24px"></div>
+    </div>
+  </div>
+  <div class="skeleton" style="height:46px;margin-top:8px"></div>
+  <div class="skeleton" style="height:30px;margin-top:6px"></div>
+  <div class="skeleton" style="height:30px;margin-top:6px"></div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   🌉  Bridge — JS ↔ Python (PyObjC) via WKScriptMessageHandler
+   ========================================================= */
+
+const _pending = new Map();
+let _nextId = 1;
+
+function bridge(op, args) {
+  return new Promise((resolve, reject) => {
+    const id = String(_nextId++);
+    _pending.set(id, { resolve, reject, ts: Date.now() });
+    try {
+      window.webkit.messageHandlers.cf.postMessage({ id, op, args: args || {} });
+    } catch (e) {
+      _pending.delete(id);
+      reject(new Error("bridge unavailable: " + e.message));
+    }
+    // 8s safety timeout — Python should always respond.
+    setTimeout(() => {
+      if (_pending.has(id)) {
+        _pending.delete(id);
+        reject(new Error("bridge timeout: " + op));
+      }
+    }, 8000);
+  });
+}
+
+window.cf_resolve = function(id, payload) {
+  const p = _pending.get(id);
+  if (!p) return;
+  _pending.delete(id);
+  p.resolve(payload);
+};
+
+window.cf_reject = function(id, error) {
+  const p = _pending.get(id);
+  if (!p) return;
+  _pending.delete(id);
+  p.reject(new Error(String(error || "unknown error")));
+};
+
+
+/* =========================================================
+   🧩  Helpers
+   ========================================================= */
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function fmtRelative(secs) {
+  if (secs == null) return "";
+  if (Math.abs(secs) <= 30) return "now";
+  const future = secs > 0;
+  const a = Math.abs(secs);
+  let mag;
+  if (a < 60) mag = a + "s";
+  else if (a < 3600) mag = Math.round(a / 60) + " min";
+  else mag = Math.round(a / 360) / 10 + "h";
+  return future ? "in " + mag : mag + " ago";
+}
+
+function fmtClock(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch (e) { return ""; }
+}
+
+function svg(name, size) {
+  size = size || 13;
+  return '<svg width="' + size + '" height="' + size + '"><use href="#i-' + name + '"/></svg>';
+}
+
+
+/* =========================================================
+   🖼  Render
+   ========================================================= */
+
+const state = {
+  status: null, stats: null, upcoming: null, missed: null,
+  paused: false, lastRefresh: null,
+};
+
+function renderHeader() {
+  const dot = state.paused ? "amber" : "green";
+  const label = state.paused ? "CalFlow Paused" : "CalFlow Active";
+  return ''
+    + '<div class="row">'
+    +   '<span style="font-size:12px;font-weight:500">'
+    +     '<span class="dot ' + dot + '"></span>' + label
+    +   '</span>'
+    +   '<div style="display:flex;gap:5px">'
+    +     '<button class="icon" title="Pause / resume" onclick="cfPauseToggle()" aria-label="Pause">' + svg(state.paused ? "play" : "pause") + '</button>'
+    +     '<button class="icon" title="Refresh"        onclick="cfRefresh(true)"  aria-label="Refresh">' + svg("refresh") + '</button>'
+    +     '<button class="icon" title="Settings"       onclick="cfOpenSettings()"  aria-label="Settings">' + svg("gear") + '</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+function renderUpcoming() {
+  const u = state.upcoming || {};
+  if (u.google_error) {
+    return '<div class="banner error">⚠ ' + esc(u.google_error) + '</div>';
+  }
+  const evs = u.events || [];
+  if (!evs.length) {
+    return '<div class="section">Up next</div>'
+         + '<div class="empty-hint">No events in the next 24 hours.</div>';
+  }
+  const head = evs[0], rest = evs.slice(1, 4);
+  let html = '<div class="section">Up next</div>';
+  // Headline event
+  const headDisabled = head.mode === "empty";
+  html += '<div class="event-up" data-id="' + esc(head.id) + '">'
+        +   '<div class="row">'
+        +     '<div>'
+        +       '<div class="mini">' + esc(fmtRelative(head.seconds_until)) + '</div>'
+        +       '<div class="title">' + esc(head.title) + '</div>'
+        +       '<div class="mini">' + esc(head.preview || (headDisabled ? "No automation set" : "")) + '</div>'
+        +     '</div>'
+        +     '<button class="play ' + (headDisabled ? 'disabled' : '') + '"'
+        +       (headDisabled ? ' disabled' : '')
+        +       ' onclick="cfRunEvent(\'' + esc(head.id) + '\', this)" aria-label="Run now">'
+        +       svg("play")
+        +     '</button>'
+        +   '</div>'
+        + '</div>';
+  // Rest
+  for (const ev of rest) {
+    const dis = ev.mode === "empty";
+    html += '<div class="event" data-id="' + esc(ev.id) + '">'
+          +   '<div>'
+          +     '<div class="title">' + esc(fmtClock(ev.start)) + ' · ' + esc(ev.title) + '</div>'
+          +     '<div class="mini">' + esc(ev.preview || (dis ? "No automation set" : "")) + '</div>'
+          +   '</div>'
+          +   '<button class="play ' + (dis ? 'disabled' : '') + '"'
+          +     (dis ? ' disabled' : '')
+          +     ' onclick="cfRunEvent(\'' + esc(ev.id) + '\', this)" aria-label="Run now">'
+          +     svg("play")
+          +   '</button>'
+          + '</div>';
+  }
+  return html;
+}
+
+function renderMissed() {
+  const m = state.missed || {};
+  const evs = m.events || [];
+  if (!evs.length) return ""; // hide the whole section when zero
+  let html = '<div class="section">Missed · last ' + (m.hours || 12) + ' h '
+           + '<span class="badge">' + evs.length + '</span></div>';
+  html += '<div class="scrollable">';
+  for (const ev of evs.slice(0, 20)) {
+    html += '<div class="event" data-id="' + esc(ev.id) + '">'
+          +   '<div>'
+          +     '<div class="title">' + esc(fmtClock(ev.start)) + ' · ' + esc(ev.title) + '</div>'
+          +     '<div class="mini">' + esc(ev.preview || "Mac was asleep") + '</div>'
+          +   '</div>'
+          +   '<button class="play" onclick="cfRunEvent(\'' + esc(ev.id) + '\', this)" aria-label="Run now">'
+          +     svg("play")
+          +   '</button>'
+          + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderFooter() {
+  return ''
+    + '<div class="divider"></div>'
+    + '<div class="row" style="gap:5px;justify-content:flex-start">'
+    +   '<button onclick="cfOpenRecipes()">' + svg("book") + ' Recipes</button>'
+    +   '<button onclick="cfOpenAbout()">'   + svg("info") + ' About</button>'
+    + '</div>';
+}
+
+function renderStats() {
+  const s = state.stats || {};
+  const automations = (s.actions_run != null ? humanInt(Math.floor((s.actions_run || 0) / 1)) : "—");
+  // "Automations" in the popover means executed events; we approximate
+  // from actions_run using a per-event factor of 1 (one increment per action).
+  // The marketing line says "automations"; keep it simple — we report
+  // actions_run as the headline number, since that's the honest count.
+  const n = s.actions_run || 0;
+  const automationsLabel = humanInt(n);
+  const since = formatSinceDate(s.first_run_date);
+  const human = s.time_saved_human || "0m";
+  return ''
+    + '<div class="stats">'
+    +   '<h3>CalFlow stats</h3>'
+    +   '<div class="stats-line">'
+    +     '<span class="lbl">Automations</span>'
+    +     '<span><b>' + esc(automationsLabel) + '</b> <span class="lbl">' + esc(since ? "× (since " + since + ")" : "") + '</span></span>'
+    +   '</div>'
+    +   '<div class="stats-line">'
+    +     '<span class="lbl" style="display:inline-flex;align-items:center;gap:4px">Est. time saved'
+    +       '<span class="info" tabindex="0" aria-label="How this is calculated">'
+    +         svg("info", 12)
+    +         '<span class="tip"><b>Weighted by action type</b><br>Open URL 5s · profile +3s · arrange 4s · autofill 8s · hide 2s · focus 1s</span>'
+    +       '</span>'
+    +     '</span>'
+    +     '<span style="display:flex;align-items:center;gap:8px"><b>' + esc(human) + '</b>'
+    +       '<button class="coffee" onclick="cfOpenCoffee()">' + svg("coffee") + ' Buy Coffee</button>'
+    +     '</span>'
+    +   '</div>'
+    + '</div>';
+}
+
+function renderQuit() {
+  return '<div class="quit" onclick="cfQuit()">Quit CalFlow ⌘Q</div>';
+}
+
+function humanInt(n) {
+  try { return Number(n || 0).toLocaleString(); } catch (e) { return String(n || 0); }
+}
+
+function formatSinceDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString(
+      undefined, { month: "short", day: "numeric", year: "numeric" }
+    );
+  } catch (e) { return ""; }
+}
+
+function render() {
+  // v1.3.14 — defensive: if #root is somehow missing, exit cleanly
+  // rather than throwing and breaking the periodic refresh loop.
+  const root = document.getElementById("root");
+  if (!root) return;
+  root.innerHTML =
+      renderHeader()
+    + renderUpcoming()
+    + renderMissed()
+    + renderFooter()
+    + renderStats()
+    + renderQuit();
+}
+
+
+/* =========================================================
+   🔁  Refresh
+   ========================================================= */
+
+let _refreshing = false;
+
+async function cfRefresh(force) {
+  if (_refreshing && !force) return;
+  _refreshing = true;
+  try {
+    const [status, stats, upcoming, missed] = await Promise.all([
+      bridge("status").catch(e => ({ error: String(e) })),
+      bridge("stats").catch(e => ({ error: String(e) })),
+      bridge("upcoming", { hours: 24 }).catch(e => ({ error: String(e) })),
+      bridge("missed",   { hours: 12 }).catch(e => ({ error: String(e) })),
+    ]);
+    state.status   = status;
+    state.stats    = stats;
+    state.upcoming = upcoming;
+    state.missed   = missed;
+    state.lastRefresh = new Date().toISOString();
+    render();
+  } finally {
+    _refreshing = false;
+  }
+}
+
+// Refresh on first show + every 30 s while open.
+window.addEventListener("DOMContentLoaded", () => cfRefresh(true));
+setInterval(() => cfRefresh(false), 30000);
+
+// Python calls this on popover-show via evaluateJavaScript.
+window.cf_onShow = function() { cfRefresh(true); };
+
+
+/* =========================================================
+   🔘  Action handlers (called from inline onclick=...)
+   ========================================================= */
+
+async function cfRunEvent(id, btn) {
+  if (!id || (btn && btn.disabled)) return;
+  if (btn) btn.disabled = true;
+  try {
+    const result = await bridge("run-event", { id });
+    const row = btn && btn.closest(".event, .event-up");
+    if (row) {
+      row.classList.add(result && result.success ? "flash-ok" : "flash-fail");
+      setTimeout(() => row.classList.remove("flash-ok", "flash-fail"), 900);
+    }
+  } catch (e) {
+    if (btn) {
+      const row = btn.closest(".event, .event-up");
+      if (row) {
+        row.classList.add("flash-fail");
+        setTimeout(() => row.classList.remove("flash-fail"), 900);
+      }
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    cfRefresh(true);
+  }
+}
+
+async function cfPauseToggle() {
+  // Optimistic UI flip; reconcile with the actual launchctl result.
+  state.paused = !state.paused;
+  render();
+  try {
+    const result = await bridge(state.paused ? "daemon-stop" : "daemon-start");
+    if (result && typeof result.loaded_after === "boolean") {
+      state.paused = !result.loaded_after;
+      render();
+    }
+  } catch (e) {
+    // Revert on failure.
+    state.paused = !state.paused;
+    render();
+  }
+}
+
+function cfOpenSettings()  { bridge("show-settings-window"); }
+function cfOpenRecipes()   { bridge("show-recipes-window"); }
+function cfOpenAbout()     { bridge("open-about"); }
+function cfOpenCoffee()    { bridge("open-coffee"); }
+function cfQuit()          { bridge("quit"); }
+</script>
+</body>
+</html>
