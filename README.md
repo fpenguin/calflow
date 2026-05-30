@@ -98,22 +98,15 @@ open https://docs.google.com/document/d/agenda @chrome #right(45%)
 run -shortcut "Start Focus" "meeting"
 ```
 
-### Claude Cowork Trigger
+### Better Touch Tool Trigger
 
 ```text
 +CalFlow+
 
 run -btt BTT-ClaudeCoworkTryAgain
 ```
+Hit your 5h limit already? Set up your BTT automation to click on "Try Again" and fire your next command on queue while you're away or asleep, so that the work is done when you're back at desk.
 
-If your BetterTouchTool trigger is literally named with braces and
-quotes, CalFlow preserves that too:
-
-```text
-+CalFlow+
-
-run -btt {"BTT-ClaudeCoworkTryAgain"}
-```
 
 ### Alfred External Trigger
 
