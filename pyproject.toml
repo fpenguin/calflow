@@ -93,4 +93,5 @@ addopts = [
 filterwarnings = [
     "error",                                # fail on warnings — keeps suite honest
     "ignore::DeprecationWarning:google.*",  # google libs warn on import; out of our control
+    "ignore::FutureWarning:google.*",       # google libs warn about Python 3.10 EOL
 ]
