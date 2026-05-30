@@ -34,8 +34,10 @@ __all__ = [
     'execute_commands',
 ]
 
+import subprocess
 import time
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Union
+from pathlib import Path
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from config.config import MAX_WAIT_SECONDS
 from config.settings import (
@@ -57,6 +59,7 @@ from runtime.actions.applescript import run_applescript
 from runtime.actions.browser import open_target
 from runtime.actions.btt import trigger_alfred, trigger_named_btt
 from runtime.actions.notifications import notify_run_error
+from runtime.actions.run_result import RunResult, error_result, ok_result
 from runtime.actions.screenshot import take_screenshot
 from runtime.actions.shortcuts import run_shortcut
 from runtime.run_policy import is_run_backend_allowed
@@ -527,43 +530,64 @@ def _do_save(params: Dict[str, Any]) -> None:
 
 def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     backend = params.get("backend") or "script"
+    handlers = tuple(params.get("run_handlers") or ())
     if not is_run_backend_allowed(backend, trust_level):
         msg = f"RUN -{backend} disabled for trust level {trust_level!r}"
         log(f"[WARN] {msg}")
         notify_run_error("CalFlow run blocked", msg)
+        _apply_run_handlers(
+            handlers,
+            error_result(str(backend), msg),
+        )
         return
 
+    result: Optional[RunResult] = None
     if backend == "btt":
         trigger_name = params.get("trigger_name")
         if not trigger_name:
             msg = "RUN -btt missing trigger name"
             log(f"[WARN] {msg}")
             notify_run_error("CalFlow BTT failed", msg)
+            _apply_run_handlers(handlers, error_result("btt", msg))
             return
-        trigger_named_btt(str(trigger_name))
+        result = trigger_named_btt(str(trigger_name))
+        _apply_run_handlers(handlers, result or ok_result("btt"))
         return
 
     if backend == "applescript":
-        run_applescript(str(params.get("script") or ""))
+        if params.get("timeout") is None:
+            result = run_applescript(str(params.get("script") or ""))
+        else:
+            result = run_applescript(
+                str(params.get("script") or ""),
+                timeout=params.get("timeout"),
+            )
+        _apply_run_handlers(handlers, result or ok_result("applescript"))
         return
 
     if backend == "shortcut":
-        run_shortcut(
+        result = run_shortcut(
             str(params.get("shortcut_name") or ""),
             str(params.get("shortcut_input") or ""),
         )
+        _apply_run_handlers(handlers, result or ok_result("shortcut"))
         return
 
     if backend == "alfred":
-        trigger_alfred(
+        result = trigger_alfred(
             str(params.get("alfred_bundle_id") or ""),
             str(params.get("alfred_trigger") or ""),
             str(params.get("alfred_argument") or ""),
         )
+        _apply_run_handlers(handlers, result or ok_result("alfred"))
         return
 
     path = params.get("path")
     log(f"[INFO] RUN {path!r} (stub — refusing to exec arbitrary scripts)")
+    _apply_run_handlers(
+        handlers,
+        error_result("script", "arbitrary scripts are disabled in this build"),
+    )
 
 
 # =========================================================
@@ -576,3 +600,63 @@ def _short(params: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(out.get("tags"), (set, frozenset)):
         out["tags"] = sorted(out["tags"])
     return out
+
+
+def _apply_run_handlers(
+    handlers: Tuple[Tuple[str, str, str], ...],
+    result: RunResult,
+) -> None:
+    if not handlers:
+        return
+    for condition, action, value in handlers:
+        if not _run_condition_matches(condition, result):
+            continue
+        try:
+            if action == "notify":
+                text = _run_handler_text(value, result)
+                notify_run_error(result.title, text)
+            elif action == "copy":
+                text = _run_handler_text(value, result)
+                _copy_text_to_clipboard(text)
+            elif action == "save":
+                text = result.result_text
+                _write_text(value, text, append=False)
+            elif action == "append":
+                text = result.result_text
+                _write_text(value, text, append=True)
+        except Exception as exc:
+            log(f"[WARN] RUN handler {action!r} failed: {exc}")
+
+
+def _run_condition_matches(condition: str, result: RunResult) -> bool:
+    name = (condition or "").strip().lower()
+    if name == "error":
+        return not result.ok
+    if name == "success":
+        return result.ok
+    if name == "output":
+        return bool((result.stdout or result.stderr or result.message).strip())
+    return False
+
+
+def _run_handler_text(value: str, result: RunResult) -> str:
+    payload = (value or "").strip()
+    if not payload or payload == "result":
+        return result.result_text
+    return payload
+
+
+def _copy_text_to_clipboard(text: str) -> None:
+    subprocess.run(["pbcopy"], input=text, text=True, check=False, timeout=5)
+
+
+def _write_text(path: str, text: str, *, append: bool) -> None:
+    if not path:
+        raise ValueError("missing output path")
+    target = Path(resolve_dynamic(path)).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if append else "w"
+    with target.open(mode, encoding="utf-8") as fh:
+        fh.write(text)
+        if append and text and not text.endswith("\n"):
+            fh.write("\n")

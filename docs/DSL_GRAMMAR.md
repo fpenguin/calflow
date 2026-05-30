@@ -322,6 +322,8 @@ click text("Export")
 type("hello") speed(0.1s)
 press {cmd+shift+tab}
 save source(clipboard) to("~/file.png")
+run btt("BTT-ClaudeCoworkTryAgain")
+run shortcut("Start Focus") input("deep work")
 ```
 
 ---
@@ -350,6 +352,50 @@ Attached tags remain valid:
 ```text
 open zoom.us @chrome #left(50%)
 screenshot #display(2)
+```
+
+---
+
+## 3.3 Run Commands
+
+```ebnf
+run_command ::= "run" run_backend run_option* run_handler*
+run_backend ::= "btt" "(" string ")"
+              | "shortcut" "(" string ")" input?
+              | "alfred" "(" string "," string ")" input?
+              | "applescript"
+input       ::= "input" "(" string ")"
+
+run_handler ::= "if" "(" run_condition ")" run_handler_action
+run_condition ::= "error" | "success" | "output"
+run_handler_action ::= "notify" "(" ("result" | string)? ")"
+                     | "copy" "(" ("result" | string)? ")"
+                     | "save" "to" "(" string ")"
+                     | "append" "to" "(" string ")"
+```
+
+Run handlers are scoped only to the preceding `run` command. They are
+not a general conditional syntax.
+
+Inline AppleScript uses `+++` delimiters so script lines remain visually
+separate from CalFlow commands:
+
+```text
+run applescript if(error) notify(result)
++++
+display dialog "hello"
++++
+```
+
+Legacy aliases remain valid for compatibility:
+
+```text
+run -btt BTT-ClaudeCoworkTryAgain
+run -shortcut "Start Focus" "deep work"
+run -alfred "com.example.workflow" "try-again" "argument"
+run -applescript
+display dialog "hello"
+end run
 ```
 
 ---

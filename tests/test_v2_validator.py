@@ -99,6 +99,36 @@ class ValidLines(unittest.TestCase):
             [],
         )
 
+    def test_run_btt_function(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run btt("BTT-ClaudeCoworkTryAgain")', 1),
+            [],
+        )
+
+    def test_run_shortcut_function(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run shortcut("Start Focus") input("deep work")', 1),
+            [],
+        )
+
+    def test_run_alfred_function(self) -> None:
+        self.assertEqual(
+            validate_plus_line(
+                'run alfred("com.example.workflow", "try-again") input("now")',
+                1,
+            ),
+            [],
+        )
+
+    def test_run_result_handler(self) -> None:
+        self.assertEqual(
+            validate_plus_line(
+                'run applescript if(error) save to("~/calflow-error.txt")',
+                1,
+            ),
+            [],
+        )
+
 
 class InvalidLines(unittest.TestCase):
     def test_unknown_verb(self) -> None:
@@ -136,6 +166,11 @@ class InvalidLines(unittest.TestCase):
         errs = validate_plus_line('run -alfred "com.example.workflow"', 9)
         self.assertEqual(len(errs), 1)
         self.assertIn("bundle id and external trigger id", errs[0].message)
+
+    def test_run_handler_requires_to_for_save(self) -> None:
+        errs = validate_plus_line("run applescript if(error) save", 9)
+        self.assertEqual(len(errs), 1)
+        self.assertIn('to("PATH")', errs[0].message)
 
 
 class BlockLevel(unittest.TestCase):

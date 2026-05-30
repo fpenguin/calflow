@@ -925,11 +925,41 @@ save source(clipboard) to("~/file.png")
 
 ---
 
-## 3.5 Script Execution
+## 3.5 Run Backends
 
 ```text
-run "~/scripts/report.py"
-run "./script.sh"
+run btt("BTT-ClaudeCoworkTryAgain")
+run shortcut("Start Focus") input("deep work")
+run alfred("com.example.workflow", "try-again") input("meeting prep")
+run applescript if(error) notify(result)
++++
+display dialog "hello"
++++
+```
+
+Run backends are gated by event trust and backend allowlists in
+`config/settings.py`. `btt`, `shortcut`, `alfred`, and `applescript`
+are real backends. Arbitrary file/script execution remains disabled by
+default.
+
+Run-result handlers are local to one run command:
+
+```text
+if(error) notify(result)
+if(error) copy(result)
+if(error) save to("~/Logs/calflow-last-error.txt")
+if(success) notify("Done")
+```
+
+Legacy forms remain accepted:
+
+```text
+run -btt BTT-ClaudeCoworkTryAgain
+run -shortcut "Start Focus" "deep work"
+run -alfred "com.example.workflow" "try-again" "meeting prep"
+run -applescript
+display dialog "hello"
+end run
 ```
 
 ---

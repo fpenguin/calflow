@@ -411,11 +411,13 @@ def resolve_command(
         base["backend"] = command.backend
         base["trigger_name"] = command.trigger_name
         base["script"] = command.script
+        base["timeout"] = command.timeout
         base["shortcut_name"] = command.shortcut_name
         base["shortcut_input"] = command.shortcut_input
         base["alfred_bundle_id"] = command.alfred_bundle_id
         base["alfred_trigger"] = command.alfred_trigger
         base["alfred_argument"] = command.alfred_argument
+        base["run_handlers"] = command.run_handlers
         return base
 
     return base

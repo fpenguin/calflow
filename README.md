@@ -19,8 +19,8 @@ on the calendar.
 
 open https://zoom.us/j/123456789 @chrome #left(60%)
 open https://docs.google.com/document/d/agenda @chrome #right(40%)
-run -shortcut "Start Focus" "deep work"
-run -btt BTT-ClaudeCoworkTryAgain
+run shortcut("Start Focus") input("deep work")
+run btt("BTT-ClaudeCoworkTryAgain")
 ```
 
 The calendar event becomes the playbook. CalFlow handles the setup.
@@ -95,7 +95,7 @@ the event should become a repeatable workflow.
 
 open https://zoom.us/j/123456789 @chrome #left(55%)
 open https://docs.google.com/document/d/agenda @chrome #right(45%)
-run -shortcut "Start Focus" "meeting"
+run shortcut("Start Focus") input("meeting")
 ```
 
 ### Better Touch Tool Trigger
@@ -103,7 +103,7 @@ run -shortcut "Start Focus" "meeting"
 ```text
 +CalFlow+
 
-run -btt BTT-ClaudeCoworkTryAgain
+run btt("BTT-ClaudeCoworkTryAgain")
 ```
 Hit your 5h limit already? Set up your BTT automation to click on "Try Again" and fire your next command on queue while you're away or asleep, so that the work is done when you're back at desk.
 
@@ -116,7 +116,7 @@ workflow display name alone is not enough.
 ```text
 +CalFlow+
 
-run -alfred "com.example.workflow" "try-again" "meeting prep"
+run alfred("com.example.workflow", "try-again") input("meeting prep")
 ```
 
 Combined form is also supported:
@@ -124,7 +124,7 @@ Combined form is also supported:
 ```text
 +CalFlow+
 
-run -alfred "com.example.workflow/try-again" "meeting prep"
+run alfred("com.example.workflow/try-again") input("meeting prep")
 ```
 
 ### Apple Shortcuts
@@ -132,8 +132,8 @@ run -alfred "com.example.workflow/try-again" "meeting prep"
 ```text
 +CalFlow+
 
-run -shortcut "Start Focus"
-run -shortcut "Open Deep Work Stack" "calflow"
+run shortcut("Start Focus")
+run shortcut("Open Deep Work Stack") input("calflow")
 ```
 
 ### Inline AppleScript
@@ -143,9 +143,27 @@ Small AppleScripts can live directly in the calendar event:
 ```text
 +CalFlow+
 
-run -applescript
+run applescript if(error) notify(result)
++++
 display notification "Meeting setup complete"
-end run
++++
+```
+
+Legacy `run -applescript ... end run` blocks still work, but `+++`
+keeps embedded AppleScript visually separate from CalFlow commands.
+
+### Capturing Run Errors
+
+Run backends can report their result to a notification, the clipboard,
+or a file:
+
+```text
++CalFlow+
+
+run applescript if(error) notify(result) if(error) copy(result) if(error) save to("~/Logs/calflow-last-error.txt")
++++
+error "Demo failure"
++++
 ```
 
 ### Dynamic Dates
@@ -172,10 +190,10 @@ open "https://reports.example.com/monthly?start={now-1mo > start_of_month}&end={
 | `open` | Real |
 | `wait` | Real |
 | `screenshot` | Real for standard capture; some variants still fall back |
-| `run -btt` | Real via BetterTouchTool URL scheme |
-| `run -shortcut` | Real via macOS `shortcuts run` |
-| `run -alfred` | Real via Alfred External Trigger URL scheme |
-| `run -applescript` | Real via `osascript` |
+| `run btt(...)` / `run -btt` | Real via BetterTouchTool URL scheme |
+| `run shortcut(...)` / `run -shortcut` | Real via macOS `shortcuts run` |
+| `run alfred(...)` / `run -alfred` | Real via Alfred External Trigger URL scheme |
+| `run applescript` / `run -applescript` | Real via `osascript` |
 | Calendar invite trust gate | Real |
 | Run failure notifications | Real, best-effort macOS notifications |
 | Arbitrary `run "~/script.sh"` / shell | Disabled by default |
@@ -294,6 +312,14 @@ run -alfred "<workflow.bundle.id>" "<external-trigger-id>" ["argument"]
 run -applescript
 <script>
 end run
+
+run btt("<trigger-name>")
+run shortcut("<shortcut name>") input("optional input")
+run alfred("<workflow.bundle.id>", "<external-trigger-id>") input("optional argument")
+run applescript if(error) notify(result)
++++
+<script>
++++
 ```
 
 Common symbols:
@@ -305,6 +331,8 @@ Common symbols:
 | `#left(50%)`, `#right(50%)`, `#display(ext)` | Layout/display tags |
 | `{now-7d}` | Dynamic value |
 | `text("Submit")` | Function-style argument |
+| `if(error) notify(result)` | Run-result handler |
+| `if(error) save to("~/x.txt")` | Save the latest run error/result |
 
 More details:
 

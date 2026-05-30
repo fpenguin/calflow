@@ -210,7 +210,7 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
     # not positionals — they don't satisfy arity by themselves.
     if verb in {"OPEN", "FOCUS", "CLOSE", "HIDE"}:
         positional_count = len(body) + len(targets)
-    elif verb in {"CLICK", "SAVE"}:
+    elif verb in {"CLICK", "SAVE", "RUN"}:
         # CLICK / SAVE can use function-calls as their effective payload
         positional_count = len(body) + len(functions)
     else:
@@ -492,8 +492,44 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             )
 
     elif verb == "RUN":
-        head = body[0]
-        if head.lower() == "-btt":
+        head = body[0] if body else ""
+        run_backend = _run_backend_from_functions(functions)
+        if run_backend:
+            errors.extend(_validate_run_handlers(args, line_no))
+            if run_backend == "btt":
+                if not _function_value_present(functions, "btt"):
+                    errors.append(
+                        ValidationError(
+                            line_no,
+                            'RUN btt(...) expects one trigger name',
+                        )
+                    )
+            elif run_backend == "shortcut":
+                if not _function_value_present(functions, "shortcut"):
+                    errors.append(
+                        ValidationError(
+                            line_no,
+                            'RUN shortcut(...) expects one shortcut name',
+                        )
+                    )
+            elif run_backend == "alfred":
+                alfred_value = _function_inner(functions, "alfred")
+                has_split_trigger = (
+                    "," in alfred_value
+                    or "/" in _strip_quotes(alfred_value)
+                )
+                if not alfred_value or not has_split_trigger:
+                    errors.append(
+                        ValidationError(
+                            line_no,
+                            'RUN alfred(...) expects workflow bundle id and external trigger id',
+                        )
+                    )
+            elif run_backend == "applescript":
+                pass
+        elif head.lower() == "applescript":
+            errors.extend(_validate_run_handlers(args, line_no))
+        elif head.lower() == "-btt":
             if len(body) != 2:
                 message = (
                     'RUN -btt trigger names with spaces must be quoted, '
@@ -565,6 +601,8 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
                         'RUN expects a quoted path, -btt trigger, or -applescript block',
                     )
                 )
+        if not run_backend and head.lower() not in {"applescript"}:
+            errors.extend(_validate_run_handlers(args, line_no))
 
     return errors
 
@@ -735,6 +773,73 @@ def _strip_quotes(token: str) -> str:
     if _QUOTED_RE.match(token):
         return token[1:-1]
     return token
+
+
+def _function_name(token: str) -> str:
+    m = re.match(r"^([A-Za-z_][\w\-]*)\((.*)\)$", token)
+    return m.group(1).lower() if m else ""
+
+
+def _function_inner(functions: List[str], name: str) -> str:
+    prefix = name.lower() + "("
+    for token in reversed(functions):
+        if token.lower().startswith(prefix) and token.endswith(")"):
+            return token[len(prefix):-1].strip()
+    return ""
+
+
+def _function_value_present(functions: List[str], name: str) -> bool:
+    return bool(_function_inner(functions, name))
+
+
+def _run_backend_from_functions(functions: List[str]) -> str:
+    for token in functions:
+        name = _function_name(token)
+        if name in {"btt", "shortcut", "alfred", "applescript"}:
+            return name
+    return ""
+
+
+def _validate_run_handlers(args: List[str], line_no: int) -> List[ValidationError]:
+    errors: List[ValidationError] = []
+    valid_conditions = {"error", "success", "output"}
+    valid_actions = {"notify", "copy", "save", "append"}
+    for i, token in enumerate(args):
+        if _function_name(token) != "if":
+            continue
+        condition = _strip_quotes(_function_inner([token], "if")).lower()
+        if condition not in valid_conditions:
+            errors.append(
+                ValidationError(
+                    line_no,
+                    f"RUN if(...) supports error, success, or output; got {condition!r}",
+                )
+            )
+            continue
+        if i + 1 >= len(args):
+            errors.append(
+                ValidationError(line_no, "RUN if(...) must be followed by a handler")
+            )
+            continue
+        next_token = args[i + 1]
+        action = _function_name(next_token) or next_token.lower()
+        if action not in valid_actions:
+            errors.append(
+                ValidationError(
+                    line_no,
+                    "RUN handlers support notify, copy, save to(...), or append to(...)",
+                )
+            )
+            continue
+        if action in {"save", "append"}:
+            if i + 2 >= len(args) or _function_name(args[i + 2]) != "to":
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f"RUN if({condition}) {action} requires to(\"PATH\")",
+                    )
+                )
+    return errors
 
 
 def _split_args(

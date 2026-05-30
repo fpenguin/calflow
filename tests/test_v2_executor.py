@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any, Dict, List
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +24,7 @@ if ROOT not in sys.path:
 
 from core.parser.parser import parse
 import runtime.command_executor as ce
+from runtime.actions.run_result import RunResult, error_result, ok_result
 
 
 class FakeActions:
@@ -37,6 +40,8 @@ class FakeActions:
         self.shortcuts: List[Dict[str, str]] = []
         self.alfred: List[Dict[str, str]] = []
         self.notifications: List[Dict[str, str]] = []
+        self.clipboard: List[str] = []
+        self.applescript_result: RunResult = ok_result("applescript", "done")
 
     def open_target(self, url=None, app=None, layout=None, display_spec=None,
                     chrome_profile=None, new_window=False) -> None:
@@ -56,24 +61,36 @@ class FakeActions:
     def sleep(self, seconds) -> None:
         self.sleeps.append(seconds)
 
-    def trigger_named_btt(self, trigger_name: str) -> None:
+    def trigger_named_btt(self, trigger_name: str) -> RunResult:
         self.btt.append(trigger_name)
+        return ok_result("btt", f"launched {trigger_name}")
 
-    def run_applescript(self, script: str) -> None:
+    def run_applescript(self, script: str) -> RunResult:
         self.applescripts.append(script)
+        return self.applescript_result
 
-    def run_shortcut(self, name: str, input_text: str = "") -> None:
+    def run_shortcut(self, name: str, input_text: str = "") -> RunResult:
         self.shortcuts.append({"name": name, "input": input_text})
+        return ok_result("shortcut", f"ran {name}")
 
-    def trigger_alfred(self, bundle_id: str, trigger_id: str, argument: str = "") -> None:
+    def trigger_alfred(
+        self,
+        bundle_id: str,
+        trigger_id: str,
+        argument: str = "",
+    ) -> RunResult:
         self.alfred.append({
             "bundle_id": bundle_id,
             "trigger_id": trigger_id,
             "argument": argument,
         })
+        return ok_result("alfred", f"launched {bundle_id}/{trigger_id}")
 
     def notify_run_error(self, title: str, message: str) -> None:
         self.notifications.append({"title": title, "message": message})
+
+    def copy_text_to_clipboard(self, text: str) -> None:
+        self.clipboard.append(text)
 
 
 class CommandExecutorRoutes(unittest.TestCase):
@@ -89,6 +106,7 @@ class CommandExecutorRoutes(unittest.TestCase):
             "run_shortcut": ce.run_shortcut,
             "trigger_alfred": ce.trigger_alfred,
             "notify_run_error": ce.notify_run_error,
+            "_copy_text_to_clipboard": ce._copy_text_to_clipboard,
             "sleep": ce.time.sleep,
         }
         ce.open_target = self.fake.open_target
@@ -99,6 +117,7 @@ class CommandExecutorRoutes(unittest.TestCase):
         ce.run_shortcut = self.fake.run_shortcut
         ce.trigger_alfred = self.fake.trigger_alfred
         ce.notify_run_error = self.fake.notify_run_error
+        ce._copy_text_to_clipboard = self.fake.copy_text_to_clipboard
         ce.time.sleep = self.fake.sleep
 
     def tearDown(self) -> None:
@@ -110,6 +129,7 @@ class CommandExecutorRoutes(unittest.TestCase):
         ce.run_shortcut = self._orig["run_shortcut"]
         ce.trigger_alfred = self._orig["trigger_alfred"]
         ce.notify_run_error = self._orig["notify_run_error"]
+        ce._copy_text_to_clipboard = self._orig["_copy_text_to_clipboard"]
         ce.time.sleep = self._orig["sleep"]
 
     # -----------------------------------------------------
@@ -196,6 +216,52 @@ class CommandExecutorRoutes(unittest.TestCase):
         )
         ce.execute_commands(result.commands, trust_level="trusted_domain")
         self.assertEqual(self.fake.alfred, [])
+
+    def test_run_function_syntax_routes(self) -> None:
+        result = parse(
+            '+CalFlow+\n'
+            'run btt("BTT-ClaudeCoworkTryAgain")\n'
+            'run shortcut("Start Focus") input("deep work")\n'
+            'run alfred("com.example.workflow", "try-again") input("now")\n'
+        )
+        ce.execute_commands(result.commands)
+        self.assertEqual(self.fake.btt, ["BTT-ClaudeCoworkTryAgain"])
+        self.assertEqual(
+            self.fake.shortcuts,
+            [{"name": "Start Focus", "input": "deep work"}],
+        )
+        self.assertEqual(
+            self.fake.alfred,
+            [{
+                "bundle_id": "com.example.workflow",
+                "trigger_id": "try-again",
+                "argument": "now",
+            }],
+        )
+
+    def test_run_error_handlers_notify_copy_and_save(self) -> None:
+        self.fake.applescript_result = error_result(
+            "applescript",
+            "exited 1: boom",
+            stderr="boom",
+            returncode=1,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "calflow-error.txt"
+            result = parse(
+                '+CalFlow+\n'
+                'run applescript if(error) notify(result) '
+                'if(error) copy(result) if(error) save to("' + str(path) + '")\n'
+                '+++\n'
+                'error "boom"\n'
+                '+++\n'
+            )
+            ce.execute_commands(result.commands)
+
+            self.assertEqual(len(self.fake.notifications), 1)
+            self.assertIn("exited 1", self.fake.notifications[0]["message"])
+            self.assertEqual(self.fake.clipboard, ["exited 1: boom\nboom"])
+            self.assertIn("exited 1", path.read_text(encoding="utf-8"))
 
     def test_disabled_run_backend_notifies(self) -> None:
         result = parse(

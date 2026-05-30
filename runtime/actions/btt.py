@@ -20,6 +20,7 @@ from urllib.parse import quote
 from config.settings import RUN_ALFRED_TIMEOUT
 from core.utils import log
 from runtime.actions.notifications import notify_run_error
+from runtime.actions.run_result import RunResult, error_result, ok_result
 
 
 def build_named_trigger_url(trigger_name: str) -> str:
@@ -38,26 +39,28 @@ def build_alfred_trigger_url(bundle_id: str, trigger_id: str, argument: str = ""
     return url
 
 
-def trigger_named_btt(trigger_name: str) -> None:
+def trigger_named_btt(trigger_name: str) -> RunResult:
     """Fire a BetterTouchTool named trigger via its URL scheme."""
     name = (trigger_name or "").strip()
     if not name:
         msg = "missing trigger name"
         log(f"[WARN] BTT {msg}")
         notify_run_error("CalFlow BTT failed", msg)
-        return
+        return error_result("btt", msg)
 
     url = build_named_trigger_url(name)
     try:
         subprocess.run(["open", url], check=False, timeout=5)
         log(f"[INFO] BTT trigger: {name}")
+        return ok_result("btt", f"BTT trigger launched: {name}")
     except Exception as exc:
         msg = f"trigger failed for {name!r}: {exc}"
         log(f"[ERROR] BTT {msg}")
         notify_run_error("CalFlow BTT failed", msg)
+        return error_result("btt", msg)
 
 
-def trigger_alfred(bundle_id: str, trigger_id: str, argument: str = "") -> None:
+def trigger_alfred(bundle_id: str, trigger_id: str, argument: str = "") -> RunResult:
     """Fire an Alfred workflow external trigger via URL scheme."""
     bid = (bundle_id or "").strip()
     tid = (trigger_id or "").strip()
@@ -65,13 +68,15 @@ def trigger_alfred(bundle_id: str, trigger_id: str, argument: str = "") -> None:
         msg = "missing workflow bundle id or trigger id"
         log(f"[WARN] Alfred {msg}")
         notify_run_error("CalFlow Alfred failed", msg)
-        return
+        return error_result("alfred", msg)
 
     url = build_alfred_trigger_url(bid, tid, argument)
     try:
         subprocess.run(["open", url], check=False, timeout=RUN_ALFRED_TIMEOUT)
         log(f"[INFO] Alfred trigger: {bid}/{tid}")
+        return ok_result("alfred", f"Alfred trigger launched: {bid}/{tid}")
     except Exception as exc:
         msg = f"trigger failed for {bid}/{tid}: {exc}"
         log(f"[ERROR] Alfred {msg}")
         notify_run_error("CalFlow Alfred failed", msg)
+        return error_result("alfred", msg)

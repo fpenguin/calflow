@@ -20,7 +20,7 @@ Design rules:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import Any, Dict, FrozenSet, Optional, Tuple, Union
 
 
 # =========================================================
@@ -252,8 +252,10 @@ class RunCommand(BaseCommand):
     backend: Optional[str] = None
     trigger_name: str = ""
     script: str = ""
+    timeout: Optional[float] = None
     shortcut_name: str = ""
     shortcut_input: str = ""
     alfred_bundle_id: str = ""
     alfred_trigger: str = ""
     alfred_argument: str = ""
+    run_handlers: Tuple[Tuple[str, str, str], ...] = field(default_factory=tuple)

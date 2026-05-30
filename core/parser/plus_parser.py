@@ -289,6 +289,8 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
         path = _unquote(body_args[0]) if body_args else ""
         trigger_name = ""
         script = ""
+        timeout = _run_timeout(fns)
+        run_handlers = _parse_run_handlers(args)
         shortcut_name = shortcut_input = ""
         alfred_bundle_id = alfred_trigger = alfred_argument = ""
         if body_args and body_args[0].lower() == "-btt":
@@ -309,6 +311,25 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
             backend = "applescript"
             path = ""
             script = _unquote(" ".join(body_args[1:]))
+        else:
+            fn_backend = _run_backend_function(fns)
+            if fn_backend is not None:
+                backend, value = fn_backend
+                path = ""
+                if backend == "btt":
+                    trigger_name = _normalize_btt_trigger_arg(str(value or ""))
+                elif backend == "shortcut":
+                    shortcut_name = str(value or "")
+                    shortcut_input = str(_run_function_value(fns, "input") or "")
+                elif backend == "alfred":
+                    alfred_bundle_id, alfred_trigger, _arg = _parse_alfred_value(value)
+                    alfred_argument = str(_run_function_value(fns, "input") or _arg)
+                elif backend == "applescript":
+                    script = _extract_run_script(body_args)
+            elif body_args and body_args[0].lower() == "applescript":
+                backend = "applescript"
+                path = ""
+                script = _extract_run_script(body_args)
         return RunCommand(
             line_no=line_no,
             raw=raw,
@@ -318,11 +339,13 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
             backend=backend,
             trigger_name=trigger_name,
             script=script,
+            timeout=timeout,
             shortcut_name=shortcut_name,
             shortcut_input=shortcut_input,
             alfred_bundle_id=alfred_bundle_id,
             alfred_trigger=alfred_trigger,
             alfred_argument=alfred_argument,
+            run_handlers=run_handlers,
         )
 
     return None
@@ -666,6 +689,11 @@ def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
         ...
         end run
 
+        run applescript if(error) notify(result)
+        +++
+        ...
+        +++
+
     into one parser line with a JSON-quoted script payload.
     """
     out: List[str] = []
@@ -682,9 +710,119 @@ def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
                 i += 1  # consume `end run`
             out.append("run -applescript " + json.dumps("\n".join(script_lines)))
             continue
+        if (raw or "").strip().lower().startswith("run applescript"):
+            j = i + 1
+            if j < len(lines) and (lines[j] or "").strip() == "+++":
+                script_lines = []
+                j += 1
+                while j < len(lines) and (lines[j] or "").strip() != "+++":
+                    script_lines.append(lines[j])
+                    j += 1
+                if j < len(lines):
+                    j += 1  # consume closing +++
+                out.append(raw + " " + json.dumps("\n".join(script_lines)))
+                i = j
+                continue
         out.append(raw)
         i += 1
     return out
+
+
+def _run_backend_function(fns: List[Tuple[str, Any]]) -> Optional[Tuple[str, Any]]:
+    for name, value in fns:
+        if name in {"btt", "shortcut", "alfred", "applescript"}:
+            return name, value
+    return None
+
+
+def _run_function_value(fns: List[Tuple[str, Any]], name: str) -> Any:
+    for fn_name, value in reversed(fns):
+        if fn_name == name:
+            return value
+    return None
+
+
+def _run_timeout(fns: List[Tuple[str, Any]]) -> Optional[float]:
+    value = _run_function_value(fns, "timeout")
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except Exception:
+        return None
+
+
+def _parse_alfred_value(value: Any) -> Tuple[str, str, str]:
+    if isinstance(value, tuple):
+        args = [str(v) for v in value if v is not None]
+        return _parse_alfred_args(args)
+    return _parse_alfred_args([str(value or "")])
+
+
+def _extract_run_script(body_args: List[str]) -> str:
+    action_words = {"applescript", "save", "append", "copy", "notify"}
+    for token in reversed(body_args):
+        if token.lower() not in action_words:
+            return _unquote(token)
+    return ""
+
+
+def _parse_run_handlers(args: List[str]) -> Tuple[Tuple[str, str, str], ...]:
+    handlers: List[Tuple[str, str, str]] = []
+    i = 0
+    while i < len(args):
+        parsed = _parse_function_token(args[i])
+        if not parsed or parsed[0] != "if":
+            i += 1
+            continue
+
+        condition = str(parsed[1] or "").strip().lower()
+        i += 1
+        if i >= len(args):
+            break
+
+        token = args[i]
+        action = token.lower()
+        action_fn = _parse_function_token(token)
+        if action_fn and action_fn[0] in {"notify", "copy"}:
+            value = _run_handler_value(action_fn[1])
+            handlers.append((condition, action_fn[0], value))
+            i += 1
+            continue
+
+        if action in {"notify", "copy"}:
+            handlers.append((condition, action, ""))
+            i += 1
+            continue
+
+        if action in {"save", "append"}:
+            destination = ""
+            if i + 1 < len(args):
+                next_fn = _parse_function_token(args[i + 1])
+                if next_fn and next_fn[0] == "to":
+                    destination = _run_handler_value(next_fn[1])
+                    i += 1
+            handlers.append((condition, action, destination))
+            i += 1
+            continue
+
+        i += 1
+    return tuple(handlers)
+
+
+def _parse_function_token(token: str) -> Optional[Tuple[str, Any]]:
+    m = _FUNCTION_CALL_RE.match(token)
+    if not m:
+        return None
+    return m.group(1).lower(), _coerce_function_args(m.group(2).strip())
+
+
+def _run_handler_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, tuple):
+        return " ".join(str(v) for v in value if v is not None)
+    return str(value)
 
 def _normalize_btt_trigger_arg(token: str) -> str:
     """

@@ -205,6 +205,51 @@ class PlusModeAST(unittest.TestCase):
         self.assertEqual(cmd.alfred_trigger, "try-again")
         self.assertEqual(cmd.alfred_argument, "now")
 
+    def test_run_btt_function_command(self) -> None:
+        result = parse('+CalFlow+\nrun btt("BTT-ClaudeCoworkTryAgain")')
+        self.assertEqual(len(result.commands), 1)
+        cmd = result.commands[0]
+        self.assertIsInstance(cmd, RunCommand)
+        self.assertEqual(cmd.backend, "btt")
+        self.assertEqual(cmd.trigger_name, "BTT-ClaudeCoworkTryAgain")
+
+    def test_run_shortcut_function_command(self) -> None:
+        result = parse('+CalFlow+\nrun shortcut("Start Focus") input("deep work")')
+        self.assertEqual(len(result.commands), 1)
+        cmd = result.commands[0]
+        self.assertIsInstance(cmd, RunCommand)
+        self.assertEqual(cmd.backend, "shortcut")
+        self.assertEqual(cmd.shortcut_name, "Start Focus")
+        self.assertEqual(cmd.shortcut_input, "deep work")
+
+    def test_run_alfred_function_command(self) -> None:
+        result = parse(
+            '+CalFlow+\nrun alfred("com.example.workflow", "try-again") input("now")'
+        )
+        self.assertEqual(len(result.commands), 1)
+        cmd = result.commands[0]
+        self.assertIsInstance(cmd, RunCommand)
+        self.assertEqual(cmd.backend, "alfred")
+        self.assertEqual(cmd.alfred_bundle_id, "com.example.workflow")
+        self.assertEqual(cmd.alfred_trigger, "try-again")
+        self.assertEqual(cmd.alfred_argument, "now")
+
+    def test_run_applescript_plus_block_with_handler(self) -> None:
+        result = parse(
+            '+CalFlow+\n'
+            'run applescript timeout(10) if(error) notify(result)\n'
+            '+++\n'
+            'display dialog "hello"\n'
+            '+++\n'
+        )
+        self.assertEqual(len(result.commands), 1)
+        cmd = result.commands[0]
+        self.assertIsInstance(cmd, RunCommand)
+        self.assertEqual(cmd.backend, "applescript")
+        self.assertEqual(cmd.timeout, 10.0)
+        self.assertEqual(cmd.script, 'display dialog "hello"')
+        self.assertEqual(cmd.run_handlers, (("error", "notify", "result"),))
+
     def test_unknown_verb_yields_error_and_no_command(self) -> None:
         result = parse("+CalFlow+\nDANCE")
         self.assertTrue(result.has_errors)
