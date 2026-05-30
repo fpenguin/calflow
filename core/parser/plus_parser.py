@@ -17,6 +17,7 @@ Design:
 from __future__ import annotations
 
 import re
+import json
 from typing import Any, FrozenSet, List, Optional, Tuple
 
 from config.settings import (
@@ -137,7 +138,7 @@ def parse_plus(
     text: str,
 ) -> Tuple[List[BaseCommand], List[ValidationError]]:
     """Parse the body of a Plus block into a typed AST."""
-    body = strip_header(text)
+    body = _collapse_multiline_run_blocks(strip_header(text))
     errors = validate_plus_block(body)
 
     if errors and PLUS_STRICT_VALIDATION:
@@ -284,13 +285,44 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
         )
 
     if head_upper == "RUN":
+        backend = None
         path = _unquote(body_args[0]) if body_args else ""
+        trigger_name = ""
+        script = ""
+        shortcut_name = shortcut_input = ""
+        alfred_bundle_id = alfred_trigger = alfred_argument = ""
+        if body_args and body_args[0].lower() == "-btt":
+            backend = "btt"
+            path = ""
+            trigger_name = _normalize_btt_trigger_arg(" ".join(body_args[1:]))
+        elif body_args and body_args[0].lower() == "-shortcut":
+            backend = "shortcut"
+            path = ""
+            shortcut_name, shortcut_input = _parse_shortcut_args(body_args[1:])
+        elif body_args and body_args[0].lower() == "-alfred":
+            backend = "alfred"
+            path = ""
+            alfred_bundle_id, alfred_trigger, alfred_argument = _parse_alfred_args(
+                body_args[1:]
+            )
+        elif body_args and body_args[0].lower() == "-applescript":
+            backend = "applescript"
+            path = ""
+            script = _unquote(" ".join(body_args[1:]))
         return RunCommand(
             line_no=line_no,
             raw=raw,
             tags=tags,
             functions=tuple(fns),
             path=path,
+            backend=backend,
+            trigger_name=trigger_name,
+            script=script,
+            shortcut_name=shortcut_name,
+            shortcut_input=shortcut_input,
+            alfred_bundle_id=alfred_bundle_id,
+            alfred_trigger=alfred_trigger,
+            alfred_argument=alfred_argument,
         )
 
     return None
@@ -626,6 +658,71 @@ def _build_screenshot(
 # 🛠️ HELPERS
 # =========================================================
 
+def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
+    """
+    Collapse:
+
+        run -applescript
+        ...
+        end run
+
+    into one parser line with a JSON-quoted script payload.
+    """
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        if (raw or "").strip().lower() == "run -applescript":
+            script_lines: List[str] = []
+            i += 1
+            while i < len(lines) and (lines[i] or "").strip().lower() != "end run":
+                script_lines.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1  # consume `end run`
+            out.append("run -applescript " + json.dumps("\n".join(script_lines)))
+            continue
+        out.append(raw)
+        i += 1
+    return out
+
+def _normalize_btt_trigger_arg(token: str) -> str:
+    """
+    Normalize `run -btt ...` trigger syntax.
+
+    Accepts:
+        run -btt BTT-Foo
+        run -btt "My Trigger"
+        run -btt {"BTT-Foo"}     (literal trigger name includes braces/quotes)
+    """
+    text = (token or "").strip()
+    return _unquote(text)
+
+
+def _parse_shortcut_args(args: List[str]) -> Tuple[str, str]:
+    if not args:
+        return "", ""
+    name = _unquote(args[0])
+    input_text = _unquote(" ".join(args[1:])) if len(args) > 1 else ""
+    return name, input_text
+
+
+def _parse_alfred_args(args: List[str]) -> Tuple[str, str, str]:
+    if not args:
+        return "", "", ""
+
+    first = _unquote(args[0])
+    if "/" in first and len(args) >= 1:
+        bundle_id, trigger = first.split("/", 1)
+        argument = _unquote(" ".join(args[1:])) if len(args) > 1 else ""
+        return bundle_id, trigger, argument
+
+    bundle_id = first
+    trigger = _unquote(args[1]) if len(args) > 1 else ""
+    argument = _unquote(" ".join(args[2:])) if len(args) > 2 else ""
+    return bundle_id, trigger, argument
+
+
 def _split_args(
     args: List[str],
 ) -> Tuple[List[str], FrozenSet[str], List[str], List[Tuple[str, Any]]]:
@@ -835,5 +932,8 @@ def _unquote(text: str) -> str:
         return ""
     m = _QUOTED_RE.match(text)
     if m:
-        return m.group(1) if m.group(1) is not None else m.group(2) or ""
+        try:
+            return json.loads(text)
+        except Exception:
+            return m.group(1) if m.group(1) is not None else m.group(2) or ""
     return text

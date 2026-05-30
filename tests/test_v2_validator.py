@@ -55,6 +55,50 @@ class ValidLines(unittest.TestCase):
             validate_plus_line('SCREENSHOT to("/tmp/x.png")', 1), []
         )
 
+    def test_run_btt_named_trigger(self) -> None:
+        self.assertEqual(
+            validate_plus_line("run -btt BTT-ClaudeCoworkTryAgain", 1),
+            [],
+        )
+
+    def test_run_btt_quoted_named_trigger(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run -btt "BTT Claude Cowork Try Again"', 1),
+            [],
+        )
+
+    def test_run_btt_braced_named_trigger(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run -btt {"BTT-ClaudeCoworkTryAgain"}', 1),
+            [],
+        )
+
+    def test_run_applescript_quoted_script(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run -applescript "tell app \\"Finder\\" to activate"', 1),
+            [],
+        )
+
+    def test_run_shortcut(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run -shortcut "Start Focus" "deep work"', 1),
+            [],
+        )
+
+    def test_run_alfred(self) -> None:
+        self.assertEqual(
+            validate_plus_line(
+                'run -alfred "com.example.workflow" "try-again" "now"', 1
+            ),
+            [],
+        )
+
+    def test_run_alfred_combined_bundle_trigger(self) -> None:
+        self.assertEqual(
+            validate_plus_line('run -alfred "com.example.workflow/try-again" "now"', 1),
+            [],
+        )
+
 
 class InvalidLines(unittest.TestCase):
     def test_unknown_verb(self) -> None:
@@ -82,6 +126,16 @@ class InvalidLines(unittest.TestCase):
     def test_wait_non_numeric(self) -> None:
         errs = validate_plus_line("WAIT later", 8)
         self.assertEqual(len(errs), 1)
+
+    def test_run_btt_unquoted_trigger_with_spaces_rejected(self) -> None:
+        errs = validate_plus_line("run -btt My Trigger", 9)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("with spaces must be quoted", errs[0].message)
+
+    def test_run_alfred_requires_trigger(self) -> None:
+        errs = validate_plus_line('run -alfred "com.example.workflow"', 9)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("bundle id and external trigger id", errs[0].message)
 
 
 class BlockLevel(unittest.TestCase):

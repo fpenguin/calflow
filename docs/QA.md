@@ -274,11 +274,15 @@ Per `docs/roadmap.md`, these print `(stub)` instead of acting:
 | TYPE  | `[INFO] TYPE 'hello' …`  | v2.1 |
 | PRESS | `[INFO] PRESS keys=…`    | v2.1 |
 | COPY / PASTE / SAVE | `[INFO] SAVE source=… to=…` | v2.3 |
-| RUN   | `[INFO] RUN '…' (stub — refusing)` | v2.4 (security gate) |
+| RUN arbitrary script/path | `[INFO] RUN '…' (stub — refusing)` | deferred; disabled by default |
 | Layout window-move (after `parse_layout_tag`) | `[INFO] Applying layout …` | v2.2 |
 
 The pipeline still runs each line and the next command still executes.
 Failures in real backends are best-effort (`[ERROR]` + continue).
+Real `RUN` backends now include `-btt`, `-shortcut`, `-alfred`, and
+`-applescript`, gated by event trust and backend allowlists in
+`config/settings.py`. Failures from those backends are logged and can
+show macOS notifications.
 
 ---
 

@@ -32,6 +32,11 @@ class FakeActions:
         self.shots: List[Any] = []
         self.fills: List[str] = []
         self.sleeps: List[float] = []
+        self.btt: List[str] = []
+        self.applescripts: List[str] = []
+        self.shortcuts: List[Dict[str, str]] = []
+        self.alfred: List[Dict[str, str]] = []
+        self.notifications: List[Dict[str, str]] = []
 
     def open_target(self, url=None, app=None, layout=None, display_spec=None,
                     chrome_profile=None, new_window=False) -> None:
@@ -51,6 +56,25 @@ class FakeActions:
     def sleep(self, seconds) -> None:
         self.sleeps.append(seconds)
 
+    def trigger_named_btt(self, trigger_name: str) -> None:
+        self.btt.append(trigger_name)
+
+    def run_applescript(self, script: str) -> None:
+        self.applescripts.append(script)
+
+    def run_shortcut(self, name: str, input_text: str = "") -> None:
+        self.shortcuts.append({"name": name, "input": input_text})
+
+    def trigger_alfred(self, bundle_id: str, trigger_id: str, argument: str = "") -> None:
+        self.alfred.append({
+            "bundle_id": bundle_id,
+            "trigger_id": trigger_id,
+            "argument": argument,
+        })
+
+    def notify_run_error(self, title: str, message: str) -> None:
+        self.notifications.append({"title": title, "message": message})
+
 
 class CommandExecutorRoutes(unittest.TestCase):
     def setUp(self) -> None:
@@ -60,17 +84,32 @@ class CommandExecutorRoutes(unittest.TestCase):
             "open_target": ce.open_target,
             "take_screenshot": ce.take_screenshot,
             "trigger_autofill": ce.trigger_autofill,
+            "trigger_named_btt": ce.trigger_named_btt,
+            "run_applescript": ce.run_applescript,
+            "run_shortcut": ce.run_shortcut,
+            "trigger_alfred": ce.trigger_alfred,
+            "notify_run_error": ce.notify_run_error,
             "sleep": ce.time.sleep,
         }
         ce.open_target = self.fake.open_target
         ce.take_screenshot = self.fake.take_screenshot
         ce.trigger_autofill = self.fake.trigger_autofill
+        ce.trigger_named_btt = self.fake.trigger_named_btt
+        ce.run_applescript = self.fake.run_applescript
+        ce.run_shortcut = self.fake.run_shortcut
+        ce.trigger_alfred = self.fake.trigger_alfred
+        ce.notify_run_error = self.fake.notify_run_error
         ce.time.sleep = self.fake.sleep
 
     def tearDown(self) -> None:
         ce.open_target = self._orig["open_target"]
         ce.take_screenshot = self._orig["take_screenshot"]
         ce.trigger_autofill = self._orig["trigger_autofill"]
+        ce.trigger_named_btt = self._orig["trigger_named_btt"]
+        ce.run_applescript = self._orig["run_applescript"]
+        ce.run_shortcut = self._orig["run_shortcut"]
+        ce.trigger_alfred = self._orig["trigger_alfred"]
+        ce.notify_run_error = self._orig["notify_run_error"]
         ce.time.sleep = self._orig["sleep"]
 
     # -----------------------------------------------------
@@ -92,6 +131,83 @@ class CommandExecutorRoutes(unittest.TestCase):
         # Each command also pays the inter-command delay; we only assert
         # that 2.0 was among the requested sleeps.
         self.assertIn(2.0, self.fake.sleeps)
+
+    def test_run_btt_routes_to_named_trigger(self) -> None:
+        result = parse('+CalFlow+\nrun -btt {"BTT-ClaudeCoworkTryAgain"}')
+        ce.execute_commands(result.commands)
+        self.assertEqual(self.fake.btt, ['{"BTT-ClaudeCoworkTryAgain"}'])
+
+    def test_run_applescript_routes_for_self(self) -> None:
+        result = parse(
+            '+CalFlow+\n'
+            'run -applescript\n'
+            'tell application "Finder" to activate\n'
+            'end run\n'
+        )
+        ce.execute_commands(result.commands)
+        self.assertEqual(
+            self.fake.applescripts,
+            ['tell application "Finder" to activate'],
+        )
+
+    def test_run_applescript_blocked_for_trusted_domain_by_default(self) -> None:
+        result = parse(
+            '+CalFlow+\n'
+            'run -applescript\n'
+            'tell application "Finder" to activate\n'
+            'end run\n'
+        )
+        ce.execute_commands(result.commands, trust_level="trusted_domain")
+        self.assertEqual(self.fake.applescripts, [])
+
+    def test_run_shortcut_routes_for_self(self) -> None:
+        result = parse('+CalFlow+\nrun -shortcut "Start Focus" "deep work"')
+        ce.execute_commands(result.commands)
+        self.assertEqual(
+            self.fake.shortcuts,
+            [{"name": "Start Focus", "input": "deep work"}],
+        )
+
+    def test_run_shortcut_routes_for_trusted_domain(self) -> None:
+        result = parse('+CalFlow+\nrun -shortcut "Start Focus"')
+        ce.execute_commands(result.commands, trust_level="trusted_domain")
+        self.assertEqual(
+            self.fake.shortcuts,
+            [{"name": "Start Focus", "input": ""}],
+        )
+
+    def test_run_alfred_routes_for_self(self) -> None:
+        result = parse(
+            '+CalFlow+\nrun -alfred "com.example.workflow" "try-again" "now"'
+        )
+        ce.execute_commands(result.commands)
+        self.assertEqual(
+            self.fake.alfred,
+            [{
+                "bundle_id": "com.example.workflow",
+                "trigger_id": "try-again",
+                "argument": "now",
+            }],
+        )
+
+    def test_run_alfred_blocked_for_trusted_domain_by_default(self) -> None:
+        result = parse(
+            '+CalFlow+\nrun -alfred "com.example.workflow" "try-again" "now"'
+        )
+        ce.execute_commands(result.commands, trust_level="trusted_domain")
+        self.assertEqual(self.fake.alfred, [])
+
+    def test_disabled_run_backend_notifies(self) -> None:
+        result = parse(
+            '+CalFlow+\n'
+            'run -applescript\n'
+            'tell application "Finder" to activate\n'
+            'end run\n'
+        )
+        ce.execute_commands(result.commands, trust_level="trusted_domain")
+        self.assertEqual(len(self.fake.notifications), 1)
+        self.assertEqual(self.fake.notifications[0]["title"], "CalFlow run blocked")
+        self.assertIn("RUN -applescript disabled", self.fake.notifications[0]["message"])
 
     def test_unknown_verb_does_not_blow_up(self) -> None:
         # Validator drops it, but we want to confirm executor handles

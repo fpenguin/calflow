@@ -247,5 +247,13 @@ class SaveCommand(BaseCommand):
 
 @dataclass(frozen=True)
 class RunCommand(BaseCommand):
-    """RUN "~/scripts/x.sh"  |  RUN "./script.py" """
+    """RUN "~/scripts/x.sh"  |  RUN -btt <trigger>"""
     path: str = ""
+    backend: Optional[str] = None
+    trigger_name: str = ""
+    script: str = ""
+    shortcut_name: str = ""
+    shortcut_input: str = ""
+    alfred_bundle_id: str = ""
+    alfred_trigger: str = ""
+    alfred_argument: str = ""

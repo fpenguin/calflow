@@ -192,6 +192,66 @@ focus @chrome #full
 
 ---
 
+### 🧰 Trusted run backends
+
+`run` is backend-gated. Today CalFlow ships four working backends for
+self-authored events:
+
+```text
++CalFlow+
+
+run -btt BTT-ClaudeCoworkTryAgain
+run -btt {"BTT-ClaudeCoworkTryAgain"}
+```
+
+The braced form is literal. Use it when the BetterTouchTool trigger is
+actually named `{"BTT-ClaudeCoworkTryAgain"}`.
+
+Inline AppleScript is supported for small local automations:
+
+```text
++CalFlow+
+
+run -applescript
+tell application "Finder"
+  activate
+end tell
+end run
+```
+
+macOS Shortcuts can be run by name, with optional text input:
+
+```text
++CalFlow+
+
+run -shortcut "Start Focus"
+run -shortcut "Start Focus" "deep work"
+```
+
+Alfred workflows can be run through Alfred External Triggers. Alfred
+requires the workflow bundle id and external trigger id, not just the
+workflow display name:
+
+```text
++CalFlow+
+
+run -alfred "com.example.workflow" "try-again"
+run -alfred "com.example.workflow" "try-again" "optional argument"
+run -alfred "com.example.workflow/try-again" "optional argument"
+```
+
+`run "~/script.sh"`, `run -script`, `run -shell`, and `run -terminal`
+are reserved/disabled unless a future backend implements them and the
+settings allow them.
+
+Run backend errors are surfaced in the logs and, by default, as macOS
+notifications. This includes blocked backends, missing trigger names,
+AppleScript failures, Shortcut failures, and local URL-launch failures
+for BTT/Alfred. Alfred's URL scheme does not report workflow-internal
+failures back to CalFlow, so those still need to be checked in Alfred.
+
+---
+
 ## 🧠 How it works
 
 - each calendar event = one execution  
@@ -242,13 +302,39 @@ open zoom.us @chrome            # URL + target routing
 
 ## 🔒 Safety model
 
-- Smart Mode → safe, link-based  
-- Plus Mode → fully controlled by you  
+Calendar text can execute local automation, so CalFlow treats invite
+origin as a permission boundary.
 
-Planned:
+Default policy:
 
-- domain whitelist  
-- permission controls  
+- self-authored events can execute
+- third-party calendar invites are blocked
+- trusted domains/emails are empty by default
+- `run` backends are allowed by trust level
+
+Configure allowlists in `config/settings.py`:
+
+```python
+TRUSTED_INVITE_DOMAINS = set()
+TRUSTED_INVITE_EMAILS = set()
+
+ALLOW_RUN_BACKENDS_SELF = {"btt", "alfred", "shortcut", "applescript"}
+ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
+ALLOW_RUN_BACKENDS_TRUSTED_EMAIL = {"shortcut"}
+RUN_ERROR_NOTIFICATIONS = True
+```
+
+Examples:
+
+```python
+TRUSTED_INVITE_DOMAINS = {"company.com"}
+TRUSTED_INVITE_EMAILS = {"assistant@trusted-vendor.com"}
+ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
+```
+
+The trust gate applies to daemon auto-runs and manual `run-event`
+execution from the menubar/CLI. Local REPL and recipe sandbox runs are
+treated as user-initiated local actions.
 
 ---
 

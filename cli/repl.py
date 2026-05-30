@@ -220,8 +220,19 @@ Examples:
   :plus
     OPEN https://example.com @chrome #left(50%)
     WAIT 2
+    RUN -btt BTT-ClaudeCoworkTryAgain
+    RUN -shortcut "Start Focus" "deep work"
+    RUN -alfred "com.example.workflow" "external-trigger" "argument"
+    RUN -applescript
+    display notification "Hello from CalFlow"
+    END RUN
     SCREENSHOT
     EOF
+
+Run safety:
+  Calendar auto-runs only trust self-authored events by default.
+  Trusted invite domains/emails and allowed run backends are configured
+  in config/settings.py. Run backend failures can show macOS notifications.
 """
         )
 

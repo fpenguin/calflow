@@ -408,6 +408,14 @@ def resolve_command(
 
     if isinstance(command, RunCommand):
         base["path"] = command.path
+        base["backend"] = command.backend
+        base["trigger_name"] = command.trigger_name
+        base["script"] = command.script
+        base["shortcut_name"] = command.shortcut_name
+        base["shortcut_input"] = command.shortcut_input
+        base["alfred_bundle_id"] = command.alfred_bundle_id
+        base["alfred_trigger"] = command.alfred_trigger
+        base["alfred_argument"] = command.alfred_argument
         return base
 
     return base

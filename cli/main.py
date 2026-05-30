@@ -60,6 +60,7 @@ from core.parser.parser import (
     extract_tags,
     parse,
 )
+from core.event_trust import classify_event_trust
 
 # Runtime
 from runtime.command_executor import execute_commands
@@ -545,6 +546,11 @@ def run_event_by_id(event_id: str) -> None:
         out["error"] = "event not found in upcoming/missed window"
         print(json.dumps(out)); return
 
+    trust_level = _event_trust_or_log(target)
+    if trust_level is None:
+        out["error"] = "untrusted event source"
+        print(json.dumps(out)); return
+
     text = target.get("text") or ""
     title = target.get("title") or ""
     parsed = parse(text, title=title)
@@ -566,6 +572,7 @@ def run_event_by_id(event_id: str) -> None:
                 commands=parsed.commands,
                 global_tags=extract_tags(text),
                 debug=DEBUG,
+                trust_level=trust_level,
             )
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}: {exc}"
@@ -820,6 +827,23 @@ def _google_account_label() -> str:
     except Exception:
         pass
     return "Not connected"
+
+
+def _owner_email_hint() -> Optional[str]:
+    label = _google_account_label()
+    return label if "@" in label else None
+
+
+def _event_trust_or_log(event: Dict) -> Optional[str]:
+    trust = classify_event_trust(event, owner_email=_owner_email_hint())
+    if trust.trusted:
+        return trust.level
+    log(
+        "[WARN] Skipped untrusted CalFlow event: "
+        f"title={event.get('title', '(untitled)')!r} "
+        f"actor={trust.actor or '(unknown)'} reason={trust.reason}"
+    )
+    return None
 
 
 def _default_profile_label() -> str:
@@ -1780,6 +1804,10 @@ def main() -> None:
         if not _within_execution_window(now, trigger_time):
             continue
 
+        trust_level = _event_trust_or_log(event)
+        if trust_level is None:
+            continue
+
         # --- Parse (unified entrypoint, v2.0) ---
         parsed = parse(text, title=event.get("title"))
 
@@ -1812,6 +1840,7 @@ def main() -> None:
                     commands=parsed.commands,
                     global_tags=global_tags,
                     debug=DEBUG,
+                    trust_level=trust_level,
                 )
             else:
                 log(f"[WARN] Unrecognized parse mode: {parsed.mode!r}")

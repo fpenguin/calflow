@@ -25,7 +25,7 @@ FETCH_WINDOW_HOURS = 2
 # FETCH_WINDOW_HOURS is the daemon's per-cycle processing window.
 STATUS_LOOKAHEAD_HOURS = 24
 
-DEFAULT_ALERT_SECONDS = 300
+DEFAULT_ALERT_SECONDS = 180
 GRACE_SECONDS = 600
 EARLY_TOLERANCE = 30
 
@@ -62,7 +62,7 @@ Rules:
 # 🌐 URL HANDLING
 # =========================================================
 
-MAX_URLS = 5
+MAX_URLS = 10
 
 IGNORED_PROTOCOLS = [
     "sip:",
@@ -116,6 +116,25 @@ FORCE_URL_TAG = "#force"
 SMART_MODE_EXECUTION_MODE = "allow-external"
 PLUS_MODE_EXECUTION_MODE = "me-only"  # future
 
+# Calendar invite trust. Self-authored events are allowed by default.
+# Third-party invitations execute only when the sender's exact email or
+# domain is explicitly listed here.
+ALLOW_SELF_AUTHORED_EVENTS = True
+TRUSTED_INVITE_DOMAINS = set()
+TRUSTED_INVITE_EMAILS = set()
+
+# Plus Mode `run` backend permissions by event trust level.
+# `script`, `shell`, and `terminal` are reserved for follow-up backends
+# and remain disabled until implemented.
+ALLOW_RUN_BACKENDS_SELF = {"btt", "alfred", "shortcut", "applescript"}
+ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
+ALLOW_RUN_BACKENDS_TRUSTED_EMAIL = {"shortcut"}
+
+RUN_APPLESCRIPT_TIMEOUT = 10
+RUN_SHORTCUT_TIMEOUT = 30
+RUN_ALFRED_TIMEOUT = 5
+RUN_ERROR_NOTIFICATIONS = True
+
 
 # =========================================================
 # 🔑 AUTOFILL SYSTEM
@@ -147,7 +166,7 @@ FORCE_SUBMIT_TAG = "#submit"
 #
 # If the user has a global #fill / #submit / #no-autofill tag in the
 # event body, that wins over this default.
-TITLE_URL_AUTOFILL_DEFAULT = "submit"
+TITLE_URL_AUTOFILL_DEFAULT = "fill"
 
 # Open mode for title URLs WHEN no layout/display tag is present.
 # When a layout/display tag IS present (`#left`, `#grid(...)`,
@@ -173,7 +192,7 @@ POST_AUTOFILL_DELAY = 0.5
 # 🔐 PASSWORD MANAGER
 # =========================================================
 
-AUTOFILL_PROVIDER = "apple"
+AUTOFILL_PROVIDER = "bitwarden"
 
 
 AUTOFILL_SHORTCUTS = {
@@ -231,7 +250,7 @@ PLUS_HEADER = "+CalFlow+"
 
 # Hard cap on number of commands a single Plus Mode block may contain.
 # Defensive bound — protects the runtime from runaway scripts.
-PLUS_MAX_COMMANDS = 50
+PLUS_MAX_COMMANDS = 40
 
 # Per-command default wait when the user does not specify one (seconds).
 PLUS_DEFAULT_WAIT = 1

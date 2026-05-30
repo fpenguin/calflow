@@ -17,7 +17,11 @@ Backend status:
 - OPEN          → real (runtime.actions.browser.open_target)
 - WAIT          → real (time.sleep)
 - SCREENSHOT    → real (runtime.actions.screenshot.take_screenshot)
-- FOCUS / CLOSE / HIDE / CLICK / TYPE / PRESS / COPY / PASTE / SAVE / RUN
+- RUN -btt      → real (runtime.actions.btt.trigger_named_btt)
+- RUN -shortcut → real (runtime.actions.shortcuts.run_shortcut)
+- RUN -alfred   → real (runtime.actions.btt.trigger_alfred)
+- RUN -applescript → real (runtime.actions.applescript.run_applescript)
+- FOCUS / CLOSE / HIDE / CLICK / TYPE / PRESS / COPY / PASTE / SAVE
                 → stubs that log the resolved params (Quartz / AXUI / clipboard
                   backends land in v2.x); Plus Mode pipeline is fully wired
                   through resolution + dispatch already.
@@ -38,6 +42,7 @@ from config.settings import (
     AUTOFILL_BUFFER,
     PLUS_INTER_COMMAND_DELAY,
 )
+from core.event_trust import TRUST_SELF
 from core.dynamic import resolve_dynamic
 from core.models import BaseCommand
 from core.resolver import (
@@ -48,8 +53,13 @@ from core.resolver import (
 )
 from core.utils import log
 from runtime.actions.autofill import trigger_autofill
+from runtime.actions.applescript import run_applescript
 from runtime.actions.browser import open_target
+from runtime.actions.btt import trigger_alfred, trigger_named_btt
+from runtime.actions.notifications import notify_run_error
 from runtime.actions.screenshot import take_screenshot
+from runtime.actions.shortcuts import run_shortcut
+from runtime.run_policy import is_run_backend_allowed
 from state.stats_store import record_action  # v1.3.0 — lifetime stats
 
 
@@ -65,6 +75,7 @@ def execute_commands(
     commands: List[BaseCommand],
     global_tags: Optional[Union[Set[str], FrozenSet[str]]] = None,
     debug: bool = False,
+    trust_level: str = TRUST_SELF,
 ) -> None:
     """
     Run a list of typed Plus Mode commands sequentially.
@@ -102,7 +113,7 @@ def execute_commands(
                     f"[DEBUG] Plus[{command.line_no}] {params.get('verb')} "
                     f"params={_short(params)}"
                 )
-            _dispatch(params)
+            _dispatch(params, trust_level=trust_level)
 
         except Exception as exc:
             log(
@@ -118,7 +129,7 @@ def execute_commands(
 # 🔁 DISPATCH
 # =========================================================
 
-def _dispatch(params: Dict[str, Any]) -> None:
+def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     """Route a resolved param dict to the correct action."""
     verb = params.get("verb")
 
@@ -142,7 +153,10 @@ def _dispatch(params: Dict[str, Any]) -> None:
         log(f"[WARN] Plus executor: unknown verb {verb!r}")
         return
 
-    handler(params)
+    if verb == "RUN":
+        handler(params, trust_level=trust_level)
+    else:
+        handler(params)
 
 
 # =========================================================
@@ -511,7 +525,43 @@ def _do_save(params: Dict[str, Any]) -> None:
 # 🛠️ RUN
 # =========================================================
 
-def _do_run(params: Dict[str, Any]) -> None:
+def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
+    backend = params.get("backend") or "script"
+    if not is_run_backend_allowed(backend, trust_level):
+        msg = f"RUN -{backend} disabled for trust level {trust_level!r}"
+        log(f"[WARN] {msg}")
+        notify_run_error("CalFlow run blocked", msg)
+        return
+
+    if backend == "btt":
+        trigger_name = params.get("trigger_name")
+        if not trigger_name:
+            msg = "RUN -btt missing trigger name"
+            log(f"[WARN] {msg}")
+            notify_run_error("CalFlow BTT failed", msg)
+            return
+        trigger_named_btt(str(trigger_name))
+        return
+
+    if backend == "applescript":
+        run_applescript(str(params.get("script") or ""))
+        return
+
+    if backend == "shortcut":
+        run_shortcut(
+            str(params.get("shortcut_name") or ""),
+            str(params.get("shortcut_input") or ""),
+        )
+        return
+
+    if backend == "alfred":
+        trigger_alfred(
+            str(params.get("alfred_bundle_id") or ""),
+            str(params.get("alfred_trigger") or ""),
+            str(params.get("alfred_argument") or ""),
+        )
+        return
+
     path = params.get("path")
     log(f"[INFO] RUN {path!r} (stub — refusing to exec arbitrary scripts)")
 

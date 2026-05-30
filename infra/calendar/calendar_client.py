@@ -173,6 +173,8 @@ def get_upcoming_events(
                 "title":       ev.get("summary", ""),
                 "text":        text,
                 "start":       dateparser.parse(start["dateTime"]),
+                "creator_email":   _actor_email(ev.get("creator")),
+                "organizer_email": _actor_email(ev.get("organizer")),
             })
         except Exception as exc:
             log(f"[WARN] [{calendar_id}] Failed to parse event: {exc}")
@@ -259,12 +261,20 @@ def get_recent_events(
                 "title":       ev.get("summary", ""),
                 "text":        text,
                 "start":       dateparser.parse(start["dateTime"]),
+                "creator_email":   _actor_email(ev.get("creator")),
+                "organizer_email": _actor_email(ev.get("organizer")),
             })
         except Exception as exc:
             log(f"[WARN] [{calendar_id}] Failed to parse recent event: {exc}")
 
     log(f"[INFO] [{calendar_id}] Loaded {len(out)} recent events")
     return out
+
+
+def _actor_email(actor) -> str:
+    if isinstance(actor, dict):
+        return actor.get("email", "") or ""
+    return ""
 
 
 # =========================================================

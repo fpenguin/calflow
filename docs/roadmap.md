@@ -23,6 +23,10 @@
   dedup, idempotent state, lock file, launchd install.
 - **Onboarding** — `python3 -m cli.main setup` (4 steps: Google credentials, calendar selection, daemon install, password manager).
 - **Autofill keystrokes** — `#fill` and `#submit` send the configured keystroke via osascript + `System Events`. Provider chosen during onboarding (Apple Passwords / 1Password / Bitwarden / None).
+- **Trusted run backends** — `run -btt`, `run -shortcut`,
+  `run -alfred`, and `run -applescript` execute behind the event trust
+  gate and per-trust-level backend allowlists. Arbitrary script/path
+  execution remains disabled by default.
 - **REPL** — Smart + Plus Mode interactive testing.
 
 ## What v2.1+ defers — and why
@@ -287,7 +291,8 @@ These are **out of scope** for any near-term release:
 | SCREENSHOT (display/window/area variants) | ✅ | ✅ | ✅ | 🚧 stub (v2.5) |
 | COPY / PASTE | ✅ | ✅ | ✅ | 🚧 stub (v2.3) |
 | SAVE | ✅ | ✅ | ✅ | 🚧 stub (v2.3) |
-| RUN | ✅ | ✅ | ✅ | 🚧 stub (security gate → v2.4) |
+| RUN trusted backends (`-btt`, `-shortcut`, `-alfred`, `-applescript`) | ✅ | ✅ | ✅ | ✅ (real, gated by event trust + backend allowlists) |
+| RUN arbitrary script/path | ✅ | ✅ | ✅ | 🚧 stub — refusing arbitrary scripts by default |
 
 ⏳ = doc-locked, code lands next pass.
 🚧 = stub or unimplemented; safe to invoke (logs only).

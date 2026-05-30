@@ -80,6 +80,8 @@ def _make_event(*, title: str = "", text: str = "", offset_minutes: float = 0,
         "title":       title,
         "text":        text,
         "start":       when,
+        "creator_email": "test@example.com",
+        "organizer_email": "test@example.com",
     }
 
 
@@ -111,6 +113,7 @@ class _DaemonHarness:
         self._patch("cli.main.get_selected_calendars", return_value=["test"])
         self._patch("cli.main.get_upcoming_events",
                     side_effect=lambda svc, cal_id, *a, **kw: list(self.events))
+        self._patch("cli.main._owner_email_hint", return_value="test@example.com")
 
         # ── State (in-memory dict, no disk I/O) ────────────────
         self._patch("cli.main.load_state", return_value=self.state)
@@ -259,6 +262,22 @@ class DaemonSmokeTests(_DaemonSmokeBase):
             h.opens, [],
             "out-of-window event should NOT fire"
         )
+
+    def test_external_invite_is_blocked_by_trust_gate(self) -> None:
+        ev = _make_event(
+            title="https://example.com",
+            text="",
+            offset_minutes=0,
+            event_id="evt_external",
+        )
+        ev["creator_email"] = "attacker@example.net"
+        ev["organizer_email"] = "attacker@example.net"
+
+        with _DaemonHarness([ev]) as h:
+            from cli.main import main
+            main()
+
+        self.assertEqual(h.opens, [])
 
 
 if __name__ == "__main__":  # pragma: no cover
