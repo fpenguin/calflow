@@ -53,6 +53,8 @@ uritemplate==4.2.0
 urllib3==2.6.3
 
 # v1.3.0 — menubar companion (lazy-imported; CLI works without these).
-pyobjc-framework-Cocoa>=10.0
-pyobjc-framework-WebKit>=10.0
-rumps>=0.4.0
+# PyObjC packages are macOS-only. Linux CI skips them via environment
+# markers so the parser/runtime test suite can run off-Mac.
+pyobjc-framework-Cocoa>=10.0; platform_system == "Darwin"
+pyobjc-framework-WebKit>=10.0; platform_system == "Darwin"
+rumps>=0.4.0; platform_system == "Darwin"
