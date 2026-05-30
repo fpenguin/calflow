@@ -293,43 +293,24 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
         run_handlers = _parse_run_handlers(args)
         shortcut_name = shortcut_input = ""
         alfred_bundle_id = alfred_trigger = alfred_argument = ""
-        if body_args and body_args[0].lower() == "-btt":
-            backend = "btt"
+        fn_backend = _run_backend_function(fns)
+        if fn_backend is not None:
+            backend, value = fn_backend
             path = ""
-            trigger_name = _normalize_btt_trigger_arg(" ".join(body_args[1:]))
-        elif body_args and body_args[0].lower() == "-shortcut":
-            backend = "shortcut"
-            path = ""
-            shortcut_name, shortcut_input = _parse_shortcut_args(body_args[1:])
-        elif body_args and body_args[0].lower() == "-alfred":
-            backend = "alfred"
-            path = ""
-            alfred_bundle_id, alfred_trigger, alfred_argument = _parse_alfred_args(
-                body_args[1:]
-            )
-        elif body_args and body_args[0].lower() == "-applescript":
+            if backend == "btt":
+                trigger_name = _normalize_btt_trigger_arg(str(value or ""))
+            elif backend == "shortcut":
+                shortcut_name = str(value or "")
+                shortcut_input = str(_run_function_value(fns, "input") or "")
+            elif backend == "alfred":
+                alfred_bundle_id, alfred_trigger, _arg = _parse_alfred_value(value)
+                alfred_argument = str(_run_function_value(fns, "input") or _arg)
+            elif backend == "applescript":
+                script = _extract_run_script(body_args)
+        elif body_args and body_args[0].lower() == "applescript":
             backend = "applescript"
             path = ""
-            script = _unquote(" ".join(body_args[1:]))
-        else:
-            fn_backend = _run_backend_function(fns)
-            if fn_backend is not None:
-                backend, value = fn_backend
-                path = ""
-                if backend == "btt":
-                    trigger_name = _normalize_btt_trigger_arg(str(value or ""))
-                elif backend == "shortcut":
-                    shortcut_name = str(value or "")
-                    shortcut_input = str(_run_function_value(fns, "input") or "")
-                elif backend == "alfred":
-                    alfred_bundle_id, alfred_trigger, _arg = _parse_alfred_value(value)
-                    alfred_argument = str(_run_function_value(fns, "input") or _arg)
-                elif backend == "applescript":
-                    script = _extract_run_script(body_args)
-            elif body_args and body_args[0].lower() == "applescript":
-                backend = "applescript"
-                path = ""
-                script = _extract_run_script(body_args)
+            script = _extract_run_script(body_args)
         return RunCommand(
             line_no=line_no,
             raw=raw,
@@ -685,10 +666,6 @@ def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
     """
     Collapse:
 
-        run -applescript
-        ...
-        end run
-
         run applescript if(error) notify(result)
         +++
         ...
@@ -700,16 +677,6 @@ def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
     i = 0
     while i < len(lines):
         raw = lines[i]
-        if (raw or "").strip().lower() == "run -applescript":
-            script_lines: List[str] = []
-            i += 1
-            while i < len(lines) and (lines[i] or "").strip().lower() != "end run":
-                script_lines.append(lines[i])
-                i += 1
-            if i < len(lines):
-                i += 1  # consume `end run`
-            out.append("run -applescript " + json.dumps("\n".join(script_lines)))
-            continue
         if (raw or "").strip().lower().startswith("run applescript"):
             j = i + 1
             if j < len(lines) and (lines[j] or "").strip() == "+++":
@@ -826,12 +793,7 @@ def _run_handler_value(value: Any) -> str:
 
 def _normalize_btt_trigger_arg(token: str) -> str:
     """
-    Normalize `run -btt ...` trigger syntax.
-
-    Accepts:
-        run -btt BTT-Foo
-        run -btt "My Trigger"
-        run -btt {"BTT-Foo"}     (literal trigger name includes braces/quotes)
+    Normalize `run btt("...")` trigger syntax.
     """
     text = (token or "").strip()
     return _unquote(text)

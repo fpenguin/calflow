@@ -951,19 +951,6 @@ if(error) save to("~/Logs/calflow-last-error.txt")
 if(success) notify("Done")
 ```
 
-Legacy forms remain accepted:
-
-```text
-run -btt BTT-ClaudeCoworkTryAgain
-run -shortcut "Start Focus" "deep work"
-run -alfred "com.example.workflow" "try-again" "meeting prep"
-run -applescript
-display dialog "hello"
-end run
-```
-
----
-
 # 4. Layout & Display
 
 ---

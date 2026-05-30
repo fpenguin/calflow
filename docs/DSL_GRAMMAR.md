@@ -387,19 +387,6 @@ display dialog "hello"
 +++
 ```
 
-Legacy aliases remain valid for compatibility:
-
-```text
-run -btt BTT-ClaudeCoworkTryAgain
-run -shortcut "Start Focus" "deep work"
-run -alfred "com.example.workflow" "try-again" "argument"
-run -applescript
-display dialog "hello"
-end run
-```
-
----
-
 # 4. Core Elements
 
 ---

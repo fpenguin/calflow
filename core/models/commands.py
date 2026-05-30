@@ -247,7 +247,7 @@ class SaveCommand(BaseCommand):
 
 @dataclass(frozen=True)
 class RunCommand(BaseCommand):
-    """RUN "~/scripts/x.sh"  |  RUN -btt <trigger>"""
+    """RUN btt("trigger") | RUN shortcut("name") | RUN applescript"""
     path: str = ""
     backend: Optional[str] = None
     trigger_name: str = ""

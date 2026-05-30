@@ -153,16 +153,17 @@ class CommandExecutorRoutes(unittest.TestCase):
         self.assertIn(2.0, self.fake.sleeps)
 
     def test_run_btt_routes_to_named_trigger(self) -> None:
-        result = parse('+CalFlow+\nrun -btt {"BTT-ClaudeCoworkTryAgain"}')
+        result = parse('+CalFlow+\nrun btt("BTT-ClaudeCoworkTryAgain")')
         ce.execute_commands(result.commands)
-        self.assertEqual(self.fake.btt, ['{"BTT-ClaudeCoworkTryAgain"}'])
+        self.assertEqual(self.fake.btt, ["BTT-ClaudeCoworkTryAgain"])
 
     def test_run_applescript_routes_for_self(self) -> None:
         result = parse(
             '+CalFlow+\n'
-            'run -applescript\n'
+            'run applescript\n'
+            '+++\n'
             'tell application "Finder" to activate\n'
-            'end run\n'
+            '+++\n'
         )
         ce.execute_commands(result.commands)
         self.assertEqual(
@@ -173,15 +174,16 @@ class CommandExecutorRoutes(unittest.TestCase):
     def test_run_applescript_blocked_for_trusted_domain_by_default(self) -> None:
         result = parse(
             '+CalFlow+\n'
-            'run -applescript\n'
+            'run applescript\n'
+            '+++\n'
             'tell application "Finder" to activate\n'
-            'end run\n'
+            '+++\n'
         )
         ce.execute_commands(result.commands, trust_level="trusted_domain")
         self.assertEqual(self.fake.applescripts, [])
 
     def test_run_shortcut_routes_for_self(self) -> None:
-        result = parse('+CalFlow+\nrun -shortcut "Start Focus" "deep work"')
+        result = parse('+CalFlow+\nrun shortcut("Start Focus") input("deep work")')
         ce.execute_commands(result.commands)
         self.assertEqual(
             self.fake.shortcuts,
@@ -189,7 +191,7 @@ class CommandExecutorRoutes(unittest.TestCase):
         )
 
     def test_run_shortcut_routes_for_trusted_domain(self) -> None:
-        result = parse('+CalFlow+\nrun -shortcut "Start Focus"')
+        result = parse('+CalFlow+\nrun shortcut("Start Focus")')
         ce.execute_commands(result.commands, trust_level="trusted_domain")
         self.assertEqual(
             self.fake.shortcuts,
@@ -198,7 +200,7 @@ class CommandExecutorRoutes(unittest.TestCase):
 
     def test_run_alfred_routes_for_self(self) -> None:
         result = parse(
-            '+CalFlow+\nrun -alfred "com.example.workflow" "try-again" "now"'
+            '+CalFlow+\nrun alfred("com.example.workflow", "try-again") input("now")'
         )
         ce.execute_commands(result.commands)
         self.assertEqual(
@@ -212,7 +214,7 @@ class CommandExecutorRoutes(unittest.TestCase):
 
     def test_run_alfred_blocked_for_trusted_domain_by_default(self) -> None:
         result = parse(
-            '+CalFlow+\nrun -alfred "com.example.workflow" "try-again" "now"'
+            '+CalFlow+\nrun alfred("com.example.workflow", "try-again") input("now")'
         )
         ce.execute_commands(result.commands, trust_level="trusted_domain")
         self.assertEqual(self.fake.alfred, [])
@@ -266,14 +268,15 @@ class CommandExecutorRoutes(unittest.TestCase):
     def test_disabled_run_backend_notifies(self) -> None:
         result = parse(
             '+CalFlow+\n'
-            'run -applescript\n'
+            'run applescript\n'
+            '+++\n'
             'tell application "Finder" to activate\n'
-            'end run\n'
+            '+++\n'
         )
         ce.execute_commands(result.commands, trust_level="trusted_domain")
         self.assertEqual(len(self.fake.notifications), 1)
         self.assertEqual(self.fake.notifications[0]["title"], "CalFlow run blocked")
-        self.assertIn("RUN -applescript disabled", self.fake.notifications[0]["message"])
+        self.assertIn("RUN applescript disabled", self.fake.notifications[0]["message"])
 
     def test_unknown_verb_does_not_blow_up(self) -> None:
         # Validator drops it, but we want to confirm executor handles

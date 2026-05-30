@@ -124,86 +124,10 @@ class PlusModeAST(unittest.TestCase):
         self.assertIsInstance(cmd, ScreenshotCommand)
         self.assertIsNone(cmd.path)
 
-    def test_run_btt_named_trigger_command(self) -> None:
+    def test_run_dash_compatibility_removed(self) -> None:
         result = parse("+CalFlow+\nrun -btt BTT-ClaudeCoworkTryAgain")
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "btt")
-        self.assertEqual(cmd.trigger_name, "BTT-ClaudeCoworkTryAgain")
-
-    def test_run_btt_quoted_named_trigger_command(self) -> None:
-        result = parse('+CalFlow+\nrun -btt "BTT Claude Cowork Try Again"')
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "btt")
-        self.assertEqual(cmd.trigger_name, "BTT Claude Cowork Try Again")
-
-    def test_run_btt_braced_quoted_trigger_command(self) -> None:
-        result = parse('+CalFlow+\nrun -btt {"BTT-ClaudeCoworkTryAgain"}')
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "btt")
-        self.assertEqual(cmd.trigger_name, '{"BTT-ClaudeCoworkTryAgain"}')
-
-    def test_run_btt_single_quoted_braced_trigger_command(self) -> None:
-        result = parse('+CalFlow+\nrun -btt \'{"BTT-ClaudeCoworkTryAgain"}\'')
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "btt")
-        self.assertEqual(cmd.trigger_name, '{"BTT-ClaudeCoworkTryAgain"}')
-
-    def test_run_applescript_multiline_command(self) -> None:
-        result = parse(
-            '+CalFlow+\n'
-            'run -applescript\n'
-            'tell application "Finder"\n'
-            '  activate\n'
-            'end tell\n'
-            'end run\n'
-        )
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "applescript")
-        self.assertEqual(
-            cmd.script,
-            'tell application "Finder"\n  activate\nend tell',
-        )
-
-    def test_run_shortcut_command(self) -> None:
-        result = parse('+CalFlow+\nrun -shortcut "Start Focus" "deep work"')
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "shortcut")
-        self.assertEqual(cmd.shortcut_name, "Start Focus")
-        self.assertEqual(cmd.shortcut_input, "deep work")
-
-    def test_run_alfred_command(self) -> None:
-        result = parse(
-            '+CalFlow+\nrun -alfred "com.example.workflow" "try-again" "now"'
-        )
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "alfred")
-        self.assertEqual(cmd.alfred_bundle_id, "com.example.workflow")
-        self.assertEqual(cmd.alfred_trigger, "try-again")
-        self.assertEqual(cmd.alfred_argument, "now")
-
-    def test_run_alfred_combined_bundle_trigger_command(self) -> None:
-        result = parse('+CalFlow+\nrun -alfred "com.example.workflow/try-again" "now"')
-        self.assertEqual(len(result.commands), 1)
-        cmd = result.commands[0]
-        self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.backend, "alfred")
-        self.assertEqual(cmd.alfred_bundle_id, "com.example.workflow")
-        self.assertEqual(cmd.alfred_trigger, "try-again")
-        self.assertEqual(cmd.alfred_argument, "now")
+        self.assertTrue(result.has_errors)
+        self.assertEqual(result.commands, [])
 
     def test_run_btt_function_command(self) -> None:
         result = parse('+CalFlow+\nrun btt("BTT-ClaudeCoworkTryAgain")')
@@ -225,6 +149,18 @@ class PlusModeAST(unittest.TestCase):
     def test_run_alfred_function_command(self) -> None:
         result = parse(
             '+CalFlow+\nrun alfred("com.example.workflow", "try-again") input("now")'
+        )
+        self.assertEqual(len(result.commands), 1)
+        cmd = result.commands[0]
+        self.assertIsInstance(cmd, RunCommand)
+        self.assertEqual(cmd.backend, "alfred")
+        self.assertEqual(cmd.alfred_bundle_id, "com.example.workflow")
+        self.assertEqual(cmd.alfred_trigger, "try-again")
+        self.assertEqual(cmd.alfred_argument, "now")
+
+    def test_run_alfred_combined_function_command(self) -> None:
+        result = parse(
+            '+CalFlow+\nrun alfred("com.example.workflow/try-again") input("now")'
         )
         self.assertEqual(len(result.commands), 1)
         cmd = result.commands[0]

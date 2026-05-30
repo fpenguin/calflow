@@ -1,4 +1,4 @@
-"""macOS Shortcuts backend for CalFlow `run -shortcut`."""
+"""macOS Shortcuts backend for CalFlow `run shortcut(...)`."""
 
 from __future__ import annotations
 

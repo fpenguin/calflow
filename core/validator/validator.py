@@ -18,12 +18,10 @@ Grammar (line-based, one command per line, case-insensitive verbs):
     copy
     paste
     save source(<…>) to("<path>")
-    run "<path>"
-    run -btt <named-trigger> | run -btt "<named trigger>" | run -btt {"named-trigger"}
-    run -shortcut "<shortcut name>" ["input text"]
-    run -alfred "<workflow.bundle.id>" "<external-trigger-id>" ["argument"]
-    run -alfred "<workflow.bundle.id>/<external-trigger-id>" ["argument"]
-    run -applescript "<script>"  # multiline form is collapsed before validation
+    run btt("<named-trigger>")
+    run shortcut("<shortcut name>") [input("input text")]
+    run alfred("<workflow.bundle.id>", "<external-trigger-id>") [input("argument")]
+    run applescript [timeout(10)] [if(error) notify(result)]
 
 v1.1.2 hard-fails:
     - bare `hide`              → use `hide except(active)` / `hide all`
@@ -529,78 +527,15 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
                 pass
         elif head.lower() == "applescript":
             errors.extend(_validate_run_handlers(args, line_no))
-        elif head.lower() == "-btt":
-            if len(body) != 2:
-                message = (
-                    'RUN -btt trigger names with spaces must be quoted, '
-                    'e.g. run -btt "My Trigger"'
-                    if len(body) > 2 else
-                    'RUN -btt expects one trigger name, e.g. run -btt "My Trigger"'
+        else:
+            errors.append(
+                ValidationError(
+                    line_no,
+                    'RUN expects function-style syntax, e.g. '
+                    'run btt("Trigger"), run shortcut("Name"), '
+                    'run alfred("bundle", "trigger"), or run applescript',
                 )
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        message,
-                    )
-                )
-            elif _looks_like_btt_trigger_arg(body[1]):
-                pass
-            else:
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        'RUN -btt trigger names with spaces must be quoted, '
-                        'e.g. run -btt "My Trigger"',
-                    )
-                )
-        elif head.lower() == "-shortcut":
-            if len(body) not in (2, 3):
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        'RUN -shortcut expects a shortcut name and optional input, '
-                        'e.g. run -shortcut "Start Focus" "deep work"',
-                    )
-                )
-            elif not _looks_like_quoted_or_bare_arg(body[1]):
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        'RUN -shortcut names with spaces must be quoted',
-                    )
-                )
-        elif head.lower() == "-alfred":
-            if len(body) < 2 or len(body) > 4:
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        'RUN -alfred expects bundle id + trigger id, '
-                        'e.g. run -alfred "com.example.workflow" "trigger" "arg"',
-                    )
-                )
-            elif len(body) == 2 and "/" not in _strip_quotes(body[1]):
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        'RUN -alfred needs both workflow bundle id and external trigger id',
-                    )
-                )
-        elif len(body) != 1 or not (_QUOTED_RE.match(head) or _FILE_PATH_RE.match(head)):
-            if head.lower() == "-applescript":
-                if len(body) != 2 or not _QUOTED_RE.match(body[1]):
-                    errors.append(
-                        ValidationError(
-                            line_no,
-                            'RUN -applescript expects a quoted script or multiline block',
-                        )
-                    )
-            else:
-                errors.append(
-                    ValidationError(
-                        line_no,
-                        'RUN expects a quoted path, -btt trigger, or -applescript block',
-                    )
-                )
+            )
         if not run_backend and head.lower() not in {"applescript"}:
             errors.extend(_validate_run_handlers(args, line_no))
 
@@ -748,25 +683,6 @@ def _looks_like_selector(token: str) -> bool:
     if any(c in token for c in "#.[]>+~ "):
         return True
     return token.replace("-", "_").isidentifier()
-
-
-def _looks_like_btt_trigger_arg(token: str) -> bool:
-    """Accept a single bare token, a quoted string, or a braced quoted token."""
-    if not token:
-        return False
-    if _QUOTED_RE.match(token):
-        return True
-    if re.match(r"^\{\s*(?:\"[^\"]+\"|'[^']+')\s*\}$", token):
-        return True
-    return " " not in token
-
-
-def _looks_like_quoted_or_bare_arg(token: str) -> bool:
-    if not token:
-        return False
-    if _QUOTED_RE.match(token):
-        return True
-    return " " not in token
 
 
 def _strip_quotes(token: str) -> str:

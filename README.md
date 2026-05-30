@@ -149,8 +149,8 @@ display notification "Meeting setup complete"
 +++
 ```
 
-Legacy `run -applescript ... end run` blocks still work, but `+++`
-keeps embedded AppleScript visually separate from CalFlow commands.
+The `+++` delimiters keep embedded AppleScript visually separate from
+CalFlow commands.
 
 ### Capturing Run Errors
 
@@ -190,13 +190,13 @@ open "https://reports.example.com/monthly?start={now-1mo > start_of_month}&end={
 | `open` | Real |
 | `wait` | Real |
 | `screenshot` | Real for standard capture; some variants still fall back |
-| `run btt(...)` / `run -btt` | Real via BetterTouchTool URL scheme |
-| `run shortcut(...)` / `run -shortcut` | Real via macOS `shortcuts run` |
-| `run alfred(...)` / `run -alfred` | Real via Alfred External Trigger URL scheme |
-| `run applescript` / `run -applescript` | Real via `osascript` |
+| `run btt(...)` | Real via BetterTouchTool URL scheme |
+| `run shortcut(...)` | Real via macOS `shortcuts run` |
+| `run alfred(...)` | Real via Alfred External Trigger URL scheme |
+| `run applescript` | Real via `osascript` |
 | Calendar invite trust gate | Real |
 | Run failure notifications | Real, best-effort macOS notifications |
-| Arbitrary `run "~/script.sh"` / shell | Disabled by default |
+| Arbitrary shell/script backend | Not part of the v2.0 grammar |
 | UI actions like `click`, `type`, `press`, `copy`, `paste`, `save` | Parsed and routed; backend work is staged for later releases |
 
 CalFlow is intentionally conservative about local execution. The useful
@@ -306,13 +306,6 @@ docs.google.com #display(ext)
 open <url|app|bundle> [@target] [#tag ...]
 wait <seconds>
 screenshot
-run -btt <trigger-name>
-run -shortcut "<shortcut name>" ["input text"]
-run -alfred "<workflow.bundle.id>" "<external-trigger-id>" ["argument"]
-run -applescript
-<script>
-end run
-
 run btt("<trigger-name>")
 run shortcut("<shortcut name>") input("optional input")
 run alfred("<workflow.bundle.id>", "<external-trigger-id>") input("optional argument")

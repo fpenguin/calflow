@@ -17,10 +17,10 @@ Backend status:
 - OPEN          → real (runtime.actions.browser.open_target)
 - WAIT          → real (time.sleep)
 - SCREENSHOT    → real (runtime.actions.screenshot.take_screenshot)
-- RUN -btt      → real (runtime.actions.btt.trigger_named_btt)
-- RUN -shortcut → real (runtime.actions.shortcuts.run_shortcut)
-- RUN -alfred   → real (runtime.actions.btt.trigger_alfred)
-- RUN -applescript → real (runtime.actions.applescript.run_applescript)
+- RUN btt(...)      → real (runtime.actions.btt.trigger_named_btt)
+- RUN shortcut(...) → real (runtime.actions.shortcuts.run_shortcut)
+- RUN alfred(...)   → real (runtime.actions.btt.trigger_alfred)
+- RUN applescript   → real (runtime.actions.applescript.run_applescript)
 - FOCUS / CLOSE / HIDE / CLICK / TYPE / PRESS / COPY / PASTE / SAVE
                 → stubs that log the resolved params (Quartz / AXUI / clipboard
                   backends land in v2.x); Plus Mode pipeline is fully wired
@@ -532,7 +532,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     backend = params.get("backend") or "script"
     handlers = tuple(params.get("run_handlers") or ())
     if not is_run_backend_allowed(backend, trust_level):
-        msg = f"RUN -{backend} disabled for trust level {trust_level!r}"
+        msg = f"RUN {backend} disabled for trust level {trust_level!r}"
         log(f"[WARN] {msg}")
         notify_run_error("CalFlow run blocked", msg)
         _apply_run_handlers(
@@ -545,7 +545,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     if backend == "btt":
         trigger_name = params.get("trigger_name")
         if not trigger_name:
-            msg = "RUN -btt missing trigger name"
+            msg = "RUN btt(...) missing trigger name"
             log(f"[WARN] {msg}")
             notify_run_error("CalFlow BTT failed", msg)
             _apply_run_handlers(handlers, error_result("btt", msg))

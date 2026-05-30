@@ -212,7 +212,7 @@ class S3_PlusModeVerbs(unittest.TestCase):
             self._verbs('save source(clipboard) to("~/x.png")'),
             ["SAVE"],
         )
-    def test_run(self):     self.assertEqual(self._verbs('run "~/x.sh"'), ["RUN"])
+    def test_run(self):     self.assertEqual(self._verbs('run btt("Trigger")'), ["RUN"])
 
 
 # =============================================================
@@ -309,10 +309,11 @@ class S3_AST(unittest.TestCase):
         ).commands[0]
         self.assertEqual(cmd.area, (0, 0, 1920, 1080))
 
-    def test_run_extracts_quoted_path(self):
-        cmd = parse('+CalFlow+\nrun "~/scripts/x.sh"').commands[0]
+    def test_run_extracts_btt_trigger(self):
+        cmd = parse('+CalFlow+\nrun btt("Trigger")').commands[0]
         self.assertIsInstance(cmd, RunCommand)
-        self.assertEqual(cmd.path, "~/scripts/x.sh")
+        self.assertEqual(cmd.backend, "btt")
+        self.assertEqual(cmd.trigger_name, "Trigger")
 
 
 # =============================================================

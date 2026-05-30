@@ -23,8 +23,8 @@
   dedup, idempotent state, lock file, launchd install.
 - **Onboarding** — `python3 -m cli.main setup` (4 steps: Google credentials, calendar selection, daemon install, password manager).
 - **Autofill keystrokes** — `#fill` and `#submit` send the configured keystroke via osascript + `System Events`. Provider chosen during onboarding (Apple Passwords / 1Password / Bitwarden / None).
-- **Trusted run backends** — `run -btt`, `run -shortcut`,
-  `run -alfred`, and `run -applescript` execute behind the event trust
+- **Trusted run backends** — `run btt(...)`, `run shortcut(...)`,
+  `run alfred(...)`, and `run applescript` execute behind the event trust
   gate and per-trust-level backend allowlists. Arbitrary script/path
   execution remains disabled by default.
 - **REPL** — Smart + Plus Mode interactive testing.
@@ -138,10 +138,11 @@ move bytes.
 
 ---
 
-# v2.4 — `run` (script execution)
+# v2.4 — shell/script backend
 
 ## Goal
-Allow `run "~/scripts/x.sh"` to actually execute the script.
+Design an explicit function-style shell/script backend if CalFlow needs
+one later.
 
 ## Scope
 - Execute the script in a subprocess
