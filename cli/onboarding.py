@@ -569,7 +569,7 @@ line in your event description.
 
 def run_onboarding():
 
-    print("""
+    print(r"""
   ____      _ _____ _               
  / ___|__ _| |  ___| | _____      __
 | |   / _` | | |_  | |/ _ \ \ /\ / /

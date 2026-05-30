@@ -192,7 +192,7 @@ POST_AUTOFILL_DELAY = 0.5
 # 🔐 PASSWORD MANAGER
 # =========================================================
 
-AUTOFILL_PROVIDER = "bitwarden"
+AUTOFILL_PROVIDER = "apple"
 
 
 AUTOFILL_SHORTCUTS = {
