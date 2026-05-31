@@ -36,6 +36,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Keep dependency-free commands usable before the project environment is
+# installed. Heavy imports below may require dateutil/google/pyobjc.
+if __name__ == "__main__":
+    _early_args = sys.argv[1:]
+    _early_cmd = next((a for a in _early_args if not a.startswith("-")), None)
+    if any(flag in _early_args for flag in ("--version", "-V")) or _early_cmd == "version":
+        from core.version import version_string
+        print(f"CalFlow {version_string()}")
+        sys.exit(0)
+
 # CLI / lifecycle
 from cli.onboarding import (
     restart_launchd,
