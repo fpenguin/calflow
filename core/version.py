@@ -16,7 +16,7 @@ Format: PEP 440 (MAJOR.MINOR.PATCH).
 
 from __future__ import annotations
 
-__version__ = "1.3.14"
+__version__ = "2.0.0"
 
 # Stable release vs. work-in-progress flag. Toggle to True only on a
 # tagged release; flip back to False on the next dev commit.
@@ -24,5 +24,5 @@ __is_release__ = True
 
 
 def version_string() -> str:
-    """Render `1.1.26` (or `1.1.26-dev` mid-cycle)."""
+    """Render `2.0.0` (or `2.0.0-dev` mid-cycle)."""
     return __version__ if __is_release__ else f"{__version__}-dev"
