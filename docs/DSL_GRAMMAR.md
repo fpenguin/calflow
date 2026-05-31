@@ -362,9 +362,13 @@ screenshot #display(2)
 run_command ::= "run" run_backend run_option* run_handler*
 run_backend ::= "btt" "(" string ")"
               | "shortcut" "(" string ")" input?
-              | "alfred" "(" string "," string ")" input?
+              | "alfred" "(" alfred_target ")" input?
               | "applescript"
+alfred_target ::= string "," string         ; bundle id, external trigger id
+                | string                    ; "bundle.id/trigger-id"
+run_option ::= input | timeout
 input       ::= "input" "(" string ")"
+timeout     ::= "timeout" "(" duration ")"
 
 run_handler ::= "if" "(" run_condition ")" run_handler_action
 run_condition ::= "error" | "success" | "output"
@@ -376,6 +380,9 @@ run_handler_action ::= "notify" "(" ("result" | string)? ")"
 
 Run handlers are scoped only to the preceding `run` command. They are
 not a general conditional syntax.
+
+`timeout(...)` currently applies to `run applescript`; the other run
+backends use their settings-level timeouts.
 
 Inline AppleScript uses `+++` delimiters so script lines remain visually
 separate from CalFlow commands:

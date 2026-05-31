@@ -73,17 +73,29 @@ def install_action_mocks(testcase: unittest.TestCase) -> None:
         "open_target":      ce.open_target,
         "take_screenshot":  ce.take_screenshot,
         "trigger_autofill": ce.trigger_autofill,
+        "trigger_named_btt": ce.trigger_named_btt,
+        "run_applescript":  ce.run_applescript,
+        "run_shortcut":     ce.run_shortcut,
+        "trigger_alfred":   ce.trigger_alfred,
         "sleep":            ce.time.sleep,
     }
     ce.open_target = lambda **kw: None
     ce.take_screenshot = lambda *a, **kw: "/tmp/mock.png"
     ce.trigger_autofill = lambda mode="fill": None
+    ce.trigger_named_btt = lambda *a, **kw: None
+    ce.run_applescript = lambda *a, **kw: None
+    ce.run_shortcut = lambda *a, **kw: None
+    ce.trigger_alfred = lambda *a, **kw: None
     ce.time.sleep = lambda *_a, **_kw: None
 
     def restore():
         ce.open_target = saves["open_target"]
         ce.take_screenshot = saves["take_screenshot"]
         ce.trigger_autofill = saves["trigger_autofill"]
+        ce.trigger_named_btt = saves["trigger_named_btt"]
+        ce.run_applescript = saves["run_applescript"]
+        ce.run_shortcut = saves["run_shortcut"]
+        ce.trigger_alfred = saves["trigger_alfred"]
         ce.time.sleep = saves["sleep"]
 
     testcase.addCleanup(restore)
@@ -139,7 +151,7 @@ class _PlaybookMixin:
 
 class PB_DailySetup(_PlaybookMixin, unittest.TestCase):
     playbook_file = "daily-setup.md"
-    expected_verbs = ["OPEN", "OPEN", "OPEN"]
+    expected_verbs = ["OPEN", "OPEN", "OPEN", "RUN"]
 
 
 class PB_FocusMode(_PlaybookMixin, unittest.TestCase):

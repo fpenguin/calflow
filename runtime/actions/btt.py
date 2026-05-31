@@ -17,7 +17,7 @@ __all__ = [
 import subprocess
 from urllib.parse import quote
 
-from config.settings import RUN_ALFRED_TIMEOUT
+from config.settings import RUN_ALFRED_TIMEOUT, RUN_BTT_TIMEOUT
 from core.utils import log
 from runtime.actions.notifications import notify_run_error
 from runtime.actions.run_result import RunResult, error_result, ok_result
@@ -50,7 +50,7 @@ def trigger_named_btt(trigger_name: str) -> RunResult:
 
     url = build_named_trigger_url(name)
     try:
-        subprocess.run(["open", url], check=False, timeout=5)
+        subprocess.run(["open", url], check=False, timeout=RUN_BTT_TIMEOUT)
         log(f"[INFO] BTT trigger: {name}")
         return ok_result("btt", f"BTT trigger launched: {name}")
     except Exception as exc:

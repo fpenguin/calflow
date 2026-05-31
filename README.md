@@ -166,6 +166,18 @@ error "Demo failure"
 +++
 ```
 
+You can also react to successful runs or returned output:
+
+```text
++CalFlow+
+
+run shortcut("Start Focus") if(success) notify("Focus mode started")
+run applescript if(output) copy(result)
++++
+return "Daily setup complete"
++++
+```
+
 ### Dynamic Dates
 
 Dynamic expressions resolve at execution time, which makes recurring
@@ -227,6 +239,10 @@ TRUSTED_INVITE_EMAILS = set()
 ALLOW_RUN_BACKENDS_SELF = {"btt", "alfred", "shortcut", "applescript"}
 ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
 ALLOW_RUN_BACKENDS_TRUSTED_EMAIL = {"shortcut"}
+RUN_APPLESCRIPT_TIMEOUT = 10
+RUN_BTT_TIMEOUT = 5
+RUN_SHORTCUT_TIMEOUT = 30
+RUN_ALFRED_TIMEOUT = 5
 RUN_ERROR_NOTIFICATIONS = True
 ```
 

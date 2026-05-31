@@ -931,6 +931,7 @@ save source(clipboard) to("~/file.png")
 run btt("BTT-ClaudeCoworkTryAgain")
 run shortcut("Start Focus") input("deep work")
 run alfred("com.example.workflow", "try-again") input("meeting prep")
+run alfred("com.example.workflow/try-again") input("meeting prep")
 run applescript if(error) notify(result)
 +++
 display dialog "hello"
@@ -949,7 +950,20 @@ if(error) notify(result)
 if(error) copy(result)
 if(error) save to("~/Logs/calflow-last-error.txt")
 if(success) notify("Done")
+if(output) copy(result)
 ```
+
+Run backend timeouts are configured in `config/settings.py`:
+
+```python
+RUN_APPLESCRIPT_TIMEOUT = 10
+RUN_BTT_TIMEOUT = 5
+RUN_SHORTCUT_TIMEOUT = 30
+RUN_ALFRED_TIMEOUT = 5
+```
+
+Inline `timeout(...)` currently overrides AppleScript only. BTT,
+Shortcuts, and Alfred use their settings-level timeout values.
 
 # 4. Layout & Display
 

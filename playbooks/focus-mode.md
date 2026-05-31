@@ -4,9 +4,9 @@
 
 Remove noise → keep only what matters.
 
-- closes distractions  
-- hides non-essential apps  
-- brings one app into full focus  
+- closes distractions
+- hides non-essential apps
+- brings one app into full focus
 
 ---
 
@@ -35,10 +35,10 @@ focus @chrome #full
 
 ## What actually happens
 
-- Spotify is closed completely  
-- Discord + WhatsApp are hidden  
-- Chrome becomes full screen  
-- only your work context remains  
+- Spotify is closed completely
+- Discord + WhatsApp are hidden
+- Chrome becomes full screen
+- only your work context remains
 
 ---
 
@@ -46,15 +46,15 @@ focus @chrome #full
 
 Instead of:
 
-❌ notifications pulling your attention  
-❌ switching between apps  
-❌ cluttered screens  
+❌ notifications pulling your attention
+❌ switching between apps
+❌ cluttered screens
 
 You get:
 
-✅ single-task focus  
-✅ distraction-free environment  
-✅ faster deep work  
+✅ single-task focus
+✅ distraction-free environment
+✅ faster deep work
 
 ---
 
@@ -67,9 +67,11 @@ You get:
 
 hide except(active)
 open notion.so #full
+run btt("Hard Focus")
 ```
 
-→ full-screen thinking space  
+→ full-screen thinking space
+→ optional BetterTouchTool focus preset
 
 ---
 
@@ -83,7 +85,7 @@ focus @chrome #left(70%)
 focus @slack #right(30%)
 ```
 
-→ work apps only, clean split layout  
+→ work apps only, clean split layout
 
 ---
 
@@ -96,7 +98,7 @@ hide except(active)
 open zoom.us #full
 ```
 
-→ no distractions during calls  
+→ no distractions during calls
 
 ---
 
@@ -112,7 +114,7 @@ hide except(active)
 open notion.so #full
 ```
 
-→ nothing left except your task  
+→ nothing left except your task
 
 ---
 
@@ -126,7 +128,7 @@ close "Telegram"
 close "Spotify"
 ```
 
-→ remove your personal distractions  
+→ remove your personal distractions
 
 ---
 
@@ -136,26 +138,26 @@ close "Spotify"
 hide except(@work)
 ```
 
-→ only keep your defined work apps  
+→ only keep your defined work apps
 
 ---
 
 ### Focus layout
 
 ```text
-#full        → full screen  
-#left(70%)   → main area  
-#right(30%)  → side panel  
+#full        → full screen
+#left(70%)   → main area
+#right(30%)  → side panel
 ```
 
 ---
 
 ## Mental model
 
-- `close` = kill the distraction  
-- `hide` = temporarily remove  
-- `focus` = bring forward  
-- `#full` = eliminate everything else  
+- `close` = kill the distraction
+- `hide` = temporarily remove
+- `focus` = bring forward
+- `#full` = eliminate everything else
 
 ---
 
