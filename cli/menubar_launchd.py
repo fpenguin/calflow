@@ -5,7 +5,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
+
+from runtime.menubar import CALENDAR_PLUS_SVG
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
@@ -23,7 +25,7 @@ def _run_launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _read_lock() -> Optional[Dict[str, Any]]:
+def _read_lock() -> dict[str, Any] | None:
     try:
         pid_s, ts_s = MENUBAR_LOCK_PATH.read_text(encoding="utf-8").strip().split("|")
         pid = int(pid_s)
@@ -38,7 +40,7 @@ def _read_lock() -> Optional[Dict[str, Any]]:
         return None
 
 
-def _pid_command(pid: int) -> Optional[str]:
+def _pid_command(pid: int) -> str | None:
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "command="],
@@ -53,7 +55,7 @@ def _pid_command(pid: int) -> Optional[str]:
         return None
 
 
-def _is_menubar_pid(pid: int, command: Optional[str] = None) -> bool:
+def _is_menubar_pid(pid: int, command: str | None = None) -> bool:
     try:
         os.kill(pid, 0)
     except OSError:
@@ -62,7 +64,7 @@ def _is_menubar_pid(pid: int, command: Optional[str] = None) -> bool:
     return bool(command and "cli.main" in command and "menubar" in command)
 
 
-def _loaded_line() -> Optional[str]:
+def _loaded_line() -> str | None:
     result = _run_launchctl(["list"])
     for line in result.stdout.splitlines():
         if MENUBAR_LABEL in line:
@@ -117,7 +119,7 @@ def generate_menubar_plist() -> str:
 """
 
 
-def menubar_status() -> Dict[str, Any]:
+def menubar_status() -> dict[str, Any]:
     raw_line = _loaded_line()
     lock = _read_lock()
     return {
@@ -127,13 +129,15 @@ def menubar_status() -> Dict[str, Any]:
         "plist_path": str(MENUBAR_PLIST_PATH),
         "plist_exists": MENUBAR_PLIST_PATH.exists(),
         "lock": lock,
-        "icon": "⏱ CF",
+        "icon": "dynamic-date",
+        "fallback_icon": "calendar-plus",
+        "fallback_icon_path": str(CALENDAR_PLUS_SVG),
         "stdout_log": str(DATA_DIR / "menubar.out.log"),
         "stderr_log": str(DATA_DIR / "menubar.err.log"),
     }
 
 
-def install_menubar(load: bool = True) -> Dict[str, Any]:
+def install_menubar(load: bool = True) -> dict[str, Any]:
     MENUBAR_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MENUBAR_PLIST_PATH.write_text(generate_menubar_plist(), encoding="utf-8")
 
@@ -153,7 +157,7 @@ def install_menubar(load: bool = True) -> Dict[str, Any]:
     return status
 
 
-def start_menubar() -> Dict[str, Any]:
+def start_menubar() -> dict[str, Any]:
     if not MENUBAR_PLIST_PATH.exists():
         return install_menubar(load=True)
 
@@ -168,7 +172,7 @@ def start_menubar() -> Dict[str, Any]:
     return status
 
 
-def stop_menubar() -> Dict[str, Any]:
+def stop_menubar() -> dict[str, Any]:
     result = _run_launchctl(["unload", str(MENUBAR_PLIST_PATH)])
     status = menubar_status()
     status.update({
@@ -180,14 +184,14 @@ def stop_menubar() -> Dict[str, Any]:
     return status
 
 
-def restart_menubar() -> Dict[str, Any]:
+def restart_menubar() -> dict[str, Any]:
     stop_menubar()
     status = start_menubar()
     status["action"] = "restart"
     return status
 
 
-def uninstall_menubar() -> Dict[str, Any]:
+def uninstall_menubar() -> dict[str, Any]:
     stop_result = stop_menubar()
     removed = False
     if MENUBAR_PLIST_PATH.exists():

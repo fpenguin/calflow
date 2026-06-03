@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <title>CalFlow menu bar icon 02 - calendar plus</title>
+  <g fill="none" stroke="#000" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3.6" width="12" height="11.2" rx="2"/>
+    <path d="M5.8 2.3v3"/>
+    <path d="M12.2 2.3v3"/>
+    <path d="M3 7h12"/>
+    <path d="M9 8.9v4.2"/>
+    <path d="M6.9 11h4.2"/>
+  </g>
+</svg>

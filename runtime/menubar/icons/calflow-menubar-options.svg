@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 118 26">
+  <title>CalFlow menu bar icon options</title>
+  <rect width="118" height="26" rx="6" fill="#f6f7f8"/>
+  <g transform="translate(4 4)">
+    <use href="#i1"/>
+  </g>
+  <g transform="translate(28 4)">
+    <use href="#i2"/>
+  </g>
+  <g transform="translate(52 4)">
+    <use href="#i3"/>
+  </g>
+  <g transform="translate(76 4)">
+    <use href="#i4"/>
+  </g>
+  <g transform="translate(100 4)">
+    <use href="#i5"/>
+  </g>
+  <defs>
+    <g id="i1" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="9" cy="9" r="6.2"/>
+      <path d="M9 5.2v4l2.9 1.7"/>
+      <path d="M3.6 9c1.9-3.6 8.9-3.6 10.8 0"/>
+      <path d="M14.4 9c-1.9 3.6-8.9 3.6-10.8 0"/>
+    </g>
+    <g id="i2" fill="none" stroke="#000" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3.6" width="12" height="11.2" rx="2"/>
+      <path d="M5.8 2.3v3"/>
+      <path d="M12.2 2.3v3"/>
+      <path d="M3 7h12"/>
+      <path d="M9 8.9v4.2"/>
+      <path d="M6.9 11h4.2"/>
+    </g>
+    <g id="i3" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="4.2" cy="5" r="1.8"/>
+      <circle cx="13.8" cy="5" r="1.8"/>
+      <circle cx="9" cy="13" r="1.8"/>
+      <path d="M6 5h6"/>
+      <path d="M5.2 6.5 8 11.4"/>
+      <path d="M12.8 6.5 10 11.4"/>
+    </g>
+    <g id="i4" fill="none" stroke="#000" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 4.5A4.6 4.6 0 1 0 8 13.5"/>
+      <path d="M11 4.5h4"/>
+      <path d="M11 9h3.4"/>
+      <path d="M11 13.5v-9"/>
+    </g>
+    <g id="i5" fill="none" stroke="#000" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.3 9c0-3.1 2.6-5.7 5.7-5.7 2.3 0 4.3 1.4 5.2 3.4"/>
+      <path d="M14.7 9c0 3.1-2.6 5.7-5.7 5.7-2.3 0-4.3-1.4-5.2-3.4"/>
+      <path d="M13.9 3.5v3.2h-3.2"/>
+      <path d="M4.1 14.5v-3.2h3.2"/>
+      <path d="M9 6.6 7.9 9h2.2L9 11.4"/>
+    </g>
+  </defs>
+</svg>

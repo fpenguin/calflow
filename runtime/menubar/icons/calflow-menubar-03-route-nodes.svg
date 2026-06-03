@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <title>CalFlow menu bar icon 03 - route nodes</title>
+  <g fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="4.2" cy="5" r="1.8"/>
+    <circle cx="13.8" cy="5" r="1.8"/>
+    <circle cx="9" cy="13" r="1.8"/>
+    <path d="M6 5h6"/>
+    <path d="M5.2 6.5 8 11.4"/>
+    <path d="M12.8 6.5 10 11.4"/>
+  </g>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <title>CalFlow menu bar icon 05 - spark loop</title>
+  <g fill="none" stroke="#000" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.3 9c0-3.1 2.6-5.7 5.7-5.7 2.3 0 4.3 1.4 5.2 3.4"/>
+    <path d="M14.7 9c0 3.1-2.6 5.7-5.7 5.7-2.3 0-4.3-1.4-5.2-3.4"/>
+    <path d="M13.9 3.5v3.2h-3.2"/>
+    <path d="M4.1 14.5v-3.2h3.2"/>
+    <path d="M9 6.6 7.9 9h2.2L9 11.4"/>
+  </g>
+</svg>

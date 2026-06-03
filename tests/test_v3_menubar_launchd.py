@@ -66,7 +66,9 @@ class MenubarLaunchdTests(unittest.TestCase):
         self.assertFalse(result["loaded"])
         self.assertTrue(result["plist_exists"])
         self.assertEqual(result["lock"]["pid"], 42)
-        self.assertEqual(result["icon"], "⏱ CF")
+        self.assertEqual(result["icon"], "dynamic-date")
+        self.assertEqual(result["fallback_icon"], "calendar-plus")
+        self.assertTrue(result["fallback_icon_path"].endswith("calflow-menubar-02-calendar-plus.svg"))
 
     def test_pid_alive_requires_menubar_command(self) -> None:
         with patch("os.kill", return_value=None), \

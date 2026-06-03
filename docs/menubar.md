@@ -31,6 +31,8 @@ interactive Recipes editor, and an editable Settings page.
 - **v2.0.2-dev** — LaunchAgent lifecycle commands for the menu bar
   companion (`menubar-install`, `menubar-start`, `menubar-stop`,
   `menubar-status`, `menubar-uninstall`).
+- **v2.0.2-dev** — Dynamic month/day menu bar icon with Calendar Plus
+  fallback.
 
 ## Install / Run
 
@@ -47,8 +49,10 @@ python3 -m cli.main menubar-status
 ~/Library/LaunchAgents/com.calflow.menubar.plist
 ```
 
-A clock icon (`⏱ CF`) appears in the menu bar. Click it to open the
-popover. The menu bar companion is separate from the background daemon:
+A dynamic date icon appears in the menu bar, showing the current month
+and day, e.g. `JUN` over `3`. Click it to open the popover. The
+approved Calendar Plus icon is the fallback if dynamic rendering fails.
+The menu bar companion is separate from the background daemon:
 
 - `python3 -m cli.main start|stop|restart|status` controls the calendar
   automation daemon (`com.calflow`).
@@ -61,7 +65,7 @@ Developer foreground run:
 python3 -m cli.main menubar
 ```
 
-This also shows `⏱ CF`, but only while that process stays running.
+This also shows the date icon, but only while that process stays running.
 
 The CLI keeps working when the menubar deps aren't installed:
 

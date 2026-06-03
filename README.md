@@ -309,11 +309,12 @@ python3 -m cli.main menubar-install
 python3 -m cli.main menubar-status
 ```
 
-Look for `⏱ CF` in the macOS menu bar. The companion is separate from
-the background daemon: the daemon runs calendar automation, while the
-menu bar companion gives you status, missed events, recipes, and
-settings. `menubar-install` creates `~/Library/LaunchAgents/com.calflow.menubar.plist`
-so the icon appears now and after login.
+Look for the current month/day icon in the macOS menu bar, e.g. `JUN`
+over `3`. The companion is separate from the background daemon: the
+daemon runs calendar automation, while the menu bar companion gives you
+status, missed events, recipes, and settings. `menubar-install` creates
+`~/Library/LaunchAgents/com.calflow.menubar.plist` so the icon appears
+now and after login.
 
 ---
 

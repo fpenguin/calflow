@@ -11,9 +11,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__all__ = ["POPOVER_HTML", "RECIPES_HTML", "SETTINGS_HTML"]
+__all__ = [
+    "CALENDAR_PLUS_SVG",
+    "POPOVER_HTML",
+    "RECIPES_HTML",
+    "SETTINGS_HTML",
+]
 
 _HERE = Path(__file__).resolve().parent
 POPOVER_HTML:  Path = _HERE / "popover.html"
 RECIPES_HTML:  Path = _HERE / "recipes.html"
 SETTINGS_HTML: Path = _HERE / "settings.html"
+CALENDAR_PLUS_SVG: Path = _HERE / "icons" / "calflow-menubar-02-calendar-plus.svg"

@@ -49,8 +49,9 @@ import os
 import subprocess
 import sys
 import threading
+from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # =========================================================
 # 🧷 LAZY IMPORTS (raise on missing deps so cli.main can intercept)
@@ -60,13 +61,17 @@ from typing import Any, Dict, Optional
 # We import at module top so class definitions can reference the
 # names directly. cli.main wraps `from cli.menubar import main` in a
 # try/except ImportError that prints an install hint.
-
-import objc                                              # noqa: E402
-from AppKit import (                                     # noqa: E402
+import objc  # noqa: E402
+from AppKit import (  # noqa: E402
     NSApp,
     NSApplication,
     NSApplicationActivationPolicyAccessory,
     NSBackingStoreBuffered,
+    NSBezierPath,
+    NSColor,
+    NSFont,
+    NSFontAttributeName,
+    NSForegroundColorAttributeName,
     NSImage,
     NSMaxYEdge,
     NSModalResponseOK,
@@ -74,7 +79,6 @@ from AppKit import (                                     # noqa: E402
     NSPopover,
     NSPopoverBehaviorTransient,
     NSScreen,
-    NSSquareStatusItemLength,
     NSStatusBar,
     NSVariableStatusItemLength,
     NSViewController,
@@ -85,18 +89,20 @@ from AppKit import (                                     # noqa: E402
     NSWindowStyleMaskTitled,
     NSWorkspace,
 )
-from Foundation import (                                 # noqa: E402
+from Foundation import (  # noqa: E402
+    NSURL,
     NSMakeRect,
     NSObject,
     NSOperationQueue,
-    NSURL,
+    NSString,
+    NSTimer,
 )
-from WebKit import (                                     # noqa: E402
+from PyObjCTools import AppHelper  # noqa: E402
+from WebKit import (  # noqa: E402
     WKUserContentController,
     WKWebView,
     WKWebViewConfiguration,
 )
-from PyObjCTools import AppHelper                        # noqa: E402
 
 from runtime.menubar import POPOVER_HTML, RECIPES_HTML, SETTINGS_HTML  # noqa: E402
 
@@ -114,6 +120,8 @@ _POPOVER_H = 540
 # Window dimensions for the Recipes / Settings standalone pages.
 _RECIPES_W,  _RECIPES_H,  _RECIPES_MIN  = 760, 540, (640, 480)
 _SETTINGS_W, _SETTINGS_H, _SETTINGS_MIN = 680, 540, (560, 420)
+_STATUS_ICON_PT = 18
+_STATUS_ICON_REFRESH_SECONDS = 10 * 60
 
 
 # =========================================================
@@ -124,7 +132,7 @@ _SETTINGS_W, _SETTINGS_H, _SETTINGS_MIN = 680, 540, (560, 420)
 # browser via `open(1)`. Replace these with your real URLs once
 # the GitHub repo and Buy-Me-a-Coffee page exist.
 
-_OPEN_URLS: Dict[str, str] = {
+_OPEN_URLS: dict[str, str] = {
     "open-coffee": "https://www.buymeacoffee.com/calflow",
     "open-about":  "https://github.com/calflow/calflow/releases/latest",
 }
@@ -132,10 +140,109 @@ _OPEN_URLS: Dict[str, str] = {
 # v1.3.1 — these now route to native windows (see _CFApp.show_window_).
 # Kept as a fallback path: if the window can't be created for any reason,
 # the bridge falls through to opening the folder in Finder.
-_OPEN_PATHS: Dict[str, Path] = {
+_OPEN_PATHS: dict[str, Path] = {
     "open-recipes-folder":  _PROJECT_ROOT / "playbooks",
     "open-settings-folder": _PROJECT_ROOT / "config",
 }
+
+
+# =========================================================
+# 🗓 STATUS ICON
+# =========================================================
+
+def _date_icon_labels(today: date | None = None) -> tuple[str, str]:
+    """Return the month/day labels for the dynamic menu bar date icon."""
+    today = today or date.today()
+    return today.strftime("%b").upper(), str(today.day)
+
+
+def _draw_text(text: str, rect, size: float, weight: float = 0.0) -> None:
+    ns_text = NSString.stringWithString_(text)
+    font = NSFont.monospacedDigitSystemFontOfSize_weight_(size, weight)
+    attrs = {
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: NSColor.blackColor(),
+    }
+    text_size = ns_text.sizeWithAttributes_(attrs)
+    draw_rect = NSMakeRect(
+        rect.origin.x + (rect.size.width - text_size.width) / 2,
+        rect.origin.y + (rect.size.height - text_size.height) / 2,
+        text_size.width,
+        text_size.height,
+    )
+    ns_text.drawInRect_withAttributes_(draw_rect, attrs)
+
+
+def _make_dynamic_date_icon(today: date | None = None) -> NSImage:
+    """Build a single-color template NSImage that shows month + date."""
+    month, day = _date_icon_labels(today)
+    image = NSImage.alloc().initWithSize_((_STATUS_ICON_PT, _STATUS_ICON_PT))
+    image.lockFocus()
+    try:
+        NSColor.blackColor().setStroke()
+        outline = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(2.0, 2.0, 14.0, 14.0), 2.0, 2.0,
+        )
+        outline.setLineWidth_(1.2)
+        outline.stroke()
+
+        divider = NSBezierPath.bezierPath()
+        divider.moveToPoint_((3.2, 10.8))
+        divider.lineToPoint_((14.8, 10.8))
+        divider.setLineWidth_(1.0)
+        divider.stroke()
+
+        _draw_text(month, NSMakeRect(2.0, 10.0, 14.0, 5.0), 4.4, 0.25)
+        _draw_text(day, NSMakeRect(2.0, 2.0, 14.0, 9.0), 8.6, 0.25)
+    finally:
+        image.unlockFocus()
+    image.setTemplate_(True)
+    return image
+
+
+def _make_calendar_plus_fallback_icon() -> NSImage:
+    """Draw the approved Calendar Plus fallback as a template NSImage."""
+    image = NSImage.alloc().initWithSize_((_STATUS_ICON_PT, _STATUS_ICON_PT))
+    image.lockFocus()
+    try:
+        NSColor.blackColor().setStroke()
+        outline = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(3.0, 3.0, 12.0, 12.0), 2.0, 2.0,
+        )
+        outline.setLineWidth_(1.4)
+        outline.stroke()
+
+        for x in (5.8, 12.2):
+            path = NSBezierPath.bezierPath()
+            path.moveToPoint_((x, 14.8))
+            path.lineToPoint_((x, 12.0))
+            path.setLineWidth_(1.4)
+            path.stroke()
+
+        divider = NSBezierPath.bezierPath()
+        divider.moveToPoint_((3.0, 11.0))
+        divider.lineToPoint_((15.0, 11.0))
+        divider.setLineWidth_(1.2)
+        divider.stroke()
+
+        plus = NSBezierPath.bezierPath()
+        plus.moveToPoint_((9.0, 8.8))
+        plus.lineToPoint_((9.0, 5.0))
+        plus.moveToPoint_((7.1, 6.9))
+        plus.lineToPoint_((10.9, 6.9))
+        plus.setLineWidth_(1.5)
+        plus.stroke()
+    finally:
+        image.unlockFocus()
+    image.setTemplate_(True)
+    return image
+
+
+def _make_status_icon(today: date | None = None) -> NSImage:
+    try:
+        return _make_dynamic_date_icon(today)
+    except Exception:
+        return _make_calendar_plus_fallback_icon()
 
 
 # =========================================================
@@ -221,8 +328,10 @@ class _CFApp(NSObject):
             .statusItemWithLength_(NSVariableStatusItemLength)
         )
         button = status_item.button()
-        # Compact monogram. Replace with NSImage(named:"…") later.
-        button.setTitle_("⏱ CF")
+        button.setTitle_("")
+        self._status_item = status_item
+        self._last_icon_date = None
+        self._install_status_icon()
         button.setAction_("togglePopover:")
         button.setTarget_(self)
 
@@ -230,13 +339,33 @@ class _CFApp(NSObject):
         self._bridge = bridge
         self._webview = webview
         self._popover = popover
-        self._status_item = status_item
 
         # Lazy-created secondary windows (Recipes, Settings).
-        self._windows: Dict[str, Any] = {}
-        self._window_webviews: Dict[str, Any] = {}
+        self._windows: dict[str, Any] = {}
+        self._window_webviews: dict[str, Any] = {}
+
+        self._icon_timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            _STATUS_ICON_REFRESH_SECONDS,
+            self,
+            "refreshStatusIcon:",
+            None,
+            True,
+        )
 
         return self
+
+    @objc.python_method
+    def _install_status_icon(self) -> None:
+        today = date.today()
+        if self._last_icon_date == today:
+            return
+        button = self._status_item.button()
+        button.setImage_(_make_status_icon(today))
+        button.setToolTip_(f"CalFlow - {today.strftime('%b')} {today.day}")
+        self._last_icon_date = today
+
+    def refreshStatusIcon_(self, sender):  # noqa: N802 (Cocoa selector)
+        self._install_status_icon()
 
     # =====================================================
     # 🛠 WebView factory (popover + windows share this)
@@ -297,7 +426,7 @@ class _CFApp(NSObject):
     # to opt out of selector machinery.
 
     @objc.python_method
-    def handle_message(self, msg_id: str, op: str, args: Dict[str, Any],
+    def handle_message(self, msg_id: str, op: str, args: dict[str, Any],
                        src_wv: Any = None) -> None:
         """Route a postMessage from JS to either a subprocess or a local action.
 
@@ -380,27 +509,31 @@ class _CFApp(NSObject):
             return
 
         # save-recipe / run-script / apply-settings need stdin payload — handle separately.
-        stdin_payload: Optional[bytes] = None
+        stdin_payload: bytes | None = None
         if op == "save-recipe":
             try:
                 stdin_payload = json.dumps(args or {}).encode("utf-8")
             except Exception as exc:
-                self._reject(msg_id, f"bad save-recipe payload: {exc}", src_wv); return
+                self._reject(msg_id, f"bad save-recipe payload: {exc}", src_wv)
+                return
         elif op == "run-script":
             body = args.get("body") if isinstance(args, dict) else None
             if not body:
-                self._reject(msg_id, "missing body", src_wv); return
+                self._reject(msg_id, "missing body", src_wv)
+                return
             stdin_payload = str(body).encode("utf-8")
         elif op == "apply-settings":
             try:
                 stdin_payload = json.dumps(args or {}).encode("utf-8")
             except Exception as exc:
-                self._reject(msg_id, f"bad apply-settings payload: {exc}", src_wv); return
+                self._reject(msg_id, f"bad apply-settings payload: {exc}", src_wv)
+                return
         elif op == "apply-targets":
             try:
                 stdin_payload = json.dumps(args or {}).encode("utf-8")
             except Exception as exc:
-                self._reject(msg_id, f"bad apply-targets payload: {exc}", src_wv); return
+                self._reject(msg_id, f"bad apply-targets payload: {exc}", src_wv)
+                return
 
         # Run on a worker thread; reply via main-thread evaluateJavaScript.
         threading.Thread(
@@ -414,7 +547,7 @@ class _CFApp(NSObject):
     # =====================================================
 
     @objc.python_method
-    def _build_cmd(self, op: str, args: Dict[str, Any]):
+    def _build_cmd(self, op: str, args: dict[str, Any]):
         base = [_PY, "-m", "cli.main"]
         if op == "status":
             return base + ["status", "--json"]
@@ -472,7 +605,7 @@ class _CFApp(NSObject):
     # =====================================================
 
     @objc.python_method
-    def _run_subprocess(self, msg_id: str, cmd, stdin_payload: Optional[bytes] = None,
+    def _run_subprocess(self, msg_id: str, cmd, stdin_payload: bytes | None = None,
                         src_wv: Any = None) -> None:
         # run-script may legitimately take many seconds (it executes a
         # full Smart/Plus pipeline). Give it a longer budget; everything
@@ -587,7 +720,7 @@ class _CFApp(NSObject):
     # =====================================================
 
     @objc.python_method
-    def _show_folder_picker(self, msg_id: str, args: Dict[str, Any], src_wv: Any) -> None:
+    def _show_folder_picker(self, msg_id: str, args: dict[str, Any], src_wv: Any) -> None:
         """
         Show a native NSOpenPanel for picking a single directory.
 
@@ -630,10 +763,7 @@ class _CFApp(NSObject):
         if not msg_id:
             return
         try:
-            js = "window.cf_resolve({}, {});".format(
-                json.dumps(msg_id),
-                json.dumps(payload, default=str),
-            )
+            js = f"window.cf_resolve({json.dumps(msg_id)}, {json.dumps(payload, default=str)});"
         except Exception as exc:
             js = "window.cf_reject({}, {});".format(
                 json.dumps(msg_id),
@@ -645,10 +775,7 @@ class _CFApp(NSObject):
     def _reject(self, msg_id: str, error: str, src_wv: Any = None) -> None:
         if not msg_id:
             return
-        js = "window.cf_reject({}, {});".format(
-            json.dumps(msg_id),
-            json.dumps(str(error)),
-        )
+        js = f"window.cf_reject({json.dumps(msg_id)}, {json.dumps(str(error))});"
         self._eval_js(js, src_wv)
 
     @objc.python_method
@@ -748,7 +875,7 @@ def _is_menubar_pid(pid: int) -> bool:
 
 def _read_lock():
     try:
-        with open(_LOCK_PATH, "r", encoding="utf-8") as f:
+        with open(_LOCK_PATH, encoding="utf-8") as f:
             pid_s, ts_s = f.read().strip().split("|")
         return int(pid_s), int(ts_s)
     except Exception:
@@ -791,11 +918,11 @@ def _acquire_singleton_or_exit() -> None:
         age = _t.time() - ts
         if age <= _LOCK_MAX_AGE and _is_menubar_pid(pid) and pid != _os.getpid():
             print(
-                "CalFlow menubar is already running (PID {}).\n"
+                f"CalFlow menubar is already running (PID {pid}).\n"
                 "  • To stop it:    pkill -f 'cli.main menubar'\n"
                 "  • To replace it: pkill -f 'cli.main menubar' && "
                 "python -m cli.main menubar &"
-                .format(pid),
+                ,
                 file=sys.stderr,
             )
             sys.exit(0)

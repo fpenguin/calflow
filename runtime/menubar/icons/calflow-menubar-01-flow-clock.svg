@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+  <title>CalFlow menu bar icon 01 - flow clock</title>
+  <g fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="9" cy="9" r="6.2"/>
+    <path d="M9 5.2v4l2.9 1.7"/>
+    <path d="M3.6 9c1.9-3.6 8.9-3.6 10.8 0"/>
+    <path d="M14.4 9c-1.9 3.6-8.9 3.6-10.8 0"/>
+  </g>
+</svg>
