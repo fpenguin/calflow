@@ -28,14 +28,40 @@ interactive Recipes editor, and an editable Settings page.
 - **v1.3.8** — **Apply & restart** combined button (replaces "Restart
   daemon now"); native folder picker for the screenshot directory;
   copyable Python binary path for manual Accessibility grant.
+- **v2.0.2-dev** — LaunchAgent lifecycle commands for the menu bar
+  companion (`menubar-install`, `menubar-start`, `menubar-stop`,
+  `menubar-status`, `menubar-uninstall`).
 
-## Run
+## Install / Run
+
+Recommended:
+
+```bash
+python3 -m cli.main menubar-install
+python3 -m cli.main menubar-status
+```
+
+`menubar-install` writes and loads:
+
+```text
+~/Library/LaunchAgents/com.calflow.menubar.plist
+```
+
+A clock icon (`⏱ CF`) appears in the menu bar. Click it to open the
+popover. The menu bar companion is separate from the background daemon:
+
+- `python3 -m cli.main start|stop|restart|status` controls the calendar
+  automation daemon (`com.calflow`).
+- `python3 -m cli.main menubar-start|menubar-stop|menubar-status`
+  controls the visible menu bar companion (`com.calflow.menubar`).
+
+Developer foreground run:
 
 ```bash
 python3 -m cli.main menubar
 ```
 
-A clock icon (⏱ CF) appears in the menu bar. Click it to open the popover.
+This also shows `⏱ CF`, but only while that process stays running.
 
 The CLI keeps working when the menubar deps aren't installed:
 
@@ -81,6 +107,7 @@ subprocess: python -m cli.main {status|stats|upcoming|missed|run-event|
                                 recipes|save-recipe|delete-recipe|
                                 run-script|settings|apply-settings|
                                 daemon-start|daemon-stop|daemon-restart|
+                                menubar-start|menubar-stop|menubar-status|
                                 open-system-prefs|edit-settings-file} --json
    │  stdout JSON
    ▼
@@ -137,10 +164,25 @@ no new permissions.
 | `cli.main daemon-restart` | stop + start in sequence |
 | `cli.main pause` / `cli.main resume` | Back-compat aliases for `daemon-stop` / `daemon-start` |
 
-Each returns `{"action": "...", "ok": true, "loaded_after": bool}` or
-`{"ok": false, "error": "..."}`. The popover's Pause button uses
+### Menu bar lifecycle (v2.0.2-dev)
+
+| Subcommand | Notes |
+|------------|-------|
+| `cli.main menubar-install` | Writes the LaunchAgent and starts the icon now + at login |
+| `cli.main menubar-start` | Loads the existing LaunchAgent; creates it if missing |
+| `cli.main menubar-stop` | Unloads the LaunchAgent; icon disappears |
+| `cli.main menubar-restart` | Stop + start |
+| `cli.main menubar-status` | JSON status, plist path, logs, lock PID, and icon label |
+| `cli.main menubar-uninstall` | Unloads and removes the LaunchAgent |
+
+Daemon controls return `{"action": "...", "ok": true, "loaded_after": bool}`
+or `{"ok": false, "error": "..."}`. The popover's Pause button uses
 `loaded_after` to reconcile its optimistic UI flip with the real
-launchctl state.
+daemon launchctl state.
+
+Menu bar lifecycle commands return the LaunchAgent status object:
+`loaded`, `raw_line`, `plist_path`, `lock`, `stdout_log`, and
+`stderr_log`.
 
 ### Permissions / OS deep-links (v1.3.7)
 
@@ -351,6 +393,7 @@ When `Accessibility` or `Apple Events` is **Denied** or **Unknown**:
 | `core/settings_writer.py` | `EDITABLE_SETTINGS` + `apply_settings()` (v1.3.2) |
 | `state/stats_store.py` | `load_stats`, `save_stats`, `record_action`, `snapshot` |
 | `tests/test_v3_menubar_stats.py` | Stats backend + JSON contract tests |
+| `tests/test_v3_menubar_launchd.py` | Menu bar LaunchAgent lifecycle tests |
 | `tests/test_v3_recipes.py` | Recipe catalog + my_recipes round-trip tests (v1.3.1) |
 | `tests/test_v3_settings_writer.py` | Whitelist + validation + backup + bool-mapping tests (v1.3.2 / v1.3.7) |
 

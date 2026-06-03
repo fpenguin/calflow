@@ -723,12 +723,27 @@ def _parse_json_from_log(stdout: str) -> Any:
 _LOCK_PATH = "/tmp/calflow_menubar.lock"
 _LOCK_MAX_AGE = 7 * 24 * 3600   # 7 days — menubar can stay up that long
 
-def _is_pid_alive(pid: int) -> bool:
+def _pid_command(pid: int) -> str:
+    try:
+        proc = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        return (proc.stdout or "").strip()
+    except Exception:
+        return ""
+
+
+def _is_menubar_pid(pid: int) -> bool:
     try:
         os.kill(pid, 0)
-        return True
     except (OSError, ProcessLookupError):
         return False
+    command = _pid_command(pid)
+    return "cli.main" in command and "menubar" in command
 
 
 def _read_lock():
@@ -774,7 +789,7 @@ def _acquire_singleton_or_exit() -> None:
     if existing is not None:
         pid, ts = existing
         age = _t.time() - ts
-        if age <= _LOCK_MAX_AGE and _is_pid_alive(pid) and pid != _os.getpid():
+        if age <= _LOCK_MAX_AGE and _is_menubar_pid(pid) and pid != _os.getpid():
             print(
                 "CalFlow menubar is already running (PID {}).\n"
                 "  • To stop it:    pkill -f 'cli.main menubar'\n"

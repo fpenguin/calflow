@@ -34,7 +34,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 # Keep dependency-free commands usable before the project environment is
 # installed. Heavy imports below may require dateutil/google/pyobjc.
@@ -44,6 +44,17 @@ if __name__ == "__main__":
     if any(flag in _early_args for flag in ("--version", "-V")) or _early_cmd == "version":
         from core.version import version_string
         print(f"CalFlow {version_string()}")
+        sys.exit(0)
+    if _early_cmd in (
+        "menubar-install",
+        "menubar-start",
+        "menubar-stop",
+        "menubar-restart",
+        "menubar-status",
+        "menubar-uninstall",
+    ):
+        from cli.menubar_launchd import print_menubar_action_json
+        print_menubar_action_json(_early_cmd.split("-", 1)[1])
         sys.exit(0)
 
 # CLI / lifecycle
@@ -55,6 +66,7 @@ from cli.onboarding import (
     stop_launchd,
     uninstall_launchd,
 )
+from cli.menubar_launchd import print_menubar_action_json
 
 # Infra
 from infra.calendar.calendar_client import (
@@ -254,6 +266,8 @@ _AVAILABLE_COMMANDS = """
     python3 -m cli.main setup       # re-onboarding (4 steps)
     python3 -m cli.main display     # list connected monitors + #display syntax
     python3 -m cli.main test        # generate a test event + run it on demand
+    python3 -m cli.main menubar-install  # show ⏱ CF now and at login
+    python3 -m cli.main menubar-status   # check menu bar companion
     python3 -m cli.main uninstall   # remove daemon (data preserved; --full to wipe)
     python3 -m cli.repl             # interactive REPL (no daemon needed)
 """.rstrip()
@@ -1950,6 +1964,16 @@ if __name__ == "__main__":
         sys.exit(0)
     if cmd in ("daemon-start", "daemon-stop", "daemon-restart"):
         print_daemon_action_json(cmd.split("-", 1)[1])
+        sys.exit(0)
+    if cmd in (
+        "menubar-install",
+        "menubar-start",
+        "menubar-stop",
+        "menubar-restart",
+        "menubar-status",
+        "menubar-uninstall",
+    ):
+        print_menubar_action_json(cmd.split("-", 1)[1])
         sys.exit(0)
     if cmd == "open-system-prefs":
         # Find the pane arg AFTER the verb.
