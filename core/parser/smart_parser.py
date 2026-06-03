@@ -60,6 +60,11 @@ _URL_BODY = rf'(?:{_URL_CHARS}|{_URL_DYNAMIC})+'
 URL_PATTERN = re.compile(
     rf'(?i)(https?://{_URL_BODY}|www\.{_URL_BODY}|\b[a-z0-9.-]+\.[a-z]{{2,}}(?:/{_URL_BODY})?)'
 )
+EMAIL_PATTERN = re.compile(
+    r"(?i)[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+"
+)
 
 # Single `#…`; `##` is a comment and must be filtered before this matches.
 #
@@ -77,6 +82,23 @@ HASHTAG_PATTERN = re.compile(
 )
 TARGET_PATTERN = re.compile(r'(?<!\w)(@[\w][\w\-]*)')
 ALERT_PATTERN = re.compile(r"#alert=(\d+)([sm])", re.IGNORECASE)
+
+
+def _find_urls(text: str) -> List[str]:
+    """Return URL-like matches, excluding bare domains inside email addresses."""
+    if not text:
+        return []
+
+    email_spans = [match.span() for match in EMAIL_PATTERN.finditer(text)]
+    urls: List[str] = []
+
+    for match in URL_PATTERN.finditer(text):
+        start, end = match.span(1)
+        if any(email_start <= start and end <= email_end for email_start, email_end in email_spans):
+            continue
+        urls.append(match.group(1))
+
+    return urls
 
 
 # =========================================================
@@ -177,7 +199,7 @@ def _is_global_modifier_line(line: str) -> bool:
     """
     if not line:
         return False
-    if URL_PATTERN.search(line):
+    if _find_urls(line):
         return False
     tokens = [t for t in line.split() if t]
     if not tokens:
@@ -234,13 +256,13 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
     seen: Set[str] = set()
 
     # Pre-scan total URL count for blacklist semantics
-    raw_urls = URL_PATTERN.findall(text)
+    raw_urls = _find_urls(text)
     total_url_count = len(raw_urls)
 
     # --- Title override URLs (whitelist) --------------------------------
     title_urls: Set[str] = set()
     if title:
-        for raw in URL_PATTERN.findall(title):
+        for raw in _find_urls(title):
             normalized = normalize_url(raw)
             if normalized:
                 title_urls.add(normalized)
@@ -273,7 +295,7 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
         line_tags = {t.lower() for t in HASHTAG_PATTERN.findall(line)}
         line_targets = [t.lower() for t in TARGET_PATTERN.findall(line)]
 
-        for raw_url in URL_PATTERN.findall(line):
+        for raw_url in _find_urls(line):
             url = normalize_url(raw_url)
             if not url:
                 continue

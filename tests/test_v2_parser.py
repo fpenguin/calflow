@@ -51,6 +51,25 @@ class SmartModeRegression(unittest.TestCase):
         self.assertEqual(len(result.entries), 1)
         self.assertIn("#force", result.entries[0]["tags"])
 
+    def test_email_address_not_extracted_as_bare_domains(self) -> None:
+        result = parse("moveu.crew@ubc.ca")
+        self.assertEqual(result.entries, [])
+
+    def test_paragraph_with_email_address_not_extracted_as_url(self) -> None:
+        text = (
+            "Participants must pre-register and complete an online waiver prior "
+            "to attending. Location: This walk will start start at Nitobe Garden "
+            "Entrance. If you have any questions or concerns, please email the "
+            "Move U Crew at moveu.crew@ubc.ca."
+        )
+        result = parse(text)
+        self.assertEqual(result.entries, [])
+
+    def test_email_address_does_not_hide_real_url(self) -> None:
+        result = parse("Please email moveu.crew@ubc.ca and visit recreation.ubc.ca")
+        self.assertEqual(result.mode, MODE_SMART)
+        self.assertEqual([entry["url"] for entry in result.entries], ["https://recreation.ubc.ca"])
+
 
 
 
