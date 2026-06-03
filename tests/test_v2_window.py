@@ -18,18 +18,20 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest.mock import Mock, patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from core.resolver import resolve_display
 from core.parser.smart_parser import HASHTAG_PATTERN
+from core.resolver import resolve_display
 from runtime.actions.window import (
+    apply_layout,
     compute_rect,
     resolve_display_target,
+    set_window_bounds,
 )
-
 
 # A standard fake display layout used across most tests:
 #   [1] primary built-in laptop @ (0, 0) 1512×944
@@ -380,6 +382,50 @@ class MultiDisplayRect(unittest.TestCase):
         )
         # cell 4 = idx 3 → row 1, col 1 → (1512 + 1920, -1216 + 1080, 1920, 1080)
         self.assertEqual(rect, (3432, -136, 1920, 1080))
+
+
+# =============================================================
+# Layout application retries first-window races
+# =============================================================
+
+class ApplyLayout(unittest.TestCase):
+    def test_retries_when_window_is_not_ready_yet(self):
+        with (
+            patch("runtime.actions.window.enumerate_displays", return_value=ONLY_LAPTOP),
+            patch(
+                "runtime.actions.window.set_window_bounds",
+                side_effect=[False, True],
+            ) as set_bounds,
+            patch("runtime.actions.window.time.sleep") as sleep,
+        ):
+            apply_layout("Google Chrome", {"type": "left", "value": 0.6})
+
+        self.assertEqual(set_bounds.call_count, 2)
+        set_bounds.assert_called_with("Google Chrome", (0, 0, 907, 944))
+        sleep.assert_called_once_with(0.35)
+
+    def test_does_not_retry_after_success(self):
+        with (
+            patch("runtime.actions.window.enumerate_displays", return_value=ONLY_LAPTOP),
+            patch("runtime.actions.window.set_window_bounds", return_value=True) as set_bounds,
+            patch("runtime.actions.window.time.sleep") as sleep,
+        ):
+            apply_layout("Google Chrome", {"type": "right", "value": 0.4})
+
+        set_bounds.assert_called_once_with("Google Chrome", (908, 0, 604, 944))
+        sleep.assert_not_called()
+
+
+class SetWindowBounds(unittest.TestCase):
+    def test_returns_false_when_applescript_reports_no_window(self):
+        fake_result = Mock(returncode=0, stdout="no-window\n", stderr="")
+        with patch("runtime.actions.window.subprocess.run", return_value=fake_result):
+            self.assertFalse(set_window_bounds("Google Chrome", (0, 0, 100, 100)))
+
+    def test_returns_true_only_for_ok_sentinel(self):
+        fake_result = Mock(returncode=0, stdout="ok\n", stderr="")
+        with patch("runtime.actions.window.subprocess.run", return_value=fake_result):
+            self.assertTrue(set_window_bounds("Google Chrome", (0, 0, 100, 100)))
 
 
 if __name__ == "__main__":  # pragma: no cover

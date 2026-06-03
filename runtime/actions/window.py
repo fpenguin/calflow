@@ -32,13 +32,14 @@ __all__ = [
 ]
 
 import json
-import math
-import re
 import subprocess
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from core.utils import log
+
+_LAYOUT_RETRY_ATTEMPTS = 5
+_LAYOUT_RETRY_DELAY_SECONDS = 0.35
 
 
 # =========================================================
@@ -59,7 +60,7 @@ from core.utils import log
 # =========================================================
 
 # Cache the JXA result to avoid spawning osascript on every command.
-_DISPLAY_CACHE: Optional[Tuple[float, List[Dict]]] = None
+_DISPLAY_CACHE: tuple[float, list[dict]] | None = None
 _DISPLAY_CACHE_TTL = 30.0  # seconds
 
 
@@ -122,7 +123,7 @@ JSON.stringify(out);
 """
 
 
-def enumerate_displays(*, force_refresh: bool = False) -> List[Dict]:
+def enumerate_displays(*, force_refresh: bool = False) -> list[dict]:
     """
     Return the list of connected displays (cached).
 
@@ -165,7 +166,7 @@ def enumerate_displays(*, force_refresh: bool = False) -> List[Dict]:
         _DISPLAY_CACHE = (now, [])
         return []
 
-    displays: List[Dict] = []
+    displays: list[dict] = []
     for d in raw:
         d["external"] = not bool(d.get("builtin"))
         displays.append(d)
@@ -184,13 +185,13 @@ def enumerate_displays(*, force_refresh: bool = False) -> List[Dict]:
 #     ("index",    N)            — #display(N)  (1-based; no fallback)
 #     ("name",     "Samsung")    — #display("…") (substring; no fallback)
 
-DisplaySpec = Optional[Tuple[str, Any]]
+DisplaySpec = tuple[str, Any] | None
 
 
 def resolve_display_target(
     spec: DisplaySpec,
-    displays: List[Dict],
-) -> Optional[Dict]:
+    displays: list[dict],
+) -> dict | None:
     """
     Resolve a display SPEC into a concrete Display dict.
 
@@ -254,7 +255,7 @@ def resolve_display_target(
 # 📐 LAYOUT → RECT (display-relative)
 # =========================================================
 
-def compute_rect(layout: Dict, display: Dict) -> Tuple[int, int, int, int]:
+def compute_rect(layout: dict, display: dict) -> tuple[int, int, int, int]:
     """
     Compute the (x, y, w, h) global-coordinate-space rect for `layout`
     inside `display`. `layout` is the dict produced by
@@ -328,11 +329,11 @@ def _resolve_unit(spec: Any, axis_size: int, *, base: int = 0) -> int:
 # 🪟 SET WINDOW BOUNDS (AppleScript)
 # =========================================================
 
-def set_window_bounds(app_name: str, rect: Tuple[int, int, int, int]) -> bool:
+def set_window_bounds(app_name: str, rect: tuple[int, int, int, int]) -> bool:
     """
     Resize+position the FRONTMOST window of `app_name` to `rect`.
 
-    Returns True iff the AppleScript subprocess returned 0.
+    Returns True iff AppleScript found a window and set its bounds.
     Best-effort: any failure is logged and False is returned;
     the calling pipeline continues.
     """
@@ -342,9 +343,11 @@ def set_window_bounds(app_name: str, rect: Tuple[int, int, int, int]) -> bool:
     script = (
         f'tell application "{safe}"\n'
         f'    activate\n'
-        f'    if (count of windows) > 0 then\n'
-        f'        set bounds of window 1 to {{{x}, {y}, {x2}, {y2}}}\n'
+        f'    if (count of windows) = 0 then\n'
+        f'        return "no-window"\n'
         f'    end if\n'
+        f'    set bounds of window 1 to {{{x}, {y}, {x2}, {y2}}}\n'
+        f'    return "ok"\n'
         f'end tell\n'
     )
     try:
@@ -359,10 +362,17 @@ def set_window_bounds(app_name: str, rect: Tuple[int, int, int, int]) -> bool:
         log(f"[WARN] set_window_bounds subprocess failed: {exc}")
         return False
 
+    stdout = (result.stdout or "").strip()
     if result.returncode != 0:
         log(
             f"[WARN] set_window_bounds({app_name!r}, {rect}) failed: "
             f"{result.stderr.strip() or '(no stderr)'}"
+        )
+        return False
+    if stdout != "ok":
+        log(
+            f"[WARN] set_window_bounds({app_name!r}, {rect}) did not move a window: "
+            f"{stdout or '(no stdout)'}"
         )
         return False
     return True
@@ -373,8 +383,8 @@ def set_window_bounds(app_name: str, rect: Tuple[int, int, int, int]) -> bool:
 # =========================================================
 
 def apply_layout(
-    app_name: Optional[str],
-    layout: Optional[Dict],
+    app_name: str | None,
+    layout: dict | None,
     display_spec: DisplaySpec = None,
 ) -> None:
     """
@@ -421,7 +431,11 @@ def apply_layout(
     else:
         rect = compute_rect(layout, target)
 
-    set_window_bounds(app_name, rect)
+    for attempt in range(_LAYOUT_RETRY_ATTEMPTS):
+        if set_window_bounds(app_name, rect):
+            return
+        if attempt < _LAYOUT_RETRY_ATTEMPTS - 1:
+            time.sleep(_LAYOUT_RETRY_DELAY_SECONDS)
 
 
 # =========================================================
@@ -626,7 +640,7 @@ function run(argv) {
 
 def hide_apps_on_display(
     display_target: Any,
-    except_apps: List[str] = (),
+    except_apps: list[str] = (),
     *,
     keep_frontmost: bool = False,
 ) -> bool:
@@ -660,7 +674,7 @@ def hide_apps_on_display(
         return False
 
     # Translate into the resolver tuple shape, same as move_app_to_display.
-    spec: Optional[Tuple[str, Any]]
+    spec: tuple[str, Any] | None
     if isinstance(display_target, int):
         spec = ("index", display_target)
     elif isinstance(display_target, str):
@@ -799,7 +813,7 @@ def move_app_to_display(
 
     # Translate the parser-level display value into the resolver-level
     # tuple format that resolve_display_target expects.
-    spec: Optional[Tuple[str, Any]]
+    spec: tuple[str, Any] | None
     if isinstance(display_target, int):
         spec = ("index", display_target)
     elif isinstance(display_target, str):
