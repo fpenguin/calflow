@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>CalFlow — Recipes</title>
+<title>CalFlow — Playbooks</title>
 <style>
 :root {
   --bg: #ffffff;
@@ -69,7 +69,7 @@ html, body {
                   width: 2px; height: 14px; background: var(--text); border-radius: 1px; }
 .nav.add { color: var(--info); font-weight: 500; }
 
-/* ============ MIDDLE: Recipe list ============ */
+/* ============ MIDDLE: Playbook list ============ */
 .col-list { border-right: 0.5px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
 .list-head { padding: 10px 12px; border-bottom: 0.5px solid var(--border); }
 .list-head input {
@@ -171,7 +171,7 @@ button:disabled { opacity: 0.5; }
 
   <!-- MIDDLE -->
   <div class="col-list">
-    <div class="list-head"><input id="search" type="text" placeholder="Search recipes…" autocomplete="off"></div>
+    <div class="list-head"><input id="search" type="text" placeholder="Search playbooks…" autocomplete="off"></div>
     <div class="list-body" id="list"></div>
   </div>
 
@@ -179,7 +179,7 @@ button:disabled { opacity: 0.5; }
   <div class="col-sandbox">
     <div class="sb-head">
       <div style="min-width:0;flex:1">
-        <h2 id="rname">Pick a recipe</h2>
+        <h2 id="rname">Pick a playbook</h2>
         <div class="desc" id="rdesc">Choose one on the left to load it into the sandbox.</div>
       </div>
       <div class="sb-actions">
@@ -335,7 +335,7 @@ function renderList() {
   const list = document.getElementById("list");
   const items = filtered();
   if (!items.length) {
-    list.innerHTML = '<div class="list-empty">No recipes match.</div>';
+    list.innerHTML = '<div class="list-empty">No playbooks match.</div>';
     return;
   }
   let html = "";
@@ -369,7 +369,7 @@ function selectRecipe(id) {
   document.getElementById("editor").value = r.body || "";
   document.getElementById("btn-delete").style.display = r.owner === "mine" ? "" : "none";
   document.getElementById("foot-left").textContent =
-      r.owner === "mine" ? "Saved · last edited " + (r.updated_at || "just now") : "Stock recipe · edits stay local until you Save as mine";
+      r.owner === "mine" ? "Saved · last edited " + (r.updated_at || "just now") : "Stock playbook · edits stay local until you Save as mine";
   document.getElementById("foot-right").textContent = r.owner === "mine" ? "id: " + r.id : "";
   document.getElementById("sb-status").textContent = "Sandbox · safe to edit";
   document.getElementById("sb-meta").textContent = (r.body||"").split("\n").filter(Boolean).length + " lines";
@@ -379,7 +379,7 @@ function selectRecipe(id) {
 
 function newBlank() {
   state.selectedId = null;
-  document.getElementById("rname").textContent = "New blank recipe";
+  document.getElementById("rname").textContent = "New blank playbook";
   document.getElementById("rdesc").textContent = "Type your script. Save as mine when ready.";
   document.getElementById("editor").value = "+CalFlow+\n";
   document.getElementById("btn-delete").style.display = "none";
@@ -431,7 +431,7 @@ async function refreshAll() {
     const data = await bridge("recipes");
     if (!data || typeof data !== "object" || data.error) {
       // Live fetch failed — leave the fallback content in place.
-      if (data && data.error) toast("Live recipes load failed · using fallback", true);
+      if (data && data.error) toast("Live playbooks load failed · using fallback", true);
       return;
     }
     // Replace with live data. If the bridge returns a non-empty stock
@@ -446,7 +446,7 @@ async function refreshAll() {
     if (!state.selectedId && state.stock.length) selectRecipe(state.stock[0].id);
   } catch (e) {
     // Bridge timeout or other failure — keep fallback content.
-    toast("Live recipes load failed · using fallback", true);
+    toast("Live playbooks load failed · using fallback", true);
   }
 }
 

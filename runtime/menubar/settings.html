@@ -24,17 +24,21 @@
   --amber-fg: #854f0b;
   --red-bg: #fcebeb;
   --red-fg: #a32d2d;
+  --chip-blue-bg: #e6f1fb;
+  --chip-blue-fg: #0c447c;
+  --chip-purple-bg: #eeedfe;
+  --chip-purple-fg: #3c3489;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1e1e1e;
-    --bg-2: #2c2c2e;
+    --bg: #202020;
+    --bg-2: #2d2d2f;
     --bg-3: #3a3a3c;
     --text: #f5f5f7;
-    --text-2: #98989d;
-    --text-3: #6e6e73;
-    --border: rgba(255,255,255,0.12);
-    --border-2: rgba(255,255,255,0.20);
+    --text-2: #b3b3b8;
+    --text-3: #929298;
+    --border: rgba(255,255,255,0.15);
+    --border-2: rgba(255,255,255,0.26);
     --accent: #f5f5f7;
     --on-accent: #1d1d1f;
     --info-bg: #143456;
@@ -45,6 +49,10 @@
     --amber-fg: #f0c980;
     --red-bg: #3a1818;
     --red-fg: #f09595;
+    --chip-blue-bg: #18324c;
+    --chip-blue-fg: #9ec9f1;
+    --chip-purple-bg: #2d2850;
+    --chip-purple-fg: #c4bdff;
   }
 }
 
@@ -53,7 +61,7 @@ html, body {
   height: 100%; overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
                "Helvetica Neue", sans-serif;
-  font-size: 14px; color: var(--text); background: var(--bg);
+  font-size: 14.5px; color: var(--text); background: var(--bg);
   -webkit-font-smoothing: antialiased;
   user-select: none; -webkit-user-select: none;
 }
@@ -62,13 +70,13 @@ html, body {
 
 .col-cats { background: var(--bg-2); border-right: 0.5px solid var(--border);
             padding: 10px 8px; overflow-y: auto; }
-.grp { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em;
-       padding: 8px 8px 4px; font-weight: 500; }
+.grp { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em;
+       padding: 10px 8px 5px; font-weight: 700; }
 .grp:first-child { padding-top: 0; }
-.nav { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-       border-radius: 5px; font-size: 12px; color: var(--text-2); cursor: default; }
+.nav { display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+       border-radius: 6px; font-size: 13px; color: var(--text-2); cursor: default; }
 .nav:hover { background: var(--bg); color: var(--text); }
-.nav.on { background: var(--bg); color: var(--text); position: relative; font-weight: 500; }
+.nav.on { background: var(--bg); color: var(--text); position: relative; font-weight: 650; }
 .nav.on::before { content: ""; position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
                   width: 2px; height: 14px; background: var(--text); border-radius: 1px; }
 
@@ -92,30 +100,51 @@ html, body {
   padding: 10px 24px; display: flex; justify-content: space-between; align-items: center;
   z-index: 10;
 }
-.actionbar .left  { font-size: 13px; color: var(--text-2); }
+.actionbar .left  { font-size: 13px; color: var(--text-2); font-weight: 500; }
 .actionbar .right { display: flex; gap: 8px; }
 .actionbar.dirty .left { color: var(--amber-fg); font-weight: 500; }
-#diagnostics-wrap, #btn-diag-toggle-wrap { flex: 0 0 auto; }
+.diag-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 0.5px solid var(--border);
+}
+.diag-actions { display: flex; gap: 8px; align-items: center; }
+.diag-note { font-size: 12px; color: var(--text-2); margin-top: 7px; line-height: 1.45; }
+.diag-body {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  background: var(--bg-2);
+  padding: 10px 12px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+  max-height: 280px;
+  overflow: auto;
+  line-height: 1.45;
+  color: var(--text);
+  margin-top: 10px;
+}
 
 button {
-  font: inherit; font-size: 12px; padding: 6px 14px; border-radius: 6px;
+  font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 6px;
   border: 0.5px solid var(--border-2); background: transparent; color: var(--text);
   display: inline-flex; align-items: center; gap: 5px; cursor: default;
 }
 button:hover:not(:disabled) { background: var(--bg-2); }
 button:active { transform: scale(0.98); }
-button:disabled { opacity: 0.4; }
+button:disabled { opacity: 0.55; }
 button.primary { background: var(--accent); color: var(--on-accent); border: none; }
 button.primary:not(:disabled):hover { opacity: 0.85; background: var(--accent); }
 
-.section { padding: 18px 24px; border-bottom: 0.5px solid var(--border); scroll-margin-top: 8px; }
+.section { padding: 20px 24px; border-bottom: 0.5px solid var(--border); scroll-margin-top: 8px; }
 .section:last-of-type { border-bottom: none; }
-.section h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px;
+.section h2 { font-size: 18px; font-weight: 700; margin-bottom: 5px;
               display: flex; align-items: center; gap: 10px; }
-.section .lead { font-size: 12px; color: var(--text-2); margin-bottom: 14px; line-height: 1.5; }
+.section .lead { font-size: 13px; color: var(--text-2); margin-bottom: 15px; line-height: 1.5; }
 
 .row { display: flex; justify-content: space-between; align-items: center;
-       padding: 10px 12px; border: 0.5px solid var(--border);
+       padding: 12px 13px; border: 0.5px solid var(--border);
        border-radius: 8px; gap: 12px; margin-bottom: 6px; }
 .row:last-child { margin-bottom: 0; }
 .row.dirty { border-color: var(--amber-fg); background: var(--amber-bg); }
@@ -124,41 +153,42 @@ button.primary:not(:disabled):hover { opacity: 0.85; background: var(--accent); 
   background: var(--bg); padding: 1px 5px; border-radius: 3px;
   margin-left: 6px; vertical-align: 1px; font-weight: 500; letter-spacing: 0.03em;
 }
-.row.readonly { opacity: 0.85; }
-.row .lbl { font-size: 12.5px; }
-.row .desc { font-size: 11px; color: var(--text-2); margin-top: 2px;
-             line-height: 1.45; max-width: 360px; }
+.row.readonly { opacity: 0.95; }
+.row .lbl { font-size: 13.5px; font-weight: 650; }
+.row .desc { font-size: 12.5px; color: var(--text-2); margin-top: 3px;
+             line-height: 1.45; max-width: 390px; }
 .row .control { display: flex; align-items: center; gap: 8px; flex: none; }
 
 /* Inputs */
 input[type="number"], input[type="text"], select {
-  font: inherit; font-size: 12px; padding: 5px 9px;
+  font: inherit; font-size: 13px; padding: 7px 10px;
   border: 0.5px solid var(--border-2); border-radius: 5px;
   background: var(--bg); color: var(--text); outline: none;
   min-width: 90px;
 }
-input[type="number"] { width: 80px; text-align: right; }
-input[type="text"]   { width: 200px; }
-select               { min-width: 110px; }
+input[type="number"] { width: 86px; text-align: right; }
+input[type="text"]   { width: 220px; }
+select               { min-width: 120px; }
 input:focus, select:focus { border-color: var(--text); }
-.unit { font-size: 11px; color: var(--text-2); }
+.unit { font-size: 12px; color: var(--text-2); font-weight: 500; }
 
-.tag { font-size: 11px; padding: 3px 8px; border-radius: 5px;
-       background: var(--bg-2); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.tag { font-size: 12px; padding: 4px 9px; border-radius: 5px;
+       background: var(--bg-2); color: var(--text-2); font-variant-numeric: tabular-nums;
+       font-weight: 600; }
 .tag.ok    { background: var(--green-bg); color: var(--green-fg); }
 .tag.warn  { background: var(--amber-bg); color: var(--amber-fg); }
 .tag.info  { background: var(--info-bg); color: var(--info-fg); }
 .tag.err   { background: var(--red-bg);  color: var(--red-fg); }
 
-.tog { width: 36px; height: 20px; border-radius: 999px; position: relative;
+.tog { width: 40px; height: 22px; border-radius: 999px; position: relative;
        background: var(--bg-3); cursor: default; flex: none;
        border: 0.5px solid var(--border); }
 .tog.on { background: var(--green); border-color: var(--green); }
-.tog::after { content: ""; position: absolute; width: 16px; height: 16px;
+.tog::after { content: ""; position: absolute; width: 18px; height: 18px;
               border-radius: 50%; background: #fff; top: 1px; left: 1px;
               transition: left 0.15s ease;
               box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-.tog.on::after { left: 18px; }
+.tog.on::after { left: 20px; }
 
 .toast {
   position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
@@ -177,8 +207,8 @@ dialog {
   max-width: 420px;
 }
 dialog::backdrop { background: rgba(0,0,0,0.4); }
-dialog h3 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
-dialog p  { font-size: 12px; color: var(--text-2); margin-bottom: 6px; line-height: 1.5; }
+dialog h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+dialog p  { font-size: 13px; color: var(--text-2); margin-bottom: 6px; line-height: 1.5; }
 dialog code {
   display: block; font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px; padding: 8px 10px; background: var(--bg-2);
@@ -208,7 +238,7 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top
   </div>
   <div class="col-content" id="content">
     <div id="sections">
-      <div style="padding:24px;color:var(--text-2);font-size:12px">
+      <div style="padding:24px;color:var(--text-2);font-size:13px;line-height:1.5">
         Loading settings… (if this persists for more than a few seconds,
         something is wrong — open Terminal and run
         <code style="font-family:ui-monospace,Menlo,monospace;background:var(--bg-2);padding:2px 5px;border-radius:3px">
@@ -216,24 +246,6 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top
         </code> from the project folder)
       </div>
     </div>
-    <div id="btn-diag-toggle-wrap" style="padding:14px 24px 12px;display:flex;gap:8px;align-items:center">
-      <button id="btn-diag-toggle"
-              style="font-size:12px;padding:5px 12px">Show diagnostics</button>
-      <button id="btn-diag-copy"
-              style="font-size:12px;padding:5px 12px">Copy to clipboard</button>
-      <span id="diag-copied" style="font-size:11px;color:var(--text-3);opacity:0;transition:opacity 0.2s">copied</span>
-    </div>
-    <div id="diagnostics-wrap" style="padding:0 24px 16px;display:none">
-      <pre id="diagnostics-body"
-           style="font-family:ui-monospace,Menlo,monospace;font-size:12px;
-                  background:var(--bg-2);padding:10px 12px;border-radius:6px;
-                  white-space:pre-wrap;user-select:text;-webkit-user-select:text;
-                  max-height:280px;overflow:auto;line-height:1.45;color:var(--text)">Click to refresh.</pre>
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px">
-        Paste this when reporting bugs — shows what data the bridge actually returned.
-      </div>
-    </div>
-
     <div class="actionbar" id="actionbar">
       <div class="left" id="dirty-count">No changes</div>
       <div class="right">
@@ -349,6 +361,7 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top
       }
     });
   }
+  window.cfWireDiagnostics = wireBtns;
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", wireBtns);
   } else {
@@ -430,11 +443,14 @@ const SECTIONS = [
   { id:"calendar", label:"Calendar", group:"General", title:"Calendar", lead:"Which Google account and calendars CalFlow watches. Set during onboarding — run `python -m cli.main setup` from Terminal to change.",
     rows: [
       { lbl:"Google account",    desc:"The account whose calendar CalFlow polls. Read from data/oauth_token.json.", key:"calendar.google_account",    control:"tag", editable:false },
+      { lbl:"Connection status", desc:"Whether Calendar OAuth is currently available.", key:"calendar.google_status", control:"status", editable:false },
       { lbl:"Calendars to watch",desc:"How many of your Google calendars are wired up. To pick a different set, re-run setup.", key:"calendar.calendars_watched", control:"tag", editable:false },
     ] },
   { id:"events", label:"Events", group:"General", title:"Events", lead:"How and when calendar events become automations.",
     rows: [
       { lbl:"Open how many minutes early",  desc:"Lead time before the event starts.", key:"events.open_minutes_early",  control:"number", editable:true, unit:"min", min:0, max:60 },
+      { lbl:"Default browser",              desc:"Browser CalFlow uses when an event does not specify @chrome, @safari, etc.", key:"events.default_browser", control:"tag", editable:false },
+      { lbl:"Chrome profile",               desc:"Chosen per event with profile(N); there is no global profile default.", key:"events.default_profile", control:"tag", editable:false },
       { lbl:"Per-cycle fetch window",       desc:"How far ahead each daemon poll looks for events.", key:"events.fetch_window_hours", control:"number", editable:true, unit:"h", min:1, max:24 },
       { lbl:"Status look-ahead window",     desc:"How far ahead the status / menubar dashboards look.", key:"events.status_lookahead_h", control:"number", editable:true, unit:"h", min:1, max:168 },
     ] },
@@ -446,7 +462,7 @@ const SECTIONS = [
 
   { id:"title-links", label:"Title links", group:"Behaviour", title:"Title links", lead:"What CalFlow does when the event title contains a URL.",
     rows: [
-      { lbl:"Use title URL when present", desc:"Always on in v1.3 — the parser falls back to the title's URL when the description is empty. Edit core/parser/smart_parser.py to disable.", key:"title_links.use_title_url_when_present", control:"toggle", editable:false },
+      { lbl:"Use title URL when present", desc:"Always on: the parser falls back to the title's URL when the description has no executable automation.", key:"title_links.use_title_url_when_present", control:"toggle", editable:false },
       { lbl:"Open mode",                  desc:"How a title URL opens — new tab or new window.",          key:"title_links.open_mode", control:"select", editable:true, choices:["tab","window"] },
       { lbl:"Autofill behaviour",         desc:"How CalFlow handles password forms on title-URL pages.",  key:"title_links.autofill",  control:"select", editable:true, choices:["none","fill","submit"] },
     ] },
@@ -589,7 +605,7 @@ function renderControl(row) {
     case "action": {
       const label = row.actionLabel || "Run";
       return '<button data-key="'+esc(k)+'" data-control="action" '
-           + 'data-action="'+esc(row.action)+'" class="primary" style="font-size:12px">'
+           + 'data-action="'+esc(row.action)+'" class="primary" style="font-size:13px">'
            + esc(label) + '</button>';
     }
     case "folder": {
@@ -601,22 +617,22 @@ function renderControl(row) {
            + (row.editable
                ? '<button data-key="'+esc(k)+'" data-control="folder-pick" '
                  + 'title="Pick folder" aria-label="Pick folder" '
-                 + 'style="margin-left:6px;padding:5px 9px;font-size:12px">'
+                 + 'style="margin-left:6px;padding:7px 10px;font-size:13px">'
                  + '<span aria-hidden="true">📁</span></button>'
                : '');
     }
     case "copyable": {
       // Read-only text + Copy button (for paths the user must paste elsewhere).
       const val = (v == null) ? "" : v;
-      return '<code style="font-family:ui-monospace,Menlo,monospace;font-size:11px;'
-           + 'background:var(--bg-2);padding:4px 8px;border-radius:4px;'
-           + 'user-select:text;-webkit-user-select:text;max-width:280px;'
+      return '<code style="font-family:ui-monospace,Menlo,monospace;font-size:12px;'
+           + 'background:var(--bg-2);padding:6px 9px;border-radius:5px;'
+           + 'user-select:text;-webkit-user-select:text;max-width:310px;'
            + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
            + 'display:inline-block;vertical-align:middle">'
            + esc(val) + '</code>'
            + '<button data-control="copy-text" data-text="'+esc(val)+'" '
            + 'title="Copy" aria-label="Copy" '
-           + 'style="margin-left:6px;padding:5px 9px;font-size:12px">'
+           + 'style="margin-left:6px;padding:7px 10px;font-size:13px">'
            + 'Copy</button>';
     }
     case "status": {
@@ -628,7 +644,7 @@ function renderControl(row) {
       // and the row knows which pane to open.
       const grantBtn = (row.grantPane && (v === "denied" || v === "unknown" || v == null))
         ? '<button data-control="grant" data-pane="'+esc(row.grantPane)+'" '
-        + 'style="font-size:11px;padding:4px 9px;margin-left:6px">Open System Settings</button>'
+        + 'style="font-size:12px;padding:6px 10px;margin-left:6px">Open System Settings</button>'
         : '';
       return badge + grantBtn;
     }
@@ -662,12 +678,31 @@ function renderSections() {
               + '</div>';
       }
     }
+    if (sec.id === "advanced") {
+      html += renderDiagnosticsTools();
+    }
     html += '</section>';
   }
   document.getElementById("sections").innerHTML = html;
   attachInputHandlers();
   attachAliasesHandlers();
+  if (window.cfWireDiagnostics) window.cfWireDiagnostics();
   refreshActionbar();
+}
+
+function renderDiagnosticsTools() {
+  return ''
+    + '<div class="diag-panel">'
+    +   '<div class="diag-actions">'
+    +     '<button id="btn-diag-toggle">Show diagnostics</button>'
+    +     '<button id="btn-diag-copy">Copy to clipboard</button>'
+    +     '<span id="diag-copied" style="font-size:12px;color:var(--text-2);opacity:0;transition:opacity 0.2s">copied</span>'
+    +   '</div>'
+    +   '<div id="diagnostics-wrap" style="display:none">'
+    +     '<pre id="diagnostics-body" class="diag-body">Click to refresh.</pre>'
+    +     '<div class="diag-note">Paste this when reporting bugs — shows what data the bridge actually returned.</div>'
+    +   '</div>'
+    + '</div>';
 }
 
 /* ─── Aliases editor (v1.3.9) ─────────────────────────── */
@@ -691,18 +726,18 @@ function renderAliasesTable() {
     + 'padding:6px 0 10px;gap:10px">'
     +   '<input type="text" id="alias-filter" placeholder="Filter aliases…" '
     +     'value="'+esc(state.aliasFilter)+'" '
-    +     'style="flex:1;font:inherit;font-size:12px;padding:6px 9px;'
+    +     'style="flex:1;font:inherit;font-size:13px;padding:8px 10px;'
     +     'border:0.5px solid var(--border-2);border-radius:6px;'
     +     'background:var(--bg);color:var(--text)">'
-    +   '<button id="alias-new" class="primary" style="font-size:12px">'
+    +   '<button id="alias-new" class="primary" style="font-size:13px">'
     +     '<span aria-hidden="true">＋</span> New alias</button>'
     + '</div>';
 
   html += ''
     + '<div style="border:0.5px solid var(--border);border-radius:8px;overflow:hidden">'
     +   '<div style="display:grid;grid-template-columns:130px 1fr 100px;gap:10px;'
-    +   'padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;'
-    +   'color:var(--text-3);font-weight:500;border-bottom:0.5px solid var(--border);'
+    +   'padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;'
+    +   'color:var(--text-2);font-weight:700;border-bottom:0.5px solid var(--border);'
     +   'background:var(--bg-2)">'
     +     '<span>Alias</span><span>Apps</span><span style="text-align:right">Actions</span>'
     +   '</div>';
@@ -716,13 +751,13 @@ function renderAliasesTable() {
     html += isEditing ? renderAliasEditRow(false, key) : renderAliasViewRow(key);
   }
   if (!keys.length && state.editingAlias !== "__new__") {
-    html += '<div style="padding:24px;text-align:center;font-size:12px;color:var(--text-2)">'
+    html += '<div style="padding:24px;text-align:center;font-size:13px;color:var(--text-2)">'
           + (filter ? 'No aliases match "'+esc(filter)+'"' : 'No aliases yet — click + New alias')
           + '</div>';
   }
   html += '</div>';
 
-  html += '<div style="font-size:11px;color:var(--text-3);margin-top:8px;line-height:1.5">'
+  html += '<div style="font-size:12.5px;color:var(--text-2);margin-top:10px;line-height:1.5">'
         + 'Reserved keywords <code style="font-family:ui-monospace,Menlo,monospace">@active · @all · @display · @except</code> '
         + 'will be rejected. Apps can be any installed app name as it appears in /Applications '
         + '(e.g. "Google Chrome", not "chrome"). Saving here writes to settings.py and restarts the daemon.'
@@ -736,23 +771,23 @@ function renderAliasViewRow(key) {
   const apps = Array.isArray(v) ? v : [v];
   let chips = "";
   for (const a of apps) {
-    chips += '<span style="font-size:11px;padding:3px 8px;border-radius:4px;'
-           + 'background:#e6f1fb;color:#0c447c;font-family:ui-monospace,Menlo,monospace;'
+    chips += '<span style="font-size:12px;padding:4px 8px;border-radius:5px;'
+           + 'background:var(--chip-blue-bg);color:var(--chip-blue-fg);font-family:ui-monospace,Menlo,monospace;'
            + 'margin-right:4px">'+esc(a)+'</span>';
   }
   return ''
     + '<div style="display:grid;grid-template-columns:130px 1fr 100px;gap:10px;'
-    + 'align-items:center;padding:9px 12px;border-bottom:0.5px solid var(--border)">'
-    +   '<span style="font-size:11px;padding:3px 8px;border-radius:4px;'
-    +     'background:#eeedfe;color:#3c3489;font-family:ui-monospace,Menlo,monospace;'
-    +     'font-weight:500;display:inline-block;width:fit-content">'+esc(key)+'</span>'
+    + 'align-items:center;padding:10px 12px;border-bottom:0.5px solid var(--border)">'
+    +   '<span style="font-size:12px;padding:4px 8px;border-radius:5px;'
+    +     'background:var(--chip-purple-bg);color:var(--chip-purple-fg);font-family:ui-monospace,Menlo,monospace;'
+    +     'font-weight:650;display:inline-block;width:fit-content">'+esc(key)+'</span>'
     +   '<div style="display:flex;flex-wrap:wrap;gap:4px">'+chips+'</div>'
     +   '<div style="display:flex;gap:4px;justify-content:flex-end">'
     +     '<button class="alias-edit" data-alias="'+esc(key)+'" '
-    +       'aria-label="Edit" title="Edit" style="width:24px;height:24px;padding:0;'
+    +       'aria-label="Edit" title="Edit" style="width:28px;height:28px;padding:0;'
     +       'display:inline-flex;align-items:center;justify-content:center">✎</button>'
     +     '<button class="alias-delete" data-alias="'+esc(key)+'" '
-    +       'aria-label="Delete" title="Delete" style="width:24px;height:24px;padding:0;'
+    +       'aria-label="Delete" title="Delete" style="width:28px;height:28px;padding:0;'
     +       'display:inline-flex;align-items:center;justify-content:center;'
     +       'color:#a32d2d">×</button>'
     +   '</div>'
@@ -764,37 +799,37 @@ function renderAliasEditRow(isNew, originalKey) {
   let appsHtml = "";
   for (let i = 0; i < draft.apps.length; i++) {
     appsHtml += ''
-      + '<span style="display:inline-flex;align-items:center;gap:4px;'
-      + 'background:#e6f1fb;color:#0c447c;border-radius:4px;padding:2px 4px 2px 8px;'
-      + 'font-family:ui-monospace,Menlo,monospace;font-size:11px">'
+      + '<span style="display:inline-flex;align-items:center;gap:5px;'
+      + 'background:var(--chip-blue-bg);color:var(--chip-blue-fg);border-radius:5px;padding:4px 5px 4px 8px;'
+      + 'font-family:ui-monospace,Menlo,monospace;font-size:12px">'
       + '<input type="text" class="alias-app" data-idx="'+i+'" '
       + 'value="'+esc(draft.apps[i])+'" placeholder="App name" '
-      + 'style="border:none;background:transparent;color:#0c447c;'
-      + 'font-family:inherit;font-size:11px;width:'
+      + 'style="border:none;background:transparent;color:var(--chip-blue-fg);'
+      + 'font-family:inherit;font-size:12px;width:'
       + Math.max(80, (draft.apps[i] || '').length * 8 + 20)
       + 'px;padding:2px 0;outline:none">'
       + '<button class="alias-app-rm" data-idx="'+i+'" '
-      + 'aria-label="Remove" style="border:none;background:transparent;color:#0c447c;'
-      + 'cursor:default;padding:0 2px;font-size:13px;line-height:1">×</button>'
+      + 'aria-label="Remove" style="border:none;background:transparent;color:var(--chip-blue-fg);'
+      + 'cursor:default;padding:0 2px;font-size:14px;line-height:1">×</button>'
       + '</span>';
   }
   appsHtml += '<button id="alias-app-add" class="" '
-            + 'style="font-size:11px;padding:3px 8px;border-style:dashed;'
+            + 'style="font-size:12px;padding:5px 9px;border-style:dashed;'
             + 'color:var(--info-fg)">+ App</button>';
 
   return ''
     + '<div style="display:grid;grid-template-columns:130px 1fr 100px;gap:10px;'
-    + 'align-items:center;padding:9px 12px;background:var(--bg-2);'
+    + 'align-items:center;padding:10px 12px;background:var(--bg-2);'
     + 'border-bottom:0.5px solid var(--border)">'
     +   '<input type="text" id="alias-name" placeholder="@alias" '
     +     'value="'+esc(draft.name || originalKey || "")+'" '
-    +     'style="font:inherit;font-family:ui-monospace,Menlo,monospace;font-size:11px;'
-    +     'padding:4px 8px;border:0.5px solid var(--border-2);border-radius:5px;'
+    +     'style="font:inherit;font-family:ui-monospace,Menlo,monospace;font-size:12px;'
+    +     'padding:6px 8px;border:0.5px solid var(--border-2);border-radius:5px;'
     +     'background:var(--bg);color:var(--text);width:120px">'
     +   '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">'+appsHtml+'</div>'
     +   '<div style="display:flex;gap:4px;justify-content:flex-end">'
-    +     '<button id="alias-save" class="primary" style="font-size:11px;padding:4px 10px">Save</button>'
-    +     '<button id="alias-cancel" style="font-size:11px;padding:4px 10px">Cancel</button>'
+    +     '<button id="alias-save" class="primary" style="font-size:12px;padding:6px 10px">Save</button>'
+    +     '<button id="alias-cancel" style="font-size:12px;padding:6px 10px">Cancel</button>'
     +   '</div>'
     + '</div>';
 }
@@ -1072,7 +1107,8 @@ function onEdit(key, value) {
 
 /* ─── Scroll-spy ───────────────────────────────────────── */
 function setupScrollSpy() {
-  const content = document.getElementById("content");
+  const content = document.getElementById("sections");
+  if (!content) return;
   const ids = SECTIONS.map(s => "sec-" + s.id);
   let ticking = false;
   content.addEventListener("scroll", () => {
@@ -1099,7 +1135,10 @@ function jumpTo(id) {
   state.activeId = id;
   renderCats();
   const el = document.getElementById("sec-" + id);
-  if (el) document.getElementById("content").scrollTo({ top: el.offsetTop - 8, behavior: "smooth" });
+  const scroller = document.getElementById("sections");
+  if (el && scroller) {
+    scroller.scrollTo({ top: el.offsetTop - 8, behavior: "smooth" });
+  }
 }
 
 /* ─── Boot ─────────────────────────────────────────────── */

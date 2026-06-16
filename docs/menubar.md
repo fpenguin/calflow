@@ -33,6 +33,9 @@ interactive Recipes editor, and an editable Settings page.
   `menubar-status`, `menubar-uninstall`).
 - **v2.0.2-dev** — Dynamic month/day menu bar icon with Calendar Plus
   fallback.
+- **v2.0.3-dev** — Dynamic popover sizing (shrinks to content;
+  timeline and missed-events sections get internal scroll if they
+  overflow 320 px).
 
 ## Install / Run
 
@@ -123,6 +126,16 @@ JS Promise resolves → re-render
 
 Popover refresh runs on open and every 30 seconds while it's open. The
 Settings and Recipes windows refresh on every show via `cf_onShow()`.
+
+The popover is dynamically sized (v2.0.3-dev). Every `render()`
+schedules `resizePopover()` (100 ms debounced), which reads
+`document.body.scrollHeight` inside a `requestAnimationFrame` and
+calls the `resize-popover` bridge op. Python clamps the requested
+height to `[_POPOVER_MIN_H, _POPOVER_MAX_H]` and applies it via
+`NSPopover.setContentSize_` + `WKWebView.setFrame_`. Width stays
+canonical at `_POPOVER_W` so the menubar-arrow anchor doesn't shift.
+The `.timeline-card` and `.missed-card` sections scroll internally
+past 320 px to keep the popover's height-clamp lean.
 
 ## JSON API
 

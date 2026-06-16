@@ -5,251 +5,554 @@
 <title>CalFlow</title>
 <style>
 :root {
-  --bg: #ffffff;
-  --bg-2: #f5f5f7;
-  --bg-3: #efeff1;
-  --text: #1d1d1f;
-  --text-2: #6e6e73;
-  --text-3: #8e8e93;
-  --border: rgba(0,0,0,0.10);
-  --border-2: rgba(0,0,0,0.18);
-  --accent: #1d1d1f;
-  --on-accent: #ffffff;
-  --green: #1d9e75;
-  --green-deep: #085041;
-  --amber-bg: #faeeda;
-  --amber-fg: #854f0b;
-  --amber-border: #f0c980;
-  --coffee: #854f0b;
-  --tooltip-bg: #1f1f1d;
-  --tooltip-fg: #f1efe8;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1e1e1e;
-    --bg-2: #2c2c2e;
-    --bg-3: #3a3a3c;
-    --text: #f5f5f7;
-    --text-2: #98989d;
-    --text-3: #6e6e73;
-    --border: rgba(255,255,255,0.12);
-    --border-2: rgba(255,255,255,0.20);
-    --accent: #f5f5f7;
-    --on-accent: #1d1d1f;
-    --green: #5dcaa5;
-    --green-deep: #9fe1cb;
-    --amber-bg: #3a2e15;
-    --amber-fg: #f0c980;
-    --amber-border: #6b4f1d;
-    --tooltip-bg: #f5f5f7;
-    --tooltip-fg: #1d1d1f;
-  }
+  --bg: #171718;
+  --panel: #1f1f21;
+  --panel-2: #252527;
+  --panel-3: #2d2d30;
+  --text: #f4f4f5;
+  --text-2: #b8b8bf;
+  --text-3: #85858c;
+  --border: rgba(255,255,255,0.13);
+  --border-2: rgba(255,255,255,0.22);
+  --shadow: rgba(0,0,0,0.45);
+  --green: #47d381;
+  --green-soft: rgba(71,211,129,0.12);
+  --green-border: rgba(71,211,129,0.45);
+  --blue: #5da2ff;
+  --blue-soft: rgba(93,162,255,0.12);
+  --orange: #ff7a2f;
+  --orange-soft: rgba(255,122,47,0.12);
+  --orange-border: rgba(255,122,47,0.48);
+  --purple: #bd6dff;
+  --yellow: #ffd84a;
+  --tooltip-bg: #f5f5f7;
+  --tooltip-fg: #1d1d1f;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
+  width: 100%;
+  /* v2.0.3-dev — height removed (was 100%) so the body shrinks to
+     content and document.body.scrollHeight reflects the natural
+     popover-height target for resize-popover. */
+  background: var(--bg);
+  color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
                "Helvetica Neue", sans-serif;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--bg);
+  font-size: 14.5px;
+  line-height: 1.36;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
 }
 
-body { padding: 10px 12px; line-height: 1.4; }
+body {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255,255,255,0.045), transparent 34%),
+    linear-gradient(180deg, #1c1c1e 0%, #151516 100%);
+  /* v2.0.3-dev — flex column lets #root size to its natural content
+     height. Combined with the height removal in html,body above,
+     body.scrollHeight (read by resizePopover()) reflects the
+     popover's required height each render. */
+  display: flex;
+  flex-direction: column;
+}
 
 button {
   font: inherit;
   color: inherit;
   background: transparent;
   border: 0.5px solid var(--border-2);
-  border-radius: 6px;
-  padding: 4px 9px;
+  border-radius: 8px;
   cursor: default;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  transition: background 0.12s ease;
-}
-button:hover { background: var(--bg-2); }
-button:active { transform: scale(0.98); }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
-button.icon {
-  width: 24px; height: 24px; padding: 0; justify-content: center;
-}
-button.play {
-  width: 26px; height: 26px; border-radius: 50%; padding: 0;
-  background: var(--accent); color: var(--on-accent); border: none;
   justify-content: center;
+  gap: 8px;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
 }
-button.play.disabled, button.play:disabled {
-  background: var(--bg-3); color: var(--text-3);
-}
-button.coffee {
-  background: var(--coffee); color: #fff; border: none;
-  font-weight: 500;
-}
-button.coffee:hover { background: #6b3f08; }
+button:hover { background: rgba(255,255,255,0.06); }
+button:active { transform: scale(0.98); }
+button:disabled { opacity: 0.56; cursor: not-allowed; }
 
-.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.col { display: flex; flex-direction: column; gap: 8px; }
-.mini { font-size: 11px; color: var(--text-2); line-height: 1.5; }
-
-.dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  display: inline-block; margin-right: 6px; vertical-align: 1px;
+#root {
+  /* v2.0.3-dev — natural height (was 100vh) so #root sizes to its
+     content and document.body.scrollHeight reports something useful.
+     overflow-y:auto stays as a fallback for the rare case where
+     content exceeds the popover's max-height clamp (720 px). */
+  padding: 15px 20px 8px;
+  overflow-y: auto;
 }
-.dot.green  { background: var(--green); }
-.dot.amber  { background: var(--amber-fg); }
-.dot.gray   { background: var(--text-3); }
+#root::-webkit-scrollbar { width: 7px; }
+#root::-webkit-scrollbar-track { background: transparent; }
+#root::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.16);
+  border-radius: 99px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 13px;
+  border-bottom: 0.5px solid var(--border);
+}
+.identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 19px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(71,211,129,0.12);
+}
+.status-dot.paused {
+  background: var(--orange);
+  box-shadow: 0 0 0 3px rgba(255,122,47,0.12);
+}
+.subtitle {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.subtitle.error { color: #ff8a8a; }
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.icon-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+  color: var(--text);
+  background: rgba(255,255,255,0.025);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+}
+.icon-btn svg { width: 22px; height: 22px; }
+.icon-btn.refreshing svg { animation: spin 0.8s linear infinite; }
 
 .section {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin-top: 8px;
-  font-weight: 500;
+  margin-top: 14px;
+}
+.section-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 9px;
+  color: var(--text-2);
+  font-size: 12.4px;
+  font-weight: 740;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 8px 1px;
 }
-.badge {
-  text-transform: none; letter-spacing: 0;
-  color: var(--amber-fg); background: var(--amber-bg);
-  padding: 1px 6px; border-radius: 4px;
-}
-.divider { height: 0.5px; background: var(--border); margin: 4px 0; }
-
-.event {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 8px; border: 0.5px solid var(--border);
-  border-radius: 6px; gap: 8px;
-}
-.event-up {
-  background: var(--bg-2); border: none;
-  padding: 8px 10px; border-radius: 6px;
-}
-.event .title { font-size: 11px; font-weight: 500; }
-.event-up .title { font-size: 12px; font-weight: 500; margin-top: 1px; }
-
-.scrollable {
-  display: flex; flex-direction: column; gap: 5px;
-  max-height: 122px; overflow-y: auto;
-  padding-right: 2px;
-}
-.scrollable::-webkit-scrollbar { width: 5px; }
-.scrollable::-webkit-scrollbar-track { background: transparent; }
-.scrollable::-webkit-scrollbar-thumb {
-  background: var(--border-2); border-radius: 3px;
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--orange);
+  background: var(--orange-soft);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0;
 }
 
+.timeline-card,
+.missed-card,
+.stats-card {
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.025);
+  box-shadow: 0 14px 34px var(--shadow);
+  overflow: hidden;
+}
+
+.timeline-card {
+  position: relative;
+  padding-left: 29px;
+}
+.timeline-card::before {
+  content: "";
+  position: absolute;
+  left: 13.5px;
+  top: 26px;
+  bottom: 26px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.25);
+}
+.timeline-row {
+  position: relative;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+.timeline-row:last-child { border-bottom: none; }
+.timeline-marker {
+  position: absolute;
+  left: -21px;
+  top: 23px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid rgba(255,255,255,0.58);
+  z-index: 1;
+}
+.timeline-marker.runnable {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(71,211,129,0.12);
+}
+.timeline-marker.soon {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+.timeline-marker.tomorrow {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px rgba(189,109,255,0.12);
+}
+.time {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 590;
+  white-space: nowrap;
+}
+.time-sub {
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: 12.2px;
+  font-weight: 460;
+}
+.event-title {
+  color: var(--text);
+  font-size: 14.2px;
+  font-weight: 660;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status {
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 12.9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status.soon { color: var(--blue); }
+
+.run-btn {
+  min-width: 90px;
+  height: 32px;
+  padding: 0 10px;
+  border-color: var(--green-border);
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+.run-btn:hover { background: rgba(71,211,129,0.18); }
+.run-btn svg { width: 15px; height: 15px; }
+.run-btn.orange {
+  color: var(--orange);
+  border-color: var(--orange-border);
+  background: var(--orange-soft);
+}
+.run-btn.orange:hover { background: rgba(255,122,47,0.18); }
+.view-btn {
+  min-width: 96px;
+  height: 30px;
+  padding: 0 0;
+  border: none;
+  color: var(--text);
+  background: transparent;
+  font-size: 13.1px;
+  font-weight: 520;
+  justify-content: flex-end;
+}
+.view-btn:hover { color: #fff; background: transparent; }
+.view-btn svg { width: 16px; height: 16px; color: var(--text-2); }
+
+.missed-head {
+  color: var(--orange);
+}
+.missed-card {
+  border-color: rgba(255,122,47,0.34);
+  background: rgba(255,122,47,0.045);
+  box-shadow: none;
+}
+.missed-row {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 0.5px solid rgba(255,255,255,0.12);
+}
+.missed-row:last-child { border-bottom: none; }
+.missed-time {
+  color: var(--orange);
+  font-size: 13.2px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+.missed-title {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 610;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.more-row {
+  width: 100%;
+  height: 38px;
+  border: 0;
+  border-radius: 0;
+  border-top: 0.5px solid rgba(255,255,255,0.12);
+  padding: 0 12px;
+  justify-content: space-between;
+  color: var(--text);
+  font-size: 14px;
+}
+.more-row:hover { background: rgba(255,255,255,0.05); }
+
+/* v2.0.3-dev — internal scroll on the event lists when they overflow
+   320 px. The .timeline-card / .missed-card / .stats-card shared rule
+   above sets overflow:hidden — these overrides win by appearing later
+   in the cascade (same specificity, later wins). */
+.timeline-card,
+.missed-card {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.timeline-card::-webkit-scrollbar,
+.missed-card::-webkit-scrollbar { width: 6px; }
+.timeline-card::-webkit-scrollbar-thumb,
+.missed-card::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.16);
+  border-radius: 99px;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.quick-card {
+  min-height: 62px;
+  padding: 9px 10px;
+  border: 0.5px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255,255,255,0.03);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  justify-content: stretch;
+}
+.quick-card:hover { background: rgba(255,255,255,0.06); }
+.quick-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.quick-icon svg { width: 25px; height: 25px; }
+.quick-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quick-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quick-card.playbooks .quick-icon { color: var(--purple); }
+.quick-card.activity .quick-icon { color: var(--blue); }
+.quick-card.settings .quick-icon { color: var(--text); }
+.chev { color: var(--text-2); flex: 0 0 auto; }
+
+.stats-card {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+.stat-cell {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  border-right: 0.5px solid var(--border);
+  background: transparent;
+  box-shadow: none;
+  justify-content: stretch;
+  text-align: left;
+}
+.stat-cell:last-child {
+  border-right: none;
+  cursor: default;
+}
+.stat-cell.tip:hover { background: rgba(255,255,255,0.045); }
+.stat-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.stat-icon svg { width: 26px; height: 26px; }
+.stat-icon.green { color: var(--green); }
+.stat-icon.yellow { color: var(--yellow); }
+.stat-main {
+  display: block;
+  font-size: 15.8px;
+  font-weight: 760;
+  color: var(--text);
+  white-space: nowrap;
+}
+.stat-main.tip { color: var(--yellow); font-size: 14px; }
+.stat-sub {
+  display: block;
+  color: var(--text-2);
+  font-size: 11.6px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty-hint {
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.025);
+  color: var(--text-2);
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+}
 .banner {
-  background: var(--amber-bg); color: var(--amber-fg);
-  border: 0.5px solid var(--amber-border);
-  padding: 6px 9px; border-radius: 5px;
-  font-size: 10.5px; line-height: 1.5;
+  border: 0.5px solid rgba(255,138,138,0.34);
+  background: rgba(255,80,80,0.08);
+  color: #ffadad;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
 }
-.banner.error { color: #a32d2d; background: #fcebeb; border-color: #f7c1c1; }
-
-.stats {
-  background: var(--bg-2); border-radius: 6px;
-  padding: 9px 11px; display: flex; flex-direction: column; gap: 4px;
-}
-.stats h3 {
-  font-size: 11px; font-weight: 500; color: var(--text);
-}
-.stats-line {
-  font-size: 11px; color: var(--text);
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-}
-.stats-line .lbl { color: var(--text-2); }
-.stats-line b { font-weight: 500; color: var(--green-deep); }
-
-.info {
-  position: relative; display: inline-flex; align-items: center;
-  cursor: help; color: var(--text-3);
-}
-.info svg { width: 12px; height: 12px; }
-.info .tip {
-  position: absolute; bottom: 18px; left: -92px;
-  width: 220px;
-  background: var(--tooltip-bg); color: var(--tooltip-fg);
-  padding: 7px 9px; border-radius: 5px;
-  font-size: 10.5px; line-height: 1.45;
-  display: none; z-index: 5;
-}
-.info .tip::after {
-  content: ""; position: absolute; bottom: -5px; left: 96px;
-  border: 5px solid transparent;
-  border-top-color: var(--tooltip-bg); border-bottom: 0;
-}
-.info:hover .tip, .info:focus .tip { display: block; }
-
-.quit {
-  font-size: 10.5px; color: var(--text-3);
-  margin-top: 4px; cursor: default;
-}
-.quit:hover { color: var(--text); }
-
 .skeleton {
   background: linear-gradient(90deg,
-    var(--bg-2) 0%, var(--bg-3) 50%, var(--bg-2) 100%);
+    rgba(255,255,255,0.05) 0%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.05) 100%);
   background-size: 200% 100%;
   animation: pulse 1.4s ease-in-out infinite;
-  border-radius: 4px;
+  border-radius: 8px;
 }
-@keyframes pulse { 0%{background-position:0% 0%;} 100%{background-position:-200% 0%;} }
+.quit-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 2px 0;
+}
+.quit {
+  color: var(--text-3);
+  font-size: 12.5px;
+  border: none;
+  padding: 2px 0;
+  height: auto;
+}
+.quit:hover {
+  color: var(--text-2);
+  background: transparent;
+}
 
 .flash-ok   { animation: flashOk   0.8s ease; }
 .flash-fail { animation: flashFail 0.8s ease; }
-@keyframes flashOk   { 0%{background:transparent;} 30%{background:rgba(29,158,117,0.20);} 100%{background:transparent;} }
-@keyframes flashFail { 0%{background:transparent;} 30%{background:rgba(226,75,75,0.20);} 100%{background:transparent;} }
-
-.empty-hint {
-  font-size: 11px; color: var(--text-2); padding: 8px 4px;
-  text-align: center;
-}
+@keyframes pulse { 0%{background-position:0% 0%;} 100%{background-position:-200% 0%;} }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes flashOk   { 0%{background:transparent;} 30%{background:rgba(71,211,129,0.20);} 100%{background:transparent;} }
+@keyframes flashFail { 0%{background:transparent;} 30%{background:rgba(255,80,80,0.20);} 100%{background:transparent;} }
 </style>
 </head>
 <body>
 
-<!-- Reusable inline SVG icons (referenced by <use href="#..."/> below). -->
 <svg style="display:none" xmlns="http://www.w3.org/2000/svg">
-  <symbol id="i-play" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3.5v9l8-4.5z"/></symbol>
-  <symbol id="i-pause" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3h2v10H5zm4 0h2v10H9z"/></symbol>
-  <symbol id="i-refresh" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M3 8a5 5 0 0 1 9-3M13 8a5 5 0 0 1-9 3M12 2v3h-3M4 14v-3h3"/></symbol>
-  <symbol id="i-gear" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1l1 1.6L11 2l1 1.7-1 1.6 1 1.6-1 1.6-1.6.4-1 1.6h-1.7l-1-1.6L4 8 3 8 2 6.4 3 4.7 4 3 5 1.4 6.4 1z"/></symbol>
-  <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path fill="currentColor" d="M7.4 6.7h1.3v4.5H7.4zM8 4.4a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7z"/></symbol>
-  <symbol id="i-book" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M3 3v10l5-1.5L13 13V3L8 4.5z"/></symbol>
-  <symbol id="i-coffee" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M3 5h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM11 6h1.5a1.5 1.5 0 0 1 0 3H11M5 2v1.5M7 2v1.5M9 2v1.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path fill="currentColor" d="M5 3.3v9.4L13 8z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 3h2.4v10H4.5zm4.6 0h2.4v10H9.1z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 8a5 5 0 0 1 8.8-3.2M12.4 2.5V5h-2.5M13 8a5 5 0 0 1-8.8 3.2M3.6 13.5V11h2.5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2z"/>
+    <path fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.07A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 0 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.07A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 0 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.07A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 0 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/>
+  </symbol>
+  <symbol id="i-external" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6.5 4H4.2A1.2 1.2 0 0 0 3 5.2v6.6A1.2 1.2 0 0 0 4.2 13h6.6a1.2 1.2 0 0 0 1.2-1.2V9.5M9 3h4v4M8.4 7.6 13 3"/></symbol>
+  <symbol id="i-book" viewBox="0 0 18 18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 3.5v11l6-2 6 2v-11l-6 2z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 18 18"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4.2 5.4A6 6 0 1 1 3 9M3 3.5v3h3M9 6.2V9l2.1 1.4"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="m6 3.5 4.5 4.5L6 12.5"/></symbol>
+  <symbol id="i-gift" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M3 8h14v9H3zM2.5 5h15v3h-15zM10 5v12M6.8 5C5.4 5 4.5 4.2 4.5 3.2 4.5 2.4 5.1 2 5.8 2c1.5 0 2.7 3 2.7 3M13.2 5c1.4 0 2.3-.8 2.3-1.8 0-.8-.6-1.2-1.3-1.2-1.5 0-2.7 3-2.7 3"/></symbol>
+  <symbol id="i-trend" viewBox="0 0 20 20"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M3 14 8 9l3 3 6-7M13 5h4v4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M10 5.8V10l3 2"/></symbol>
 </svg>
 
 <div id="root">
-  <!-- Filled by render() once first fetch returns. Skeleton in the meantime. -->
-  <div class="row">
-    <span><span class="dot gray"></span>Loading…</span>
-    <div style="display:flex;gap:5px">
-      <div class="skeleton" style="width:24px;height:24px"></div>
-      <div class="skeleton" style="width:24px;height:24px"></div>
-      <div class="skeleton" style="width:24px;height:24px"></div>
+  <div class="header">
+    <div class="identity">
+      <div class="title-line"><span class="status-dot"></span><span>CalFlow Active</span></div>
+      <div class="subtitle">Last sync: syncing</div>
+    </div>
+    <div class="header-actions">
+      <div class="skeleton" style="width:48px;height:48px"></div>
+      <div class="skeleton" style="width:48px;height:48px"></div>
+      <div class="skeleton" style="width:48px;height:48px"></div>
     </div>
   </div>
-  <div class="skeleton" style="height:46px;margin-top:8px"></div>
-  <div class="skeleton" style="height:30px;margin-top:6px"></div>
-  <div class="skeleton" style="height:30px;margin-top:6px"></div>
+  <div class="skeleton" style="height:300px;margin-top:22px"></div>
+  <div class="skeleton" style="height:118px;margin-top:18px"></div>
+  <div class="skeleton" style="height:82px;margin-top:18px"></div>
 </div>
 
 <script>
 "use strict";
-
-/* =========================================================
-   🌉  Bridge — JS ↔ Python (PyObjC) via WKScriptMessageHandler
-   ========================================================= */
 
 const _pending = new Map();
 let _nextId = 1;
@@ -264,7 +567,6 @@ function bridge(op, args) {
       _pending.delete(id);
       reject(new Error("bridge unavailable: " + e.message));
     }
-    // 8s safety timeout — Python should always respond.
     setTimeout(() => {
       if (_pending.has(id)) {
         _pending.delete(id);
@@ -288,27 +590,10 @@ window.cf_reject = function(id, error) {
   p.reject(new Error(String(error || "unknown error")));
 };
 
-
-/* =========================================================
-   🧩  Helpers
-   ========================================================= */
-
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-function fmtRelative(secs) {
-  if (secs == null) return "";
-  if (Math.abs(secs) <= 30) return "now";
-  const future = secs > 0;
-  const a = Math.abs(secs);
-  let mag;
-  if (a < 60) mag = a + "s";
-  else if (a < 3600) mag = Math.round(a / 60) + " min";
-  else mag = Math.round(a / 360) / 10 + "h";
-  return future ? "in " + mag : mag + " ago";
 }
 
 function fmtClock(iso) {
@@ -316,151 +601,38 @@ function fmtClock(iso) {
   try {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch (e) { return ""; }
+  } catch (e) {
+    return "";
+  }
+}
+
+function sameDate(a, b) {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function dayLabel(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (sameDate(d, tomorrow)) return "Tomorrow";
+    if (sameDate(d, yesterday)) return "Yesterday";
+    if (!sameDate(d, today)) {
+      return d.toLocaleDateString(undefined, { weekday: "short" });
+    }
+  } catch (e) {}
+  return "";
 }
 
 function svg(name, size) {
-  size = size || 13;
-  return '<svg width="' + size + '" height="' + size + '"><use href="#i-' + name + '"/></svg>';
-}
-
-
-/* =========================================================
-   🖼  Render
-   ========================================================= */
-
-const state = {
-  status: null, stats: null, upcoming: null, missed: null,
-  paused: false, lastRefresh: null,
-};
-
-function renderHeader() {
-  const dot = state.paused ? "amber" : "green";
-  const label = state.paused ? "CalFlow Paused" : "CalFlow Active";
-  return ''
-    + '<div class="row">'
-    +   '<span style="font-size:12px;font-weight:500">'
-    +     '<span class="dot ' + dot + '"></span>' + label
-    +   '</span>'
-    +   '<div style="display:flex;gap:5px">'
-    +     '<button class="icon" title="Pause / resume" onclick="cfPauseToggle()" aria-label="Pause">' + svg(state.paused ? "play" : "pause") + '</button>'
-    +     '<button class="icon" title="Refresh"        onclick="cfRefresh(true)"  aria-label="Refresh">' + svg("refresh") + '</button>'
-    +     '<button class="icon" title="Settings"       onclick="cfOpenSettings()"  aria-label="Settings">' + svg("gear") + '</button>'
-    +   '</div>'
-    + '</div>';
-}
-
-function renderUpcoming() {
-  const u = state.upcoming || {};
-  if (u.google_error) {
-    return '<div class="banner error">⚠ ' + esc(u.google_error) + '</div>';
-  }
-  const evs = u.events || [];
-  if (!evs.length) {
-    return '<div class="section">Up next</div>'
-         + '<div class="empty-hint">No events in the next 24 hours.</div>';
-  }
-  const head = evs[0], rest = evs.slice(1, 4);
-  let html = '<div class="section">Up next</div>';
-  // Headline event
-  const headDisabled = head.mode === "empty";
-  html += '<div class="event-up" data-id="' + esc(head.id) + '">'
-        +   '<div class="row">'
-        +     '<div>'
-        +       '<div class="mini">' + esc(fmtRelative(head.seconds_until)) + '</div>'
-        +       '<div class="title">' + esc(head.title) + '</div>'
-        +       '<div class="mini">' + esc(head.preview || (headDisabled ? "No automation set" : "")) + '</div>'
-        +     '</div>'
-        +     '<button class="play ' + (headDisabled ? 'disabled' : '') + '"'
-        +       (headDisabled ? ' disabled' : '')
-        +       ' onclick="cfRunEvent(\'' + esc(head.id) + '\', this)" aria-label="Run now">'
-        +       svg("play")
-        +     '</button>'
-        +   '</div>'
-        + '</div>';
-  // Rest
-  for (const ev of rest) {
-    const dis = ev.mode === "empty";
-    html += '<div class="event" data-id="' + esc(ev.id) + '">'
-          +   '<div>'
-          +     '<div class="title">' + esc(fmtClock(ev.start)) + ' · ' + esc(ev.title) + '</div>'
-          +     '<div class="mini">' + esc(ev.preview || (dis ? "No automation set" : "")) + '</div>'
-          +   '</div>'
-          +   '<button class="play ' + (dis ? 'disabled' : '') + '"'
-          +     (dis ? ' disabled' : '')
-          +     ' onclick="cfRunEvent(\'' + esc(ev.id) + '\', this)" aria-label="Run now">'
-          +     svg("play")
-          +   '</button>'
-          + '</div>';
-  }
-  return html;
-}
-
-function renderMissed() {
-  const m = state.missed || {};
-  const evs = m.events || [];
-  if (!evs.length) return ""; // hide the whole section when zero
-  let html = '<div class="section">Missed · last ' + (m.hours || 12) + ' h '
-           + '<span class="badge">' + evs.length + '</span></div>';
-  html += '<div class="scrollable">';
-  for (const ev of evs.slice(0, 20)) {
-    html += '<div class="event" data-id="' + esc(ev.id) + '">'
-          +   '<div>'
-          +     '<div class="title">' + esc(fmtClock(ev.start)) + ' · ' + esc(ev.title) + '</div>'
-          +     '<div class="mini">' + esc(ev.preview || "Mac was asleep") + '</div>'
-          +   '</div>'
-          +   '<button class="play" onclick="cfRunEvent(\'' + esc(ev.id) + '\', this)" aria-label="Run now">'
-          +     svg("play")
-          +   '</button>'
-          + '</div>';
-  }
-  html += '</div>';
-  return html;
-}
-
-function renderFooter() {
-  return ''
-    + '<div class="divider"></div>'
-    + '<div class="row" style="gap:5px;justify-content:flex-start">'
-    +   '<button onclick="cfOpenRecipes()">' + svg("book") + ' Recipes</button>'
-    +   '<button onclick="cfOpenAbout()">'   + svg("info") + ' About</button>'
-    + '</div>';
-}
-
-function renderStats() {
-  const s = state.stats || {};
-  const automations = (s.actions_run != null ? humanInt(Math.floor((s.actions_run || 0) / 1)) : "—");
-  // "Automations" in the popover means executed events; we approximate
-  // from actions_run using a per-event factor of 1 (one increment per action).
-  // The marketing line says "automations"; keep it simple — we report
-  // actions_run as the headline number, since that's the honest count.
-  const n = s.actions_run || 0;
-  const automationsLabel = humanInt(n);
-  const since = formatSinceDate(s.first_run_date);
-  const human = s.time_saved_human || "0m";
-  return ''
-    + '<div class="stats">'
-    +   '<h3>CalFlow stats</h3>'
-    +   '<div class="stats-line">'
-    +     '<span class="lbl">Automations</span>'
-    +     '<span><b>' + esc(automationsLabel) + '</b> <span class="lbl">' + esc(since ? "× (since " + since + ")" : "") + '</span></span>'
-    +   '</div>'
-    +   '<div class="stats-line">'
-    +     '<span class="lbl" style="display:inline-flex;align-items:center;gap:4px">Est. time saved'
-    +       '<span class="info" tabindex="0" aria-label="How this is calculated">'
-    +         svg("info", 12)
-    +         '<span class="tip"><b>Weighted by action type</b><br>Open URL 5s · profile +3s · arrange 4s · autofill 8s · hide 2s · focus 1s</span>'
-    +       '</span>'
-    +     '</span>'
-    +     '<span style="display:flex;align-items:center;gap:8px"><b>' + esc(human) + '</b>'
-    +       '<button class="coffee" onclick="cfOpenCoffee()">' + svg("coffee") + ' Buy Coffee</button>'
-    +     '</span>'
-    +   '</div>'
-    + '</div>';
-}
-
-function renderQuit() {
-  return '<div class="quit" onclick="cfQuit()">Quit CalFlow ⌘Q</div>';
+  size = size || 16;
+  return '<svg width="' + size + '" height="' + size + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
 }
 
 function humanInt(n) {
@@ -470,83 +642,311 @@ function humanInt(n) {
 function formatSinceDate(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleDateString(
-      undefined, { month: "short", day: "numeric", year: "numeric" }
-    );
-  } catch (e) { return ""; }
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: "short", day: "numeric", year: "numeric"
+    });
+  } catch (e) {
+    return "";
+  }
+}
+
+function calendarCount(status) {
+  if (!status || typeof status !== "object") return 0;
+  const candidates = [
+    status.calendar_count,
+    status.calendars_count,
+    status.enabled_calendar_count,
+    Array.isArray(status.calendars) ? status.calendars.length : null,
+  ];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+const state = {
+  status: null,
+  stats: null,
+  upcoming: null,
+  missed: null,
+  paused: false,
+  lastRefresh: null,
+  refreshing: false,
+  refreshMessage: "",
+  refreshError: false,
+};
+
+function renderHeader() {
+  const count = calendarCount(state.status);
+  const dotClass = state.paused ? "status-dot paused" : "status-dot";
+  const title = state.paused ? "CalFlow Paused" : "CalFlow Active";
+  let sub = "Last sync: syncing";
+  if (state.lastRefresh) {
+    sub = "Last sync: " + fmtClock(state.lastRefresh);
+    if (count) sub += " &middot; " + count + " calendar" + (count === 1 ? "" : "s");
+  }
+  if (state.refreshMessage && state.refreshError) sub = state.refreshMessage;
+  const refreshClass = state.refreshing ? "icon-btn refreshing" : "icon-btn";
+  return ''
+    + '<div class="header">'
+    +   '<div class="identity">'
+    +     '<div class="title-line"><span class="' + dotClass + '"></span><span>' + title + '</span></div>'
+    +     '<div class="subtitle ' + (state.refreshError ? 'error' : '') + '">' + sub + '</div>'
+    +   '</div>'
+    +   '<div class="header-actions">'
+    +     '<button class="icon-btn" title="Pause" onclick="cfPauseToggle()" aria-label="Pause">' + svg(state.paused ? "play" : "pause", 24) + '</button>'
+    +     '<button class="' + refreshClass + '" title="Refresh" onclick="cfRefresh(true)" aria-label="Refresh"'
+    +       (state.refreshing ? ' disabled' : '') + '>' + svg("refresh", 24) + '</button>'
+    +     '<button class="icon-btn" title="Settings" onclick="cfOpenSettings()" aria-label="Settings">' + svg("gear", 25) + '</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+function timelineStatus(ev) {
+  if (!ev || ev.mode === "empty") return { text: "No automation found", cls: "" };
+  const secs = Number(ev.seconds_until);
+  if (Number.isFinite(secs) && secs >= 0 && secs <= 300) {
+    return { text: "Preparing to run within 5 min", cls: "soon" };
+  }
+  return { text: ev.preview || "Preparing to run within 5 min", cls: "" };
+}
+
+function selectTimelineEvents(events) {
+  const evs = Array.isArray(events) ? events : [];
+  const picked = [];
+  const seen = new Set();
+  function add(ev) {
+    if (!ev || picked.length >= 5) return;
+    const key = ev.id || (ev.title + "|" + ev.start);
+    if (seen.has(key)) return;
+    seen.add(key);
+    picked.push(ev);
+  }
+
+  add(evs.find(ev => ev.mode !== "empty"));
+  for (const ev of evs) {
+    if (picked.length >= 4) break;
+    add(ev);
+  }
+  add(evs.find(ev => dayLabel(ev.start) === "Tomorrow"));
+  for (const ev of evs) {
+    if (picked.length >= 5) break;
+    add(ev);
+  }
+  return picked;
+}
+
+function renderRunButton(ev, colorClass) {
+  return '<button class="run-btn ' + (colorClass || "") + '" data-event-id="' + esc(ev.id) + '" onclick="cfRunEvent(this.dataset.eventId, this)" aria-label="Run Now">'
+       + svg("play", 15) + '<span>Run Now</span></button>';
+}
+
+function renderViewButton(ev) {
+  return '<button class="view-btn" data-event-url="' + esc(ev.event_url || "") + '" onclick="cfViewEvent(this.dataset.eventUrl)" aria-label="View Event">'
+       + '<span>View Event</span>' + svg("external", 16) + '</button>';
+}
+
+function renderTimeline() {
+  const u = state.upcoming || {};
+  if (u.google_error) {
+    return '<div class="section"><div class="section-head">TIMELINE</div>'
+         + '<div class="banner">' + esc(u.google_error) + '</div></div>';
+  }
+  const evs = selectTimelineEvents(u.events || []);
+  let html = '<div class="section"><div class="section-head">TIMELINE</div>';
+  if (!evs.length) {
+    return html + '<div class="empty-hint">No upcoming calendar events found.</div></div>';
+  }
+  html += '<div class="timeline-card">';
+  for (const ev of evs) {
+    const runnable = ev.mode !== "empty";
+    const label = dayLabel(ev.start);
+    const status = timelineStatus(ev);
+    const marker = status.cls === "soon" ? "soon" : (label ? "tomorrow" : (runnable ? "runnable" : ""));
+    html += '<div class="timeline-row" data-id="' + esc(ev.id) + '">'
+          +   '<span class="timeline-marker ' + marker + '"></span>'
+          +   '<div>'
+          +     '<div class="time">' + esc(fmtClock(ev.start)) + '</div>'
+          +     (label ? '<div class="time-sub">' + esc(label) + '</div>' : '')
+          +   '</div>'
+          +   '<div style="min-width:0">'
+          +     '<div class="event-title">' + esc(ev.title || "(untitled)") + '</div>'
+          +     '<div class="status ' + status.cls + '">' + esc(status.text) + '</div>'
+          +   '</div>'
+          +   (runnable ? renderRunButton(ev, "") : renderViewButton(ev))
+          + '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function renderMissed() {
+  const m = state.missed || {};
+  const evs = (m.events || []).filter(ev => ev.mode !== "empty").slice(0, 3);
+  if (!evs.length) return "";
+  let html = '<div class="section">'
+           + '<div class="section-head missed-head"><span>MISSED AUTOMATIONS</span><span class="count-badge">' + evs.length + '</span></div>'
+           + '<div class="missed-card">';
+  for (const ev of evs) {
+    const label = dayLabel(ev.start);
+    const time = (label ? label + " " : "") + fmtClock(ev.start);
+    html += '<div class="missed-row" data-id="' + esc(ev.id) + '">'
+          +   '<div class="missed-time">' + esc(time) + '</div>'
+          +   '<div class="missed-title">' + esc(ev.title || "(untitled)") + '</div>'
+          +   renderRunButton(ev, "orange")
+          + '</div>';
+  }
+  html += '<button class="more-row" onclick="cfOpenActivityLog()"><span>View more</span>' + svg("chevron", 16) + '</button>';
+  html += '</div></div>';
+  return html;
+}
+
+function renderQuickActions() {
+  return ''
+    + '<div class="section">'
+    +   '<div class="section-head">QUICK ACTIONS</div>'
+    +   '<div class="quick-grid">'
+    +     '<button class="quick-card playbooks" onclick="cfOpenPlaybooks()">'
+    +       '<span class="quick-icon">' + svg("book", 28) + '</span>'
+    +       '<span><span class="quick-title">Playbooks</span><span class="quick-sub">Create or edit</span></span>'
+    +       '<span class="chev">' + svg("chevron", 15) + '</span>'
+    +     '</button>'
+    +     '<button class="quick-card activity" onclick="cfOpenActivityLog()">'
+    +       '<span class="quick-icon">' + svg("history", 28) + '</span>'
+    +       '<span><span class="quick-title">Activity Log</span><span class="quick-sub">View history</span></span>'
+    +       '<span class="chev">' + svg("chevron", 15) + '</span>'
+    +     '</button>'
+    +     '<button class="quick-card settings" onclick="cfOpenSettings()">'
+    +       '<span class="quick-icon">' + svg("gear", 28) + '</span>'
+    +       '<span><span class="quick-title">Settings</span><span class="quick-sub">Configure</span></span>'
+    +       '<span class="chev">' + svg("chevron", 15) + '</span>'
+    +     '</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+function renderStats() {
+  const s = state.stats || {};
+  const actions = humanInt(s.actions_run || 0) + "x";
+  const since = formatSinceDate(s.first_run_date);
+  const human = s.time_saved_human || "0m";
+  return ''
+    + '<div class="section">'
+    +   '<div class="section-head">CALFLOW STATS</div>'
+    +   '<div class="stats-card">'
+    +     '<div class="stat-cell">'
+    +       '<span class="stat-icon green">' + svg("trend", 30) + '</span>'
+    +       '<span><span class="stat-main">' + esc(actions) + '</span><span class="stat-sub">' + esc(since ? "since " + since : "since first run") + '</span></span>'
+    +     '</div>'
+    +     '<div class="stat-cell">'
+    +       '<span class="stat-icon green">' + svg("clock", 30) + '</span>'
+    +       '<span><span class="stat-main">' + esc(human) + '</span><span class="stat-sub">Time saved</span></span>'
+    +     '</div>'
+    +     '<button class="stat-cell tip" onclick="cfOpenCoffee()">'
+    +       '<span class="stat-icon yellow">' + svg("gift", 30) + '</span>'
+    +       '<span><span class="stat-main tip">Tip Dev</span><span class="stat-sub">Support CalFlow</span></span>'
+    +     '</button>'
+    +   '</div>'
+    + '</div>';
+}
+
+function renderQuit() {
+  return '<div class="quit-wrap"><button class="quit" onclick="cfQuit()">Quit</button></div>';
+}
+
+// v2.0.3-dev — dynamic popover sizing. Called at the tail of every
+// render() with a 100 ms debounce. Width is canonical server-side
+// (cli/menubar.py _POPOVER_W) so the bridge call sends only height.
+// The requestAnimationFrame ensures layout has settled before we
+// read document.body.scrollHeight.
+let _resizeTimer = null;
+function resizePopover() {
+  if (_resizeTimer) clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    _resizeTimer = null;
+    requestAnimationFrame(() => {
+      const h = document.body.scrollHeight;
+      bridge("resize-popover", { height: h }).catch(() => {});
+    });
+  }, 100);
 }
 
 function render() {
-  // v1.3.14 — defensive: if #root is somehow missing, exit cleanly
-  // rather than throwing and breaking the periodic refresh loop.
   const root = document.getElementById("root");
   if (!root) return;
   root.innerHTML =
       renderHeader()
-    + renderUpcoming()
+    + renderTimeline()
     + renderMissed()
-    + renderFooter()
+    + renderQuickActions()
     + renderStats()
     + renderQuit();
+  resizePopover();
 }
-
-
-/* =========================================================
-   🔁  Refresh
-   ========================================================= */
 
 let _refreshing = false;
 
 async function cfRefresh(force) {
-  if (_refreshing && !force) return;
+  if (_refreshing) {
+    if (force) {
+      state.refreshMessage = "Refreshing...";
+      state.refreshError = false;
+      render();
+    }
+    return;
+  }
   _refreshing = true;
+  state.refreshing = true;
+  state.refreshMessage = "Refreshing...";
+  state.refreshError = false;
+  render();
   try {
     const [status, stats, upcoming, missed] = await Promise.all([
       bridge("status").catch(e => ({ error: String(e) })),
       bridge("stats").catch(e => ({ error: String(e) })),
-      bridge("upcoming", { hours: 24 }).catch(e => ({ error: String(e) })),
-      bridge("missed",   { hours: 12 }).catch(e => ({ error: String(e) })),
+      bridge("upcoming", { hours: 30 }).catch(e => ({ error: String(e) })),
+      bridge("missed", { hours: 12 }).catch(e => ({ error: String(e) })),
     ]);
-    state.status   = status;
-    state.stats    = stats;
+    state.status = status;
+    state.stats = stats;
     state.upcoming = upcoming;
-    state.missed   = missed;
+    state.missed = missed;
     state.lastRefresh = new Date().toISOString();
+    const failed = [status, stats, upcoming, missed].some(x => x && x.error);
+    state.refreshMessage = failed ? "Refresh failed" : "";
+    state.refreshError = failed;
+    render();
+  } catch (e) {
+    state.refreshMessage = "Refresh failed";
+    state.refreshError = true;
     render();
   } finally {
     _refreshing = false;
+    state.refreshing = false;
+    render();
   }
 }
 
-// Refresh on first show + every 30 s while open.
 window.addEventListener("DOMContentLoaded", () => cfRefresh(true));
 setInterval(() => cfRefresh(false), 30000);
-
-// Python calls this on popover-show via evaluateJavaScript.
 window.cf_onShow = function() { cfRefresh(true); };
-
-
-/* =========================================================
-   🔘  Action handlers (called from inline onclick=...)
-   ========================================================= */
 
 async function cfRunEvent(id, btn) {
   if (!id || (btn && btn.disabled)) return;
   if (btn) btn.disabled = true;
   try {
     const result = await bridge("run-event", { id });
-    const row = btn && btn.closest(".event, .event-up");
+    const row = btn && btn.closest(".timeline-row, .missed-row");
     if (row) {
       row.classList.add(result && result.success ? "flash-ok" : "flash-fail");
       setTimeout(() => row.classList.remove("flash-ok", "flash-fail"), 900);
     }
   } catch (e) {
-    if (btn) {
-      const row = btn.closest(".event, .event-up");
-      if (row) {
-        row.classList.add("flash-fail");
-        setTimeout(() => row.classList.remove("flash-fail"), 900);
-      }
+    const row = btn && btn.closest(".timeline-row, .missed-row");
+    if (row) {
+      row.classList.add("flash-fail");
+      setTimeout(() => row.classList.remove("flash-fail"), 900);
     }
   } finally {
     if (btn) btn.disabled = false;
@@ -555,7 +955,6 @@ async function cfRunEvent(id, btn) {
 }
 
 async function cfPauseToggle() {
-  // Optimistic UI flip; reconcile with the actual launchctl result.
   state.paused = !state.paused;
   render();
   try {
@@ -565,17 +964,25 @@ async function cfPauseToggle() {
       render();
     }
   } catch (e) {
-    // Revert on failure.
     state.paused = !state.paused;
     render();
   }
 }
 
-function cfOpenSettings()  { bridge("show-settings-window"); }
-function cfOpenRecipes()   { bridge("show-recipes-window"); }
-function cfOpenAbout()     { bridge("open-about"); }
-function cfOpenCoffee()    { bridge("open-coffee"); }
-function cfQuit()          { bridge("quit"); }
+function cfViewEvent(url) {
+  const target = url || "";
+  if (target) {
+    bridge("open-url", { url: target }).catch(() => bridge("open-calendar"));
+  } else {
+    bridge("open-calendar");
+  }
+}
+
+function cfOpenSettings() { bridge("show-settings-window"); }
+function cfOpenPlaybooks() { bridge("show-recipes-window"); }
+function cfOpenActivityLog() { bridge("open-activity-log"); }
+function cfOpenCoffee() { bridge("open-coffee"); }
+function cfQuit() { bridge("quit"); }
 </script>
 </body>
 </html>

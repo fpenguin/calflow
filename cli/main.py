@@ -408,15 +408,15 @@ def _summarise_event(ev: Dict, *, now: datetime) -> Dict:
     if start is not None and start.tzinfo is None:
         start = start.replace(tzinfo=timezone.utc)
 
-    # Mode detection — keep cheap; full parse happens at run-time.
+    # Mode detection mirrors run-event. A normal calendar description
+    # is not automation just because it has text; only parser output
+    # that can execute should get a play button in the menubar.
     import re as _re
-    title_has_url = bool(_re.search(r"https?://", title, _re.IGNORECASE))
-    if "+calflow+" in text.lower():
-        mode = "plus"
-    elif text or title_has_url:
-        mode = "smart"
-    else:
+    parsed = parse(text, title=title)
+    if parsed.is_empty:
         mode = "empty"
+    else:
+        mode = parsed.mode
 
     delta = (start - now).total_seconds() if start is not None else None
 
@@ -425,9 +425,11 @@ def _summarise_event(ev: Dict, *, now: datetime) -> Dict:
     # 60 chars and never emit URLs verbatim — host-only.
     preview: Optional[str] = None
     if mode == "smart":
-        urls = _re.findall(r"https?://([^\s/?#]+)", title + "\n" + text)
-        if urls:
-            preview = f"Opens {urls[0]}"
+        entry = parsed.entries[0] if parsed.entries else {}
+        url = entry.get("url") or ""
+        host = _re.sub(r"^https?://", "", url, flags=_re.IGNORECASE).split("/", 1)[0]
+        if host:
+            preview = f"Opens {host}"
     elif mode == "plus":
         # First non-blank line after the +CalFlow+ header.
         for raw in text.splitlines():
@@ -445,6 +447,7 @@ def _summarise_event(ev: Dict, *, now: datetime) -> Dict:
         "seconds_until":  int(delta) if delta is not None else None,
         "mode":           mode,
         "preview":        preview,
+        "event_url":      ev.get("event_url") or "",
     }
 
 

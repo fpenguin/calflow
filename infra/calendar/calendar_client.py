@@ -173,6 +173,7 @@ def get_upcoming_events(
                 "title":       ev.get("summary", ""),
                 "text":        text,
                 "start":       dateparser.parse(start["dateTime"]),
+                "event_url":   ev.get("htmlLink", ""),
                 "creator_email":   _actor_email(ev.get("creator")),
                 "organizer_email": _actor_email(ev.get("organizer")),
             })
@@ -261,6 +262,7 @@ def get_recent_events(
                 "title":       ev.get("summary", ""),
                 "text":        text,
                 "start":       dateparser.parse(start["dateTime"]),
+                "event_url":   ev.get("htmlLink", ""),
                 "creator_email":   _actor_email(ev.get("creator")),
                 "organizer_email": _actor_email(ev.get("organizer")),
             })

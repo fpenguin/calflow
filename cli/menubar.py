@@ -52,6 +52,7 @@ import threading
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 # =========================================================
 # 🧷 LAZY IMPORTS (raise on missing deps so cli.main can intercept)
@@ -111,16 +112,24 @@ from runtime.menubar import POPOVER_HTML, RECIPES_HTML, SETTINGS_HTML  # noqa: E
 _PY = sys.executable
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Popover dimensions (px). Tall enough that a typical "Up next + 2
-# missed events + stats" fits without scrolling the popover itself
-# (the missed list scrolls inside its own pane).
-_POPOVER_W = 360
-_POPOVER_H = 540
+# Popover dimensions (px). The redesigned main menu is a compact
+# dashboard: header, timeline, missed automations, quick actions, stats.
+_POPOVER_W = 560
+_POPOVER_H = 670
+# v2.0.3-dev — dynamic-sizing clamp range. Lower bound prevents a
+# collapsed popover if render() fires before content paints; upper
+# bound prevents the popover from exceeding screen height on small
+# displays. Width is NOT clamped — it stays canonical at _POPOVER_W
+# so the menubar-arrow anchor doesn't shift between renders.
+_POPOVER_MIN_H = 200
+_POPOVER_MAX_H = 720
 
 # Window dimensions for the Recipes / Settings standalone pages.
 _RECIPES_W,  _RECIPES_H,  _RECIPES_MIN  = 760, 540, (640, 480)
-_SETTINGS_W, _SETTINGS_H, _SETTINGS_MIN = 680, 540, (560, 420)
-_STATUS_ICON_PT = 18
+_SETTINGS_W, _SETTINGS_H, _SETTINGS_MIN = 760, 580, (640, 480)
+_SETTINGS_HEIGHT_SCREEN_RATIO = 0.75
+_STATUS_ICON_W_PT = 28
+_STATUS_ICON_H_PT = 18
 _STATUS_ICON_REFRESH_SECONDS = 10 * 60
 
 
@@ -134,7 +143,8 @@ _STATUS_ICON_REFRESH_SECONDS = 10 * 60
 
 _OPEN_URLS: dict[str, str] = {
     "open-coffee": "https://www.buymeacoffee.com/calflow",
-    "open-about":  "https://github.com/calflow/calflow/releases/latest",
+    "open-about":  "https://github.com/fpenguin/calflow",
+    "open-calendar": "https://calendar.google.com/calendar/u/0/r",
 }
 
 # v1.3.1 — these now route to native windows (see _CFApp.show_window_).
@@ -143,6 +153,7 @@ _OPEN_URLS: dict[str, str] = {
 _OPEN_PATHS: dict[str, Path] = {
     "open-recipes-folder":  _PROJECT_ROOT / "playbooks",
     "open-settings-folder": _PROJECT_ROOT / "config",
+    "open-activity-log":    _PROJECT_ROOT / "data" / "run.log",
 }
 
 
@@ -156,12 +167,18 @@ def _date_icon_labels(today: date | None = None) -> tuple[str, str]:
     return today.strftime("%b").upper(), str(today.day)
 
 
-def _draw_text(text: str, rect, size: float, weight: float = 0.0) -> None:
+def _draw_text(
+    text: str,
+    rect,
+    size: float,
+    weight: float = 0.0,
+    color=None,
+) -> None:
     ns_text = NSString.stringWithString_(text)
     font = NSFont.monospacedDigitSystemFontOfSize_weight_(size, weight)
     attrs = {
         NSFontAttributeName: font,
-        NSForegroundColorAttributeName: NSColor.blackColor(),
+        NSForegroundColorAttributeName: color or NSColor.blackColor(),
     }
     text_size = ns_text.sizeWithAttributes_(attrs)
     draw_rect = NSMakeRect(
@@ -174,45 +191,47 @@ def _draw_text(text: str, rect, size: float, weight: float = 0.0) -> None:
 
 
 def _make_dynamic_date_icon(today: date | None = None) -> NSImage:
-    """Build a single-color template NSImage that shows month + date."""
+    """Build a high-contrast NSImage that shows month + date."""
     month, day = _date_icon_labels(today)
-    image = NSImage.alloc().initWithSize_((_STATUS_ICON_PT, _STATUS_ICON_PT))
+    image = NSImage.alloc().initWithSize_((_STATUS_ICON_W_PT, _STATUS_ICON_H_PT))
     image.lockFocus()
     try:
-        NSColor.blackColor().setStroke()
-        outline = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(2.0, 2.0, 14.0, 14.0), 2.0, 2.0,
+        body = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(4.0, 0.0, 20.0, 18.0), 2.2, 2.2,
         )
-        outline.setLineWidth_(1.2)
-        outline.stroke()
+        NSColor.whiteColor().setFill()
+        body.fill()
+        NSColor.blackColor().setStroke()
+        body.setLineWidth_(0.9)
+        body.stroke()
 
-        divider = NSBezierPath.bezierPath()
-        divider.moveToPoint_((3.2, 10.8))
-        divider.lineToPoint_((14.8, 10.8))
-        divider.setLineWidth_(1.0)
-        divider.stroke()
+        header = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+            NSMakeRect(4.9, 11.0, 18.2, 6.4), 1.2, 1.2,
+        )
+        NSColor.blackColor().setFill()
+        header.fill()
 
-        _draw_text(month, NSMakeRect(2.0, 10.0, 14.0, 5.0), 4.4, 0.25)
-        _draw_text(day, NSMakeRect(2.0, 2.0, 14.0, 9.0), 8.6, 0.25)
+        _draw_text(month, NSMakeRect(4.9, 10.95, 18.2, 6.1), 6.1, 0.7, NSColor.whiteColor())
+        _draw_text(day, NSMakeRect(4.2, 0.0, 19.6, 11.3), 12.7, 0.78, NSColor.blackColor())
     finally:
         image.unlockFocus()
-    image.setTemplate_(True)
+    image.setTemplate_(False)
     return image
 
 
 def _make_calendar_plus_fallback_icon() -> NSImage:
     """Draw the approved Calendar Plus fallback as a template NSImage."""
-    image = NSImage.alloc().initWithSize_((_STATUS_ICON_PT, _STATUS_ICON_PT))
+    image = NSImage.alloc().initWithSize_((_STATUS_ICON_W_PT, _STATUS_ICON_H_PT))
     image.lockFocus()
     try:
         NSColor.blackColor().setStroke()
         outline = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(3.0, 3.0, 12.0, 12.0), 2.0, 2.0,
+            NSMakeRect(8.0, 2.0, 12.0, 14.0), 2.0, 2.0,
         )
         outline.setLineWidth_(1.4)
         outline.stroke()
 
-        for x in (5.8, 12.2):
+        for x in (10.8, 17.2):
             path = NSBezierPath.bezierPath()
             path.moveToPoint_((x, 14.8))
             path.lineToPoint_((x, 12.0))
@@ -220,16 +239,16 @@ def _make_calendar_plus_fallback_icon() -> NSImage:
             path.stroke()
 
         divider = NSBezierPath.bezierPath()
-        divider.moveToPoint_((3.0, 11.0))
-        divider.lineToPoint_((15.0, 11.0))
+        divider.moveToPoint_((8.0, 11.0))
+        divider.lineToPoint_((20.0, 11.0))
         divider.setLineWidth_(1.2)
         divider.stroke()
 
         plus = NSBezierPath.bezierPath()
-        plus.moveToPoint_((9.0, 8.8))
-        plus.lineToPoint_((9.0, 5.0))
-        plus.moveToPoint_((7.1, 6.9))
-        plus.lineToPoint_((10.9, 6.9))
+        plus.moveToPoint_((14.0, 8.8))
+        plus.lineToPoint_((14.0, 5.0))
+        plus.moveToPoint_((12.1, 6.9))
+        plus.lineToPoint_((15.9, 6.9))
         plus.setLineWidth_(1.5)
         plus.stroke()
     finally:
@@ -327,6 +346,7 @@ class _CFApp(NSObject):
             NSStatusBar.systemStatusBar()
             .statusItemWithLength_(NSVariableStatusItemLength)
         )
+        status_item.setLength_(_STATUS_ICON_W_PT)
         button = status_item.button()
         button.setTitle_("")
         self._status_item = status_item
@@ -435,6 +455,16 @@ class _CFApp(NSObject):
         the calling page's pending promise never resolves and its UI hangs.
         """
         # --- Local: open URL --------------------------------
+        if op == "open-url":
+            url = str(args.get("url") or "")
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                self._reject(msg_id, "invalid URL", src_wv)
+                return
+            self._open_url(url)
+            self._resolve(msg_id, {"opened": url}, src_wv)
+            return
+
         if op in _OPEN_URLS:
             self._open_url(_OPEN_URLS[op])
             self._resolve(msg_id, {"opened": _OPEN_URLS[op]}, src_wv)
@@ -446,17 +476,20 @@ class _CFApp(NSObject):
             if path.exists():
                 self._open_path(path)
                 self._resolve(msg_id, {"opened": str(path)}, src_wv)
+            elif op == "open-activity-log" and path.parent.exists():
+                self._open_path(path.parent)
+                self._resolve(msg_id, {"opened": str(path.parent), "fallback": True}, src_wv)
             else:
                 self._reject(msg_id, f"path not found: {path}", src_wv)
             return
 
-        # --- Local: show a secondary window (Recipes / Settings)
+        # --- Local: show a secondary window (Playbooks / Settings)
         if op == "show-recipes-window":
             try:
                 self._popover.close()
             except Exception:
                 pass
-            self._show_window("recipes", "CalFlow — Recipes",
+            self._show_window("recipes", "CalFlow — Playbooks",
                               RECIPES_HTML, _RECIPES_W, _RECIPES_H, _RECIPES_MIN)
             self._resolve(msg_id, {"shown": "recipes"}, src_wv)
             return
@@ -494,6 +527,25 @@ class _CFApp(NSObject):
         # --- Local: native folder picker (NSOpenPanel) ------
         if op == "pick-folder":
             self._show_folder_picker(msg_id, args, src_wv)
+            return
+
+        # --- Local: dynamic popover sizing (v2.0.3-dev) -----
+        # popover.html calls this after every render(), 100 ms
+        # debounced. Width is canonical server-side (_POPOVER_W) so
+        # the JS sends only height. Clamped to [MIN_H, MAX_H].
+        if op == "resize-popover":
+            try:
+                h = int(args.get("height") or _POPOVER_H)
+            except (TypeError, ValueError):
+                h = _POPOVER_H
+            h = max(_POPOVER_MIN_H, min(_POPOVER_MAX_H, h))
+            try:
+                self._popover.setContentSize_((_POPOVER_W, h))
+                self._webview.setFrame_(NSMakeRect(0, 0, _POPOVER_W, h))
+            except Exception as exc:
+                self._reject(msg_id, f"resize-popover failed: {exc}", src_wv)
+                return
+            self._resolve(msg_id, {"width": _POPOVER_W, "height": h}, src_wv)
             return
 
         # --- Local: quit ------------------------------------
@@ -684,6 +736,8 @@ class _CFApp(NSObject):
         # Centre on the active screen.
         screen = NSScreen.mainScreen() or NSScreen.screens().objectAtIndex_(0)
         sf = screen.visibleFrame()
+        if key == "settings":
+            h = max(min_size[1], int(sf.size.height * _SETTINGS_HEIGHT_SCREEN_RATIO))
         x = sf.origin.x + (sf.size.width  - w) / 2
         y = sf.origin.y + (sf.size.height - h) / 2
         rect = NSMakeRect(x, y, w, h)

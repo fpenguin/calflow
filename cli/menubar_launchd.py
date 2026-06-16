@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -161,11 +162,23 @@ def start_menubar() -> dict[str, Any]:
     if not MENUBAR_PLIST_PATH.exists():
         return install_menubar(load=True)
 
-    result = _run_launchctl(["load", "-w", str(MENUBAR_PLIST_PATH)])
+    domain_label = f"gui/{os.getuid()}/{MENUBAR_LABEL}"
+    before = menubar_status()
+    if before["loaded"]:
+        result = _run_launchctl(["kickstart", "-k", domain_label])
+    else:
+        result = _run_launchctl(["load", "-w", str(MENUBAR_PLIST_PATH)])
     status = menubar_status()
+    for _ in range(10):
+        lock = status.get("lock") or {}
+        if lock.get("alive"):
+            break
+        time.sleep(0.2)
+        status = menubar_status()
+    lock = status.get("lock") or {}
     status.update({
         "action": "start",
-        "ok": result.returncode == 0 or status["loaded"],
+        "ok": result.returncode == 0 and bool(lock.get("alive")),
         "exit_code": result.returncode,
         "stderr": result.stderr.strip(),
     })

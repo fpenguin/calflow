@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,13 +32,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from cli.main import _summarise_event
 from core.stats import (
     ACTION_WEIGHTS,
     compute_time_saved,
     format_time_saved,
     resolve_weights,
 )
-
 
 # =============================================================
 # core.stats — pure functions
@@ -155,6 +156,42 @@ class ResolveWeights(unittest.TestCase):
         ):
             weights = resolve_weights()
             self.assertEqual(weights["open_url"], ACTION_WEIGHTS["open_url"])
+
+
+class MenubarEventSummary(unittest.TestCase):
+    """Popover rows should only show play for genuinely executable events."""
+
+    def test_plain_description_is_empty(self):
+        now = datetime(2026, 6, 3, 14, 0, tzinfo=timezone.utc)
+        row = _summarise_event(
+            {
+                "id": "swim",
+                "title": "Swimming 6:20-7:20",
+                "text": "Bring towel. Lane swim at the community centre.",
+                "start": now + timedelta(hours=3),
+                "event_url": "https://calendar.google.com/event?eid=swim",
+            },
+            now=now,
+        )
+
+        self.assertEqual(row["mode"], "empty")
+        self.assertIsNone(row["preview"])
+        self.assertEqual(row["event_url"], "https://calendar.google.com/event?eid=swim")
+
+    def test_url_description_is_runnable_smart_mode(self):
+        now = datetime(2026, 6, 3, 14, 0, tzinfo=timezone.utc)
+        row = _summarise_event(
+            {
+                "id": "zoom",
+                "title": "Project call",
+                "text": "https://zoom.us/j/123",
+                "start": now + timedelta(hours=1),
+            },
+            now=now,
+        )
+
+        self.assertEqual(row["mode"], "smart")
+        self.assertEqual(row["preview"], "Opens zoom.us")
 
 
 # =============================================================
