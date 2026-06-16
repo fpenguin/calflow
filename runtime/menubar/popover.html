@@ -33,7 +33,7 @@
 
 html, body {
   width: 100%;
-  /* v2.0.3-dev — height removed (was 100%) so the body shrinks to
+  /* v1.4.0-dev — height removed (was 100%) so the body shrinks to
      content and document.body.scrollHeight reflects the natural
      popover-height target for resize-popover. */
   background: var(--bg);
@@ -52,7 +52,7 @@ body {
   background:
     radial-gradient(circle at 10% 0%, rgba(255,255,255,0.045), transparent 34%),
     linear-gradient(180deg, #1c1c1e 0%, #151516 100%);
-  /* v2.0.3-dev — flex column lets #root size to its natural content
+  /* v1.4.0-dev — flex column lets #root size to its natural content
      height. Combined with the height removal in html,body above,
      body.scrollHeight (read by resizePopover()) reflects the
      popover's required height each render. */
@@ -78,7 +78,7 @@ button:active { transform: scale(0.98); }
 button:disabled { opacity: 0.56; cursor: not-allowed; }
 
 #root {
-  /* v2.0.3-dev — natural height (was 100vh) so #root sizes to its
+  /* v1.4.0-dev — natural height (was 100vh) so #root sizes to its
      content and document.body.scrollHeight reports something useful.
      overflow-y:auto stays as a fallback for the rare case where
      content exceeds the popover's max-height clamp (720 px). */
@@ -342,7 +342,7 @@ button:disabled { opacity: 0.56; cursor: not-allowed; }
 }
 .more-row:hover { background: rgba(255,255,255,0.05); }
 
-/* v2.0.3-dev — internal scroll on the event lists when they overflow
+/* v1.4.0-dev — internal scroll on the event lists when they overflow
    320 px. The .timeline-card / .missed-card / .stats-card shared rule
    above sets overflow:hidden — these overrides win by appearing later
    in the cascade (same specificity, later wins). */
@@ -855,7 +855,7 @@ function renderQuit() {
   return '<div class="quit-wrap"><button class="quit" onclick="cfQuit()">Quit</button></div>';
 }
 
-// v2.0.3-dev — dynamic popover sizing. Called at the tail of every
+// v1.4.0-dev — dynamic popover sizing. Called at the tail of every
 // render() with a 100 ms debounce. Width is canonical server-side
 // (cli/menubar.py _POPOVER_W) so the bridge call sends only height.
 // The requestAnimationFrame ensures layout has settled before we

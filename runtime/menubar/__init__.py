@@ -1,5 +1,5 @@
 """
-CalFlow menubar runtime assets (v1.3.0).
+CalFlow menubar runtime assets (v1.4.x).
 
 This package holds the static HTML/CSS/JS that `cli/menubar.py` loads
 into a WKWebView. Nothing here is imported as Python — it's just

@@ -1,5 +1,5 @@
 """
-v2.0.3-dev — dynamic popover sizing.
+v1.4.0-dev — dynamic popover sizing.
 
 The `resize-popover` bridge op (cli/menubar.py) is called by
 popover.html after every render(). It clamps the requested height to

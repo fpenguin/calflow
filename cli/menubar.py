@@ -1,5 +1,5 @@
 """
-CalFlow menubar companion app (v1.3.0).
+CalFlow menubar companion app (v1.4.x).
 
 Architecture:
     NSStatusItem (menu bar icon)
@@ -116,7 +116,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # dashboard: header, timeline, missed automations, quick actions, stats.
 _POPOVER_W = 560
 _POPOVER_H = 670
-# v2.0.3-dev — dynamic-sizing clamp range. Lower bound prevents a
+# v1.4.0-dev — dynamic-sizing clamp range. Lower bound prevents a
 # collapsed popover if render() fires before content paints; upper
 # bound prevents the popover from exceeding screen height on small
 # displays. Width is NOT clamped — it stays canonical at _POPOVER_W
@@ -529,7 +529,7 @@ class _CFApp(NSObject):
             self._show_folder_picker(msg_id, args, src_wv)
             return
 
-        # --- Local: dynamic popover sizing (v2.0.3-dev) -----
+        # --- Local: dynamic popover sizing (v1.4.0-dev) -----
         # popover.html calls this after every render(), 100 ms
         # debounced. Width is canonical server-side (_POPOVER_W) so
         # the JS sends only height. Clamped to [MIN_H, MAX_H].

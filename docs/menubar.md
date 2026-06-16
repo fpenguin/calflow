@@ -1,4 +1,4 @@
-# CalFlow menubar companion (v1.3.x)
+# CalFlow menubar companion (v1.4.x)
 
 A native macOS menubar app that surfaces today's events, missed events
 in the last 12 h, lifetime stats, one-click "Run now" buttons, an
@@ -28,12 +28,12 @@ interactive Recipes editor, and an editable Settings page.
 - **v1.3.8** — **Apply & restart** combined button (replaces "Restart
   daemon now"); native folder picker for the screenshot directory;
   copyable Python binary path for manual Accessibility grant.
-- **v2.0.2-dev** — LaunchAgent lifecycle commands for the menu bar
+- **v1.4.0-dev** — LaunchAgent lifecycle commands for the menu bar
   companion (`menubar-install`, `menubar-start`, `menubar-stop`,
   `menubar-status`, `menubar-uninstall`).
-- **v2.0.2-dev** — Dynamic month/day menu bar icon with Calendar Plus
+- **v1.4.0-dev** — Dynamic month/day menu bar icon with Calendar Plus
   fallback.
-- **v2.0.3-dev** — Dynamic popover sizing (shrinks to content;
+- **v1.4.0-dev** — Dynamic popover sizing (shrinks to content;
   timeline and missed-events sections get internal scroll if they
   overflow 320 px).
 
@@ -127,7 +127,7 @@ JS Promise resolves → re-render
 Popover refresh runs on open and every 30 seconds while it's open. The
 Settings and Recipes windows refresh on every show via `cf_onShow()`.
 
-The popover is dynamically sized (v2.0.3-dev). Every `render()`
+The popover is dynamically sized (v1.4.0-dev). Every `render()`
 schedules `resizePopover()` (100 ms debounced), which reads
 `document.body.scrollHeight` inside a `requestAnimationFrame` and
 calls the `resize-popover` bridge op. Python clamps the requested
@@ -181,7 +181,7 @@ no new permissions.
 | `cli.main daemon-restart` | stop + start in sequence |
 | `cli.main pause` / `cli.main resume` | Back-compat aliases for `daemon-stop` / `daemon-start` |
 
-### Menu bar lifecycle (v2.0.2-dev)
+### Menu bar lifecycle (v1.4.0-dev)
 
 | Subcommand | Notes |
 |------------|-------|

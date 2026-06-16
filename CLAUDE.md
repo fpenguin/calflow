@@ -220,10 +220,11 @@ to track the remainder. Don't ship a partial migration as "done."
 
 - **`core/version.py` is the single source of truth.** Bump `__version__` on
   every shipped change.
-- **`v1.1.x` are internal iterations.** Tag locally; push only on user
-  approval.
-- **`v2.0.0` is reserved for the public GitHub release.** Don't tag it
-  until the user says "ship publicly."
+- **Active pre-launch work stays on `v1.4.x` until further notice.**
+  `v2.0.0` is reserved for the public launch milestone.
+- **No GitHub pushes are permitted until further notice.** Do not push
+  commits, branches, or tags unless the user explicitly lifts this rule.
+  Local commits are OK when requested.
 - **Commit messages are multi-paragraph.** First line: `vX.Y.Z — <one-line
   summary>`. Then a blank line, then sections (Symptom / Root cause / Fix /
   Files touched / Tests). Match the established history.
