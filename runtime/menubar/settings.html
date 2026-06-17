@@ -231,7 +231,6 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top
     <div class="grp">Behaviour</div>
     <div class="nav">Title links</div>
     <div class="nav">Passwords</div>
-    <div class="nav">Notifications</div>
     <div class="grp">Power user</div>
     <div class="nav">Permissions</div>
     <div class="nav">Advanced</div>
@@ -239,11 +238,10 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 6px; margin-top
   <div class="col-content" id="content">
     <div id="sections">
       <div style="padding:24px;color:var(--text-2);font-size:13px;line-height:1.5">
-        Loading settings… (if this persists for more than a few seconds,
-        something is wrong — open Terminal and run
+        Loading settings… (still stuck after a few seconds? Open Terminal and run
         <code style="font-family:ui-monospace,Menlo,monospace;background:var(--bg-2);padding:2px 5px;border-radius:3px">
         python3 -m cli.main settings
-        </code> from the project folder)
+        </code>)
       </div>
     </div>
     <div class="actionbar" id="actionbar">
@@ -436,38 +434,38 @@ function toast(msg, kind) {
 */
 
 const SECTIONS = [
-  { id:"general", label:"General", group:"General", title:"General", lead:"Core app behaviour. Apply & restart at the bottom of this page also restarts the daemon, so changes take effect immediately.",
+  { id:"general", label:"General", group:"General", title:"General", lead:"App basics. Apply & restart at the bottom also restarts CalFlow in the background, so your changes take effect right away.",
     rows: [
-      { lbl:"Auto-start at login", desc:"CalFlow runs in the background after you log in. Toggling this loads / unloads the launchd agent immediately.", key:"general.auto_start_at_login", control:"toggle", editable:true },
+      { lbl:"Auto-start at login", desc:"CalFlow runs in the background after you log in. Toggling this turns CalFlow's background process on or off right away.", key:"general.auto_start_at_login", control:"toggle", editable:true },
     ] },
-  { id:"calendar", label:"Calendar", group:"General", title:"Calendar", lead:"Which Google account and calendars CalFlow watches. Set during onboarding — run `python -m cli.main setup` from Terminal to change.",
+  { id:"calendar", label:"Calendar", group:"General", title:"Calendar", lead:"Which Google account and calendars CalFlow watches. Set when you first installed CalFlow. To change accounts or calendars, open Terminal and run `python3 -m cli.main setup`.",
     rows: [
-      { lbl:"Google account",    desc:"The account whose calendar CalFlow polls. Read from data/oauth_token.json.", key:"calendar.google_account",    control:"tag", editable:false },
-      { lbl:"Connection status", desc:"Whether Calendar OAuth is currently available.", key:"calendar.google_status", control:"status", editable:false },
-      { lbl:"Calendars to watch",desc:"How many of your Google calendars are wired up. To pick a different set, re-run setup.", key:"calendar.calendars_watched", control:"tag", editable:false },
+      { lbl:"Google account",    desc:"The Google account CalFlow checks for events.", key:"calendar.google_account",    control:"tag", editable:false },
+      { lbl:"Connection status", desc:"Whether CalFlow can currently reach your Google Calendar.", key:"calendar.google_status", control:"status", editable:false },
+      { lbl:"Calendars to watch",desc:"How many of your Google calendars are connected. To choose a different set, run setup in Terminal again.", key:"calendar.calendars_watched", control:"tag", editable:false },
     ] },
-  { id:"events", label:"Events", group:"General", title:"Events", lead:"How and when calendar events become automations.",
+  { id:"events", label:"Events", group:"General", title:"Events", lead:"How and when calendar events trigger CalFlow.",
     rows: [
       { lbl:"Open how many minutes early",  desc:"Lead time before the event starts.", key:"events.open_minutes_early",  control:"number", editable:true, unit:"min", min:0, max:60 },
       /* v1.4.0-dev — removed "Default browser" and "Chrome profile" rows.
          Both are per-event (chosen via @alias / profile(N) in the event
          body); a global default surfaced here was misleading. */
-      { lbl:"Per-cycle fetch window",       desc:"How far ahead each daemon poll looks for events.", key:"events.fetch_window_hours", control:"number", editable:true, unit:"h", min:1, max:24 },
-      { lbl:"Status look-ahead window",     desc:"How far ahead the status / menubar dashboards look.", key:"events.status_lookahead_h", control:"number", editable:true, unit:"h", min:1, max:168 },
+      { lbl:"How far ahead to look (each check)", desc:"How far ahead each background check scans your calendar.", key:"events.fetch_window_hours", control:"number", editable:true, unit:"h", min:1, max:24 },
+      { lbl:"Menu bar look-ahead",               desc:"How far ahead the menu bar shows upcoming events.", key:"events.status_lookahead_h", control:"number", editable:true, unit:"h", min:1, max:168 },
     ] },
 
   { id:"aliases", label:"Aliases", group:"Behaviour",
-    title:"Aliases (TARGETS)",
+    title:"Aliases",
     lead:"Map @aliases to apps. Single-app: '@chrome' → 'Google Chrome'. Workflow alias opens several apps in order, e.g. '@work' → Chrome + Notion + Figma.",
     customRenderer:"aliases" },
 
-  { id:"title-links", label:"Title links", group:"Behaviour", title:"Title links", lead:"What CalFlow does when the event title contains a URL.",
+  { id:"title-links", label:"Title links", group:"Behaviour", title:"Title links", lead:"What CalFlow does when an event title has a link in it.",
     rows: [
-      { lbl:"Use title URL when present", desc:"Always on: the parser falls back to the title's URL when the description has no executable automation.", key:"title_links.use_title_url_when_present", control:"toggle", editable:false },
+      { lbl:"Use title URL when present", desc:"Always on: CalFlow opens the title's link when the event has no other instructions.", key:"title_links.use_title_url_when_present", control:"toggle", editable:false },
       { lbl:"Open mode",                  desc:"How a title URL opens — new tab or new window.",          key:"title_links.open_mode", control:"select", editable:true, choices:["tab","window"] },
-      { lbl:"Autofill behaviour",         desc:"How CalFlow handles password forms on title-URL pages.",  key:"title_links.autofill",  control:"select", editable:true, choices:["none","fill","submit"] },
+      { lbl:"Autofill action",            desc:"How CalFlow handles password forms on title-URL pages.",  key:"title_links.autofill",  control:"select", editable:true, choices:["none","fill","submit"] },
     ] },
-  { id:"passwords", label:"Passwords", group:"Behaviour", title:"Passwords", lead:"Password manager integration for autofill.",
+  { id:"passwords", label:"Passwords", group:"Behaviour", title:"Passwords", lead:"Which password manager CalFlow uses to fill forms.",
     rows: [
       { lbl:"Password manager",  desc:"Used to fill saved credentials.",                 key:"passwords.provider",         control:"select", editable:true, choices:["apple","1password","bitwarden","default"] },
       { lbl:"Autofill on open",  desc:"Press the manager's fill shortcut after opening a URL.", key:"passwords.autofill_on_open", control:"toggle", editable:true },
@@ -476,23 +474,23 @@ const SECTIONS = [
 
   { id:"permissions", label:"Permissions", group:"Power user", title:"Permissions", lead:"macOS access CalFlow needs to work. Grant in the order listed — each row's status check depends on the previous one. Until CalFlow ships as a .app bundle, System Settings labels these grants by the Python binary path shown at the bottom of this section (not 'CalFlow'). That's expected.",
     rows: [
-      { lbl:"Calendar OAuth",    desc:"Lets CalFlow read your Google Calendar. Grant once by running `python -m cli.main setup` in Terminal.", key:"permissions.calendar_oauth", control:"status", editable:false },
+      { lbl:"Google Calendar access", desc:"Lets CalFlow read your Google Calendar. Grant once by running `python3 -m cli.main setup` in Terminal.", key:"permissions.calendar_oauth", control:"status", editable:false },
       { lbl:"Apple Events",      desc:"Lets CalFlow talk to other apps so it can close, hide, or focus them. macOS prompts you the first time CalFlow tries. Grant this BEFORE Accessibility — the Accessibility check below uses Apple Events under the hood to read its own state.", key:"permissions.apple_events",   control:"status", editable:false, grantPane:"appleevents" },
       { lbl:"Accessibility",     desc:"Lets CalFlow simulate keys and clicks, and arrange windows by display. If this row stays \"Pending\" after you grant, check that Apple Events above is Granted first.", key:"permissions.accessibility",  control:"status", editable:false, grantPane:"accessibility" },
       { lbl:"Python binary path",desc:"This is the binary System Settings is granting permission to — that's why the entry in Privacy & Security reads something like \"python3.11\" instead of \"CalFlow\". Copy this path; in System Settings → Privacy & Security click + and paste it if you don't see it in the list yet.", key:"permissions.python_binary",  control:"copyable", editable:false },
     ] },
-  { id:"advanced", label:"Advanced", group:"Power user", title:"Advanced", lead:"Tuning knobs. Touch only if you know what you're doing.",
+  { id:"advanced", label:"Advanced", group:"Power user", title:"Advanced", lead:"Advanced settings. Best left alone unless you know what you're changing.",
     rows: [
-      { lbl:"Trigger grace seconds",        desc:"How long after start CalFlow may still fire.",   key:"advanced.trigger_grace_seconds", control:"number", editable:true, unit:"s", min:0, max:3600 },
-      { lbl:"Early tolerance",              desc:"How early before start CalFlow may fire.",       key:"advanced.early_tolerance_sec",   control:"number", editable:true, unit:"s", min:0, max:600 },
+      { lbl:"Trigger grace seconds",        desc:"How long after an event's start time CalFlow can still run it.",   key:"advanced.trigger_grace_seconds", control:"number", editable:true, unit:"s", min:0, max:3600 },
+      { lbl:"Early tolerance",              desc:"How early before an event's start time CalFlow can run it.",       key:"advanced.early_tolerance_sec",   control:"number", editable:true, unit:"s", min:0, max:600 },
       { lbl:"Max URLs per event",           desc:"Hard cap to protect against runaway pastes.",    key:"advanced.max_urls_per_event",    control:"number", editable:true, min:1, max:50 },
-      { lbl:"Blocked URL patterns",         desc:"Regex rules that filter out junk URLs.",         key:"advanced.blocked_url_patterns",  control:"tag",    editable:false },
-      { lbl:"Ignored protocols",            desc:"URI schemes CalFlow ignores entirely.",          key:"advanced.ignored_protocols",     control:"tag",    editable:false },
-      { lbl:"Log mode",                     desc:"Where CalFlow writes its log lines.",            key:"advanced.log_mode",              control:"select", editable:true, choices:["stdout","stderr","both"] },
+      { lbl:"Blocked URL patterns",         desc:"Pattern rules that filter out junk URLs.",       key:"advanced.blocked_url_patterns",  control:"tag",    editable:false },
+      { lbl:"Ignored protocols",            desc:"Link types CalFlow ignores entirely (e.g. `tel:`, `sms:`).", key:"advanced.ignored_protocols", control:"tag", editable:false },
+      { lbl:"Log mode",                     desc:"Where CalFlow writes its log output.",           key:"advanced.log_mode",              control:"select", editable:true, choices:["stdout","stderr","both"] },
       { lbl:"Plus: max commands",           desc:"Hard cap on commands per +CalFlow+ block.",      key:"advanced.plus_max_commands",     control:"number", editable:true, min:1, max:200 },
-      { lbl:"Plus: inter-command delay",    desc:"Pause between Plus-Mode verbs.",                  key:"advanced.plus_inter_command_delay_sec", control:"number", editable:true, unit:"s", min:0, max:10, step:0.1 },
-      { lbl:"Plus: screenshot directory",   desc:"Where SCREENSHOT verb writes by default.",       key:"advanced.plus_screenshot_dir",   control:"folder", editable:true },
-      { lbl:"Defaults file",                desc:"Tracked defaults; personal edits are stored under data/.", key:"advanced.settings_file_path",    control:"tag",    editable:false },
+      { lbl:"Plus: delay between commands", desc:"Pause between commands in a Plus-Mode block.",   key:"advanced.plus_inter_command_delay_sec", control:"number", editable:true, unit:"s", min:0, max:10, step:0.1 },
+      { lbl:"Plus: screenshot folder",      desc:"Default folder for screenshots saved by Plus Mode.", key:"advanced.plus_screenshot_dir", control:"folder", editable:true },
+      { lbl:"Defaults file",                desc:"CalFlow's defaults. Your personal changes live in the data folder.", key:"advanced.settings_file_path", control:"tag", editable:false },
     ] },
 ];
 
@@ -720,7 +718,7 @@ function renderDiagnosticsTools() {
     +   '</div>'
     +   '<div id="diagnostics-wrap" style="display:none">'
     +     '<pre id="diagnostics-body" class="diag-body">Click to refresh.</pre>'
-    +     '<div class="diag-note">Paste this when reporting bugs — shows what data the bridge actually returned.</div>'
+    +     '<div class="diag-note">Paste this when reporting bugs — shows what CalFlow received behind the scenes.</div>'
     +   '</div>'
     + '</div>';
 }
@@ -778,9 +776,9 @@ function renderAliasesTable() {
   html += '</div>';
 
   html += '<div style="font-size:12.5px;color:var(--text-2);margin-top:10px;line-height:1.5">'
-        + 'Reserved keywords <code style="font-family:ui-monospace,Menlo,monospace">@active · @all · @display · @except</code> '
-        + 'will be rejected. Apps can be any installed app name as it appears in /Applications '
-        + '(e.g. "Google Chrome", not "chrome"). Saving here writes to data/user_targets.json and restarts the daemon.'
+        + 'These names are reserved and can\'t be used: <code style="font-family:ui-monospace,Menlo,monospace">@active · @all · @display · @except</code>. '
+        + 'Use the exact app name as it appears in your Applications folder '
+        + '(e.g. "Google Chrome", not "chrome"). Saving updates your settings and restarts CalFlow in the background.'
         + '</div>';
 
   return html;
@@ -925,7 +923,7 @@ function aliasCancel() {
 }
 
 async function aliasDelete(key) {
-  if (!confirm('Delete alias ' + key + '? Calendar events that reference it will fall back to the literal app name.')) return;
+  if (!confirm('Delete alias ' + key + '? Calendar events that reference it will be treated as a plain app name instead of an alias.')) return;
   // Build new targets dict without this key.
   const next = {};
   for (const k of Object.keys(state.targets)) {
@@ -944,14 +942,14 @@ async function aliasSave() {
     toast("Alias must start with @", "err"); return;
   }
   if (!/^@[a-zA-Z0-9_-]+$/.test(name)) {
-    toast("Only letters, numbers, _ and - allowed after @", "err"); return;
+    toast("After @, use only letters, numbers, underscores, or hyphens.", "err"); return;
   }
   const reservedNames = ["@active", "@all", "@display", "@except"];
   if (reservedNames.indexOf(name.toLowerCase()) >= 0) {
-    toast(name + " is a reserved keyword", "err"); return;
+    toast(name + " is reserved — pick a different name.", "err"); return;
   }
   if (apps.length === 0) {
-    toast("At least one app required", "err"); return;
+    toast("Add at least one app.", "err"); return;
   }
 
   // Build the new targets dict.
