@@ -45,10 +45,10 @@ or TARGETS editor. Runtime writes belong under `data/`.
 - **Q1 — Multi-account calendar** (user confirmed: wants this): allow
   connecting/disconnecting Google accounts and per-account calendar pickers.
   Feature needs design/spec before implementation. Multi-session.
-- **Q2 — .app bundle** (user confirmed: wants this): proper macOS app bundle with
-  `Info.plist` so System Settings shows "CalFlow" instead of `python3.11`.
-  When shipped, the `permissions.python_binary` row in Settings can be removed.
-  Multi-session packaging work.
+- **Q2 — .app bundle** (deferred to pre-launch): proper macOS app bundle so
+  System Settings shows "CalFlow" instead of `python3.11`. Approach: py2app
+  (Option A). When shipped, the `permissions.python_binary` row in Settings
+  can be removed. Do not start until user says public launch is approaching.
 
 ## GitHub Push Freeze
 
