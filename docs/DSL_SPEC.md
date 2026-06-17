@@ -234,7 +234,9 @@ A target identifies a single application. It can be used:
 @figma    → "Figma"
 ```
 
-Resolved via `config/settings.py` under `TARGETS`.
+Resolved via the effective `TARGETS` table: tracked defaults in
+`config/settings.py`, plus any user overrides saved from Settings →
+Aliases in `data/user_targets.json`.
 
 ---
 

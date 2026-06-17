@@ -1,9 +1,9 @@
 """
-CalFlow TARGETS dict reader / writer (v1.3.9).
+CalFlow TARGETS dict reader / writer (v1.4.1).
 
 Lets the menubar Settings → Aliases editor add / edit / remove entries
-in the `TARGETS` dict in `config/settings.py` without making the user
-hand-edit Python.
+without modifying tracked `config/settings.py`. User edits live in
+`data/user_targets.json`.
 
 `TARGETS` schema:
     Mapping[str, str | List[str]]
@@ -50,19 +50,22 @@ __all__ = [
     "validate_app_list",
 ]
 
-import ast
 import re
-import shutil
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from core.reserved import is_reserved
-from core.utils import log
-from config.config import BASE_DIR
+from core.targets_reader import (
+    DEFAULT_SETTINGS_PATH,
+    SETTINGS_PATH,
+    USER_TARGETS_BACKUP_PATH,
+    USER_TARGETS_PATH,
+    load_user_targets,
+    save_user_targets,
+    _read_targets_from_path,
+)
 
 
-SETTINGS_PATH = Path(BASE_DIR) / "config" / "settings.py"
-BACKUP_PATH   = Path(BASE_DIR) / "config" / "settings.py.bak"
+BACKUP_PATH = USER_TARGETS_BACKUP_PATH
 
 
 ALIAS_NAME_PATTERN = re.compile(r"^@[a-zA-Z0-9_-]+$")
@@ -74,24 +77,17 @@ ALIAS_NAME_PATTERN = re.compile(r"^@[a-zA-Z0-9_-]+$")
 
 def read_targets() -> Dict[str, Union[str, List[str]]]:
     """
-    Parse the TARGETS dict literal out of settings.py and return as a
-    Python dict. Returns {} on any failure (logged).
+    Return the effective TARGETS dict. User sidecar wins; defaults in
+    config/settings.py are the fallback.
 
     Uses ast.literal_eval, which only evaluates literals — no code
     execution risk even if settings.py contains arbitrary expressions.
     """
-    try:
-        text = SETTINGS_PATH.read_text(encoding="utf-8")
-        tree = ast.parse(text)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
-                continue
-            for tgt in node.targets:
-                if isinstance(tgt, ast.Name) and tgt.id == "TARGETS":
-                    return _coerce_targets(ast.literal_eval(node.value))
-    except Exception as exc:
-        log(f"[WARN] read_targets failed: {exc}")
-    return {}
+    sidecar = load_user_targets(USER_TARGETS_PATH)
+    if sidecar is not None:
+        return sidecar
+    default_path = DEFAULT_SETTINGS_PATH if DEFAULT_SETTINGS_PATH.exists() else SETTINGS_PATH
+    return _read_targets_from_path(default_path)
 
 
 def _coerce_targets(raw: Any) -> Dict[str, Union[str, List[str]]]:
@@ -148,7 +144,7 @@ def validate_app_list(apps: Any) -> Optional[str]:
 
 def apply_targets(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Replace the TARGETS dict in settings.py with the user's edited copy.
+    Replace the user TARGETS sidecar with the user's edited copy.
 
     `payload`:
         {"targets": {alias: "App" | ["App1", ...], ...}}
@@ -165,7 +161,7 @@ def apply_targets(payload: Dict[str, Any]) -> Dict[str, Any]:
         - Any single alias fails validation → no write happens, all errors
           returned. The dict is treated atomically: either the whole new
           state is valid and written, or nothing changes.
-        - settings.py read or write fails → returned with `ok: False`.
+        - Sidecar write fails → returned with `ok: False`.
     """
     raw = payload.get("targets") if isinstance(payload, dict) else None
     if not isinstance(raw, dict):
@@ -199,29 +195,13 @@ def apply_targets(payload: Dict[str, Any]) -> Dict[str, Any]:
     if errors:
         return {"ok": False, "errors": errors}
 
-    # 2. Read settings.py, locate TARGETS, replace.
+    # 2. Backup + atomic sidecar write.
     try:
-        text = SETTINGS_PATH.read_text(encoding="utf-8")
-    except Exception as exc:
-        return {"ok": False, "errors": [{"alias": "", "reason": f"could not read settings.py: {exc}"}]}
-
-    try:
-        new_text = _replace_targets_dict(text, cleaned)
-    except Exception as exc:
-        return {"ok": False, "errors": [{"alias": "", "reason": f"could not rewrite TARGETS: {exc}"}]}
-
-    # 3. Backup + atomic write.
-    backup_path: Optional[str] = None
-    try:
-        shutil.copyfile(str(SETTINGS_PATH), str(BACKUP_PATH))
-        backup_path = str(BACKUP_PATH)
-    except Exception as exc:
-        log(f"[WARN] settings.py backup failed: {exc}")
-
-    try:
-        tmp = str(SETTINGS_PATH) + ".tmp"
-        Path(tmp).write_text(new_text, encoding="utf-8")
-        Path(tmp).replace(SETTINGS_PATH)
+        backup_path = save_user_targets(
+            cleaned,
+            path=USER_TARGETS_PATH,
+            backup_path=BACKUP_PATH,
+        )
     except Exception as exc:
         return {"ok": False, "errors": [{"alias": "", "reason": f"write failed: {exc}"}]}
 
@@ -232,60 +212,9 @@ def apply_targets(payload: Dict[str, Any]) -> Dict[str, Any]:
 # 🔧 INTERNAL
 # =========================================================
 
-def _replace_targets_dict(text: str, new_targets: Dict[str, Union[str, List[str]]]) -> str:
-    """
-    Find the `TARGETS = { ... }` literal in `text` and replace its body
-    with a re-rendered version. Brace-balanced search handles quotes
-    and nested literals correctly.
-    """
-    m = re.search(r"^TARGETS\s*=\s*", text, re.MULTILINE)
-    if not m:
-        raise ValueError("TARGETS assignment not found in settings.py")
-
-    open_brace = text.index("{", m.end())
-    close_brace = _find_matching_brace(text, open_brace)
-    if close_brace < 0:
-        raise ValueError("TARGETS dict literal is unterminated")
-
-    body = render_targets(new_targets)
-    return text[:open_brace] + body + text[close_brace + 1:]
-
-
-def _find_matching_brace(text: str, open_idx: int) -> int:
-    """Return the index of the `}` matching `text[open_idx]`, ignoring
-    braces inside string literals. Returns -1 on no match."""
-    if text[open_idx] != "{":
-        return -1
-    depth = 0
-    in_string = False
-    string_char = ""
-    i = open_idx
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if in_string:
-            if ch == "\\" and i + 1 < n:
-                i += 2
-                continue
-            if ch == string_char:
-                in_string = False
-        else:
-            if ch in ('"', "'"):
-                in_string = True
-                string_char = ch
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return i
-        i += 1
-    return -1
-
-
 def render_targets(targets: Dict[str, Union[str, List[str]]]) -> str:
     """
-    Render the dict as nicely-formatted Python for settings.py.
+    Render the dict as nicely-formatted Python.
 
     Single-app aliases first (sorted), then workflow aliases (sorted),
     with section-divider comments to keep the file readable when opened

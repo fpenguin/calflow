@@ -12,7 +12,7 @@ Covers:
 - backup file is created on successful write
 - string safety: rejects values containing quotes / newlines
 
-Each test runs against a tempfile copy of settings.py so we never
+Each test runs against a tempfile user_settings.json so we never
 mutate the user's real config.
 
 Run:
@@ -22,6 +22,7 @@ Run:
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import sys
 import tempfile
@@ -39,45 +40,17 @@ from core.settings_writer import (
 )
 
 
-# Minimal fake settings.py used as the write target. Includes all the
-# constants the whitelist references, plus a couple of decoys we want to
-# make sure are NOT touched.
-FAKE_SETTINGS = """\
-from __future__ import annotations
-
-FETCH_WINDOW_HOURS = 2
-STATUS_LOOKAHEAD_HOURS = 24
-DEFAULT_ALERT_SECONDS = 300
-GRACE_SECONDS = 600
-EARLY_TOLERANCE = 30
-MAX_URLS = 5
-LOG_MODE = "both"
-
-TITLE_URL_OPEN_DEFAULT = "tab"
-TITLE_URL_AUTOFILL_DEFAULT = "submit"
-AUTOFILL_PROVIDER = "apple"
-AUTOFILL_MODE = "semi-auto"
-
-PLUS_MAX_COMMANDS = 50
-PLUS_INTER_COMMAND_DELAY = 0.3
-PLUS_SCREENSHOT_DIR = "~/Downloads/CalFlow"
-
-# Decoys — these should remain untouched.
-TARGETS = {"@chrome": "Google Chrome"}
-BLACKLIST_REGEX = ["/cancel\\\\w*"]
-"""
-
-
 class SettingsWriterBase(unittest.TestCase):
     def setUp(self):
         self._tmp = Path(tempfile.mkdtemp(prefix="calflow_set_"))
-        self._settings = self._tmp / "settings.py"
-        self._backup   = self._tmp / "settings.py.bak"
-        self._settings.write_text(FAKE_SETTINGS, encoding="utf-8")
+        self._settings = self._tmp / "user_settings.json"
+        self._backup   = self._tmp / "user_settings.json.bak"
 
         self._patches = [
             patch("core.settings_writer.SETTINGS_PATH", self._settings),
             patch("core.settings_writer.BACKUP_PATH",   self._backup),
+            patch("core.settings_reader.USER_SETTINGS_PATH", self._settings),
+            patch("core.settings_reader.USER_SETTINGS_BACKUP_PATH", self._backup),
         ]
         for p in self._patches:
             p.start()
@@ -89,6 +62,9 @@ class SettingsWriterBase(unittest.TestCase):
 
     def read(self) -> str:
         return self._settings.read_text(encoding="utf-8")
+
+    def overrides(self) -> dict:
+        return json.loads(self.read())["overrides"]
 
 
 # =============================================================
@@ -109,10 +85,9 @@ class Whitelist(SettingsWriterBase):
         self.assertEqual(len(result["rejected"]), 1)
 
     def test_whitelist_keys_align_with_settings_constants(self):
-        """Every whitelisted UI key maps to a constant that exists in our fixture."""
+        """Every whitelisted UI key maps to a constant name."""
         for ui_key, spec in EDITABLE_SETTINGS.items():
-            self.assertIn(spec["const"] + " =", FAKE_SETTINGS,
-                f"{ui_key!r} maps to {spec['const']!r} which is not in the fixture")
+            self.assertIsInstance(spec.get("const"), str)
 
 
 # =============================================================
@@ -124,40 +99,39 @@ class ApplyHappyPath(SettingsWriterBase):
         result = apply_settings({"events.fetch_window_hours": 4})
         self.assertEqual(result["applied"], ["events.fetch_window_hours"])
         self.assertEqual(result["rejected"], [])
-        self.assertIn("FETCH_WINDOW_HOURS = 4", self.read())
-        self.assertNotIn("FETCH_WINDOW_HOURS = 2", self.read())
+        self.assertEqual(self.overrides()["FETCH_WINDOW_HOURS"], 4)
 
     def test_choice_replace(self):
         result = apply_settings({"title_links.open_mode": "window"})
         self.assertEqual(result["applied"], ["title_links.open_mode"])
-        self.assertIn('TITLE_URL_OPEN_DEFAULT = "window"', self.read())
+        self.assertEqual(self.overrides()["TITLE_URL_OPEN_DEFAULT"], "window")
 
     def test_float_replace(self):
         result = apply_settings({"advanced.plus_inter_command_delay_sec": 0.7})
         self.assertEqual(result["applied"], ["advanced.plus_inter_command_delay_sec"])
-        self.assertIn("PLUS_INTER_COMMAND_DELAY = 0.7", self.read())
+        self.assertEqual(self.overrides()["PLUS_INTER_COMMAND_DELAY"], 0.7)
 
     def test_minutes_to_seconds_conversion(self):
         # UI sends 10 minutes; settings.py stores 600 seconds.
         result = apply_settings({"events.open_minutes_early": 10})
         self.assertEqual(result["applied"], ["events.open_minutes_early"])
-        self.assertIn("DEFAULT_ALERT_SECONDS = 600", self.read())
+        self.assertEqual(self.overrides()["DEFAULT_ALERT_SECONDS"], 600)
 
     def test_string_replace(self):
         result = apply_settings({"advanced.plus_screenshot_dir": "~/Pictures/CF"})
         self.assertEqual(result["applied"], ["advanced.plus_screenshot_dir"])
-        self.assertIn('PLUS_SCREENSHOT_DIR = "~/Pictures/CF"', self.read())
+        self.assertEqual(self.overrides()["PLUS_SCREENSHOT_DIR"], "~/Pictures/CF")
 
     def test_bool_to_string_mapping_on(self):
         # v1.3.7 — UI sends bool; writer maps True → "semi-auto".
         result = apply_settings({"passwords.autofill_on_open": True})
         self.assertEqual(result["applied"], ["passwords.autofill_on_open"])
-        self.assertIn('AUTOFILL_MODE = "semi-auto"', self.read())
+        self.assertEqual(self.overrides()["AUTOFILL_MODE"], "semi-auto")
 
     def test_bool_to_string_mapping_off(self):
         result = apply_settings({"passwords.autofill_on_open": False})
         self.assertEqual(result["applied"], ["passwords.autofill_on_open"])
-        self.assertIn('AUTOFILL_MODE = "off"', self.read())
+        self.assertEqual(self.overrides()["AUTOFILL_MODE"], "off")
 
     def test_batch_apply(self):
         result = apply_settings({
@@ -167,10 +141,10 @@ class ApplyHappyPath(SettingsWriterBase):
         })
         self.assertEqual(set(result["applied"]),
                          {"events.fetch_window_hours", "advanced.log_mode", "passwords.provider"})
-        text = self.read()
-        self.assertIn("FETCH_WINDOW_HOURS = 6", text)
-        self.assertIn('LOG_MODE = "stderr"', text)
-        self.assertIn('AUTOFILL_PROVIDER = "1password"', text)
+        overrides = self.overrides()
+        self.assertEqual(overrides["FETCH_WINDOW_HOURS"], 6)
+        self.assertEqual(overrides["LOG_MODE"], "stderr")
+        self.assertEqual(overrides["AUTOFILL_PROVIDER"], "1password")
 
 
 # =============================================================
@@ -244,11 +218,11 @@ class Launchd(SettingsWriterBase):
         self.assertIn("plist missing", result["rejected"][0]["reason"])
 
     def test_no_file_write_for_launchd_only_payload(self):
-        original = self.read()
+        original_exists = self._settings.exists()
         with patch("cli.onboarding.start_launchd"):
             apply_settings({"general.auto_start_at_login": True})
-        self.assertEqual(self.read(), original,
-                         "launchd ops must not touch settings.py")
+        self.assertEqual(self._settings.exists(), original_exists,
+                         "launchd ops must not touch user_settings.json")
 
 
 # =============================================================
@@ -257,19 +231,22 @@ class Launchd(SettingsWriterBase):
 
 class Backup(SettingsWriterBase):
     def test_backup_created_on_write(self):
+        apply_settings({"events.fetch_window_hours": 2})
         self.assertFalse(self._backup.exists())
         result = apply_settings({"events.fetch_window_hours": 4})
         self.assertTrue(self._backup.exists())
         self.assertEqual(result["backup_path"], str(self._backup))
-        # Backup must equal the ORIGINAL pre-write content.
-        self.assertIn("FETCH_WINDOW_HOURS = 2", self._backup.read_text())
+        # Backup must equal the previous sidecar content.
+        data = json.loads(self._backup.read_text())
+        self.assertEqual(data["overrides"]["FETCH_WINDOW_HOURS"], 2)
 
     def test_no_backup_when_only_validation_failures(self):
         apply_settings({"events.fetch_window_hours": 999})  # all fail
         self.assertFalse(self._backup.exists())
 
     def test_no_backup_for_pure_terminal_payload(self):
-        apply_settings({"general.auto_start_at_login": True})
+        with patch("cli.onboarding.start_launchd"):
+            apply_settings({"general.auto_start_at_login": True})
         self.assertFalse(self._backup.exists())
 
 
@@ -277,16 +254,18 @@ class Backup(SettingsWriterBase):
 # Decoys are not touched
 # =============================================================
 
-class Decoys(SettingsWriterBase):
-    def test_targets_not_modified(self):
+class SidecarIsolation(SettingsWriterBase):
+    def test_settings_apply_writes_sidecar_schema(self):
         apply_settings({"events.fetch_window_hours": 4})
-        text = self.read()
-        self.assertIn('TARGETS = {"@chrome": "Google Chrome"}', text)
+        data = json.loads(self.read())
+        self.assertEqual(data["schema_version"], 1)
+        self.assertEqual(data["overrides"], {"FETCH_WINDOW_HOURS": 4})
 
-    def test_blacklist_not_modified(self):
+    def test_batch_merges_existing_sidecar(self):
         apply_settings({"events.fetch_window_hours": 4})
-        text = self.read()
-        self.assertIn('BLACKLIST_REGEX = ["/cancel', text)
+        apply_settings({"advanced.log_mode": "stderr"})
+        self.assertEqual(self.overrides()["FETCH_WINDOW_HOURS"], 4)
+        self.assertEqual(self.overrides()["LOG_MODE"], "stderr")
 
 
 if __name__ == "__main__":

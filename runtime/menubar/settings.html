@@ -491,7 +491,7 @@ const SECTIONS = [
       { lbl:"Plus: max commands",           desc:"Hard cap on commands per +CalFlow+ block.",      key:"advanced.plus_max_commands",     control:"number", editable:true, min:1, max:200 },
       { lbl:"Plus: inter-command delay",    desc:"Pause between Plus-Mode verbs.",                  key:"advanced.plus_inter_command_delay_sec", control:"number", editable:true, unit:"s", min:0, max:10, step:0.1 },
       { lbl:"Plus: screenshot directory",   desc:"Where SCREENSHOT verb writes by default.",       key:"advanced.plus_screenshot_dir",   control:"folder", editable:true },
-      { lbl:"settings.py path",             desc:"Source-of-truth file for everything above.",     key:"advanced.settings_file_path",    control:"tag",    editable:false },
+      { lbl:"Defaults file",                desc:"Tracked defaults; personal edits are stored under data/.", key:"advanced.settings_file_path",    control:"tag",    editable:false },
     ] },
 ];
 
@@ -760,7 +760,7 @@ function renderAliasesTable() {
   html += '<div style="font-size:12.5px;color:var(--text-2);margin-top:10px;line-height:1.5">'
         + 'Reserved keywords <code style="font-family:ui-monospace,Menlo,monospace">@active · @all · @display · @except</code> '
         + 'will be rejected. Apps can be any installed app name as it appears in /Applications '
-        + '(e.g. "Google Chrome", not "chrome"). Saving here writes to settings.py and restarts the daemon.'
+        + '(e.g. "Google Chrome", not "chrome"). Saving here writes to data/user_targets.json and restarts the daemon.'
         + '</div>';
 
   return html;
@@ -1258,7 +1258,7 @@ async function onApply() {
 
     const daemonActions = (result && result.daemon_actions) || [];
 
-    // Did at least one change touch settings.py (vs. only launchd)?
+    // Did at least one change touch user_settings.json (vs. only launchd)?
     const settingsTouched = applied.some(k =>
         !daemonActions.find(a => a.key === k));
 
@@ -1267,7 +1267,7 @@ async function onApply() {
             + (applied.length ? " · " + applied.length + " saved" : ""), "err");
     } else if (applied.length) {
       let msg = "Saved " + applied.length + " change" + (applied.length===1?"":"s");
-      // v1.3.8 — auto-restart the daemon when settings.py was actually
+      // v1.3.8 — auto-restart the daemon when runtime settings were actually
       // edited. Auto-start-at-login already loads/unloads launchd, so
       // skip the second restart for launchd-only payloads.
       if (settingsTouched) {
@@ -1284,7 +1284,7 @@ async function onApply() {
         msg += " · " + acts;
       }
       if (result.backup_path && settingsTouched) {
-        msg += " · backup at config/settings.py.bak";
+        msg += " · backup saved";
       }
       toast(msg, "ok");
     } else {

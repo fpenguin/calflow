@@ -9,7 +9,8 @@ Covers:
 - apply_targets refuses ANY-error payloads (no partial writes)
 - render_targets emits sorted, grouped output
 
-Each test uses a tempfile copy of settings.py so we never mutate the user's.
+Each test uses a tempfile defaults file plus user_targets.json sidecar so
+we never mutate the user's real config.
 
 Run:
     python -m unittest tests.test_v3_targets -v
@@ -63,10 +64,13 @@ class TargetsBase(unittest.TestCase):
     def setUp(self):
         self._tmp = Path(tempfile.mkdtemp(prefix="calflow_tg_"))
         self._settings = self._tmp / "settings.py"
-        self._backup   = self._tmp / "settings.py.bak"
+        self._sidecar  = self._tmp / "user_targets.json"
+        self._backup   = self._tmp / "user_targets.json.bak"
         self._settings.write_text(FAKE_SETTINGS, encoding="utf-8")
         self._patches = [
             patch("core.targets_writer.SETTINGS_PATH", self._settings),
+            patch("core.targets_writer.DEFAULT_SETTINGS_PATH", self._settings),
+            patch("core.targets_writer.USER_TARGETS_PATH", self._sidecar),
             patch("core.targets_writer.BACKUP_PATH",   self._backup),
         ]
         for p in self._patches:
@@ -180,10 +184,11 @@ class WriterHappyPath(TargetsBase):
         self.assertIn('BLACKLIST_REGEX = ["/cancel"]', text)
 
     def test_creates_backup(self):
-        self.assertFalse(self._backup.exists())
         apply_targets({"targets": {"@a": "App"}})
+        self.assertFalse(self._backup.exists())
+        apply_targets({"targets": {"@a": "App", "@b": "Bee"}})
         self.assertTrue(self._backup.exists())
-        self.assertIn("@chrome", self._backup.read_text())  # original content
+        self.assertIn("@a", self._backup.read_text())  # previous sidecar content
 
     def test_single_string_value_round_trips(self):
         apply_targets({"targets": {"@x": "App X"}})

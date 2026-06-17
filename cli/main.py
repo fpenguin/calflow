@@ -62,7 +62,6 @@ from cli.onboarding import (
     restart_launchd,
     run_onboarding,
     start_launchd,
-    status_launchd,
     stop_launchd,
     uninstall_launchd,
 )
@@ -473,33 +472,41 @@ def print_stats_json() -> None:
     print(json.dumps(snapshot(), indent=2, default=str))
 
 
-def print_upcoming_json(hours: int = 24) -> None:
-    """`cli.main upcoming --json [--hours N]` — populates the menubar 'Today' list."""
+def collect_upcoming_json(hours: int = 24) -> Dict:
+    """Collect data for `cli.main upcoming --json [--hours N]`."""
     out: Dict = {"events": [], "google_error": None, "hours": hours}
     try:
         service = build_service()
     except RuntimeError as exc:
         out["google_error"] = f"not connected: {exc}"
-        print(json.dumps(out, indent=2, default=str))
-        return
+        return out
     except Exception as exc:
         out["google_error"] = f"{type(exc).__name__}: {exc}"
-        print(json.dumps(out, indent=2, default=str))
-        return
+        return out
 
     now = datetime.now(timezone.utc)
     rows: List[Dict] = []
-    for cal_id in get_selected_calendars():
-        for ev in get_upcoming_events(service, cal_id, hours=hours):
-            rows.append(_summarise_event(ev, now=now))
+    try:
+        for cal_id in get_selected_calendars():
+            for ev in get_upcoming_events(service, cal_id, hours=hours):
+                rows.append(_summarise_event(ev, now=now))
+    except Exception as exc:
+        out["google_error"] = f"{type(exc).__name__}: {exc}"
+        return out
     rows.sort(key=lambda r: r.get("start") or "")
     out["events"] = rows
+    return out
+
+
+def print_upcoming_json(hours: int = 24) -> None:
+    """`cli.main upcoming --json [--hours N]` — populates the menubar 'Today' list."""
+    out = collect_upcoming_json(hours=hours)
     print(json.dumps(out, indent=2, default=str))
 
 
-def print_missed_json(hours: int = 12) -> None:
+def collect_missed_json(hours: int = 12) -> Dict:
     """
-    `cli.main missed --json [--hours N]` — events whose start was in the
+    Collect data for `cli.main missed --json [--hours N]` — events whose start was in the
     past `hours` window AND whose run_key is NOT in state. The menubar
     renders these in its "Missed · last 12 h" pane.
     """
@@ -508,33 +515,98 @@ def print_missed_json(hours: int = 12) -> None:
         service = build_service()
     except RuntimeError as exc:
         out["google_error"] = f"not connected: {exc}"
-        print(json.dumps(out, indent=2, default=str))
-        return
+        return out
     except Exception as exc:
         out["google_error"] = f"{type(exc).__name__}: {exc}"
-        print(json.dumps(out, indent=2, default=str))
-        return
+        return out
 
     state = load_state()
     now = datetime.now(timezone.utc)
     rows: List[Dict] = []
-    for cal_id in get_selected_calendars():
-        for ev in get_recent_events(service, cal_id, hours=hours):
-            start = ev.get("start")
-            if start is not None and start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc)
-                ev["start"] = start
-            run_key = f"{ev.get('id')}_{start.isoformat() if start else ''}"
-            if is_done(state, run_key):
-                continue  # already executed — not "missed"
-            row = _summarise_event(ev, now=now)
-            if row["mode"] == "empty":
-                continue  # no automation → nothing to "miss"
-            rows.append(row)
+    try:
+        for cal_id in get_selected_calendars():
+            for ev in get_recent_events(service, cal_id, hours=hours):
+                start = ev.get("start")
+                if start is not None and start.tzinfo is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                    ev["start"] = start
+                run_key = f"{ev.get('id')}_{start.isoformat() if start else ''}"
+                if is_done(state, run_key):
+                    continue  # already executed — not "missed"
+                row = _summarise_event(ev, now=now)
+                if row["mode"] == "empty":
+                    continue  # no automation → nothing to "miss"
+                rows.append(row)
+    except Exception as exc:
+        out["google_error"] = f"{type(exc).__name__}: {exc}"
+        return out
     # Most recent first — the user cares most about what just happened.
     rows.sort(key=lambda r: r.get("start") or "", reverse=True)
     out["events"] = rows
+    return out
+
+
+def print_missed_json(hours: int = 12) -> None:
+    """
+    `cli.main missed --json [--hours N]` — events whose start was in the
+    past `hours` window AND whose run_key is NOT in state. The menubar
+    renders these in its "Missed · last 12 h" pane.
+    """
+    out = collect_missed_json(hours=hours)
     print(json.dumps(out, indent=2, default=str))
+
+
+def collect_popover_feed(upcoming_hours: int = 30, missed_hours: int = 12) -> Dict:
+    """Combined menubar popover feed with cached-data fallback."""
+    from state.popover_cache import load_cache, save_cache
+    from state.stats_store import snapshot
+
+    try:
+        payload = {
+            "status": collect_status(),
+            "stats": snapshot(),
+            "upcoming": collect_upcoming_json(hours=upcoming_hours),
+            "missed": collect_missed_json(hours=missed_hours),
+            "stale": False,
+            "cached_at": None,
+            "google_error": None,
+        }
+        errors = []
+        for key in ("status", "upcoming", "missed"):
+            err = (payload.get(key) or {}).get("google_error") or (payload.get(key) or {}).get("error")
+            if err:
+                errors.append(f"{key}: {err}")
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        save_cache(payload)
+        return payload
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"
+        cached = load_cache()
+        if cached:
+            cached = dict(cached)
+            cached["stale"] = True
+            cached["google_error"] = err
+            cached.pop("error", None)
+            return cached
+        return {
+            "status": {"error": err},
+            "stats": {},
+            "upcoming": {"events": [], "google_error": err, "hours": upcoming_hours},
+            "missed": {"events": [], "google_error": err, "hours": missed_hours},
+            "stale": False,
+            "cached_at": None,
+            "google_error": err,
+            "error": err,
+        }
+
+
+def print_popover_feed_json(upcoming_hours: int = 30, missed_hours: int = 12) -> None:
+    print(json.dumps(
+        collect_popover_feed(upcoming_hours=upcoming_hours, missed_hours=missed_hours),
+        indent=2,
+        default=str,
+    ))
 
 
 def run_event_by_id(event_id: str) -> None:
@@ -749,9 +821,9 @@ def run_script_from_stdin() -> None:
 # ⚙️  SETTINGS JSON ENDPOINT  (v1.3.1 — menubar Settings window)
 # =========================================================
 #
-# READ-ONLY in v1.3.1. Native form-based editing is deferred to v1.4.x
-# (needs a settings.json refactor first). Each section shows the value
-# and a "Edit in settings.py" affordance.
+# v1.4.1 — native editing writes gitignored sidecars
+# (`data/user_settings.json` / `data/user_targets.json`). Defaults remain
+# in `config/settings.py`.
 #
 # Hidden fields (security / size):
 #   - AUTOFILL_SHORTCUTS    (binding table; large, key-centric)
@@ -759,7 +831,7 @@ def run_script_from_stdin() -> None:
 #   - MAP_DOMAINS           (large list; surface count only)
 
 def print_settings_json() -> None:
-    """`cli.main settings --json` — beginner-friendly view of config/settings.py.
+    """`cli.main settings --json` — beginner-friendly view of effective settings.
 
     v1.3.7 — removed Show-menu-bar / Theme / Notifications surfaces;
     real probes for accessibility, apple events, google account.
@@ -965,7 +1037,7 @@ def _has_oauth_token() -> bool:
     return Path(TOKEN_PATH).exists()
 
 
-# Local "open settings.py in user's editor" — used by the bridge.
+# Local "open settings.py in user's editor" — advanced defaults editor.
 
 def open_settings_file() -> None:
     """`cli.main edit-settings-file` — open config/settings.py in default editor."""
@@ -1012,7 +1084,7 @@ def open_system_prefs(pane: str) -> None:
 def apply_settings_from_stdin() -> None:
     """
     `cli.main apply-settings --json` (v1.3.2) — read a JSON object of
-    {ui_key: new_value} from stdin and write back to settings.py.
+    {ui_key: new_value} from stdin and write to data/user_settings.json.
 
     Returns a result dict (see core.settings_writer.apply_settings).
     """
@@ -1043,7 +1115,7 @@ def apply_targets_from_stdin() -> None:
     """
     `cli.main apply-targets --json` (v1.3.9) — read a JSON object
     `{"targets": {alias: "App"|["App",…], …}}` from stdin and replace
-    the TARGETS dict in settings.py atomically.
+    data/user_targets.json atomically.
     """
     from core.targets_writer import apply_targets
     try:
@@ -1058,6 +1130,20 @@ def apply_targets_from_stdin() -> None:
         }))
         sys.exit(1)
     print(json.dumps(apply_targets(payload), default=str))
+
+
+def migrate_settings_command() -> None:
+    """Move legacy settings.py/TARGETS edits into gitignored JSON sidecars."""
+    from core.settings_reader import migrate_settings_to_sidecars
+    from core.targets_reader import migrate_targets_to_sidecar
+
+    settings_result = migrate_settings_to_sidecars()
+    targets_result = migrate_targets_to_sidecar()
+    print(json.dumps({
+        "ok": bool(settings_result.get("ok")) and bool(targets_result.get("ok")),
+        "settings": settings_result,
+        "targets": targets_result,
+    }, indent=2, default=str))
 
 
 def _lookup_window_hours() -> int:
@@ -1965,6 +2051,9 @@ if __name__ == "__main__":
     if cmd == "apply-targets":
         apply_targets_from_stdin()
         sys.exit(0)
+    if cmd == "migrate-settings":
+        migrate_settings_command()
+        sys.exit(0)
     if cmd in ("daemon-start", "daemon-stop", "daemon-restart"):
         print_daemon_action_json(cmd.split("-", 1)[1])
         sys.exit(0)
@@ -1987,6 +2076,9 @@ if __name__ == "__main__":
             if seen and not a.startswith("-"):
                 pane = a; break
         open_system_prefs(pane or "accessibility")
+        sys.exit(0)
+    if cmd == "popover-feed":
+        print_popover_feed_json(upcoming_hours=_hours_arg(args, default=30), missed_hours=12)
         sys.exit(0)
     if cmd == "upcoming":
         print_upcoming_json(hours=_hours_arg(args, default=24))

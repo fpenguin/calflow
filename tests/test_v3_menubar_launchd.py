@@ -55,6 +55,34 @@ class MenubarLaunchdTests(unittest.TestCase):
         self.assertIn(["unload", str(self.plist)], calls)
         self.assertIn(["load", "-w", str(self.plist)], calls)
 
+    def test_install_failure_returns_recovery_steps(self) -> None:
+        def fake_run(args: list[str]):
+            if args and args[0] == "load":
+                return SimpleNamespace(returncode=5, stdout="", stderr="bad plist")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with patch.object(ml, "_run_launchctl", side_effect=fake_run), \
+             patch.object(ml, "_loaded_line", return_value=None):
+            result = ml.install_menubar(load=True)
+
+        self.assertFalse(result["ok"])
+        self.assertIn("bad plist", result["error"])
+        self.assertTrue(any("menubar-uninstall" in step for step in result["recovery"]))
+
+    def test_start_loaded_but_process_not_ready_returns_recovery_steps(self) -> None:
+        self.plist.parent.mkdir(parents=True)
+        self.plist.write_text("plist", encoding="utf-8")
+
+        with patch.object(ml, "_run_launchctl",
+                          return_value=SimpleNamespace(returncode=0, stdout="", stderr="")), \
+             patch.object(ml, "_loaded_line", return_value="123\t0\tcom.calflow.menubar"), \
+             patch.object(ml, "_read_lock", return_value={"alive": False}):
+            result = ml.start_menubar()
+
+        self.assertFalse(result["ok"])
+        self.assertIn("did not become ready", result["error"])
+        self.assertTrue(any("tail -n 80" in step for step in result["recovery"]))
+
     def test_status_reports_lock_and_plist_state(self) -> None:
         self.plist.parent.mkdir(parents=True)
         self.plist.write_text("plist", encoding="utf-8")

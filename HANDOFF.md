@@ -7,7 +7,27 @@ pre-launch development must stay on **v1.4.x** until the user says otherwise.
 
 Current local version source:
 
-- `core/version.py` renders `1.4.0-dev`
+- `core/version.py` renders `1.4.1-dev`
+
+## Current v1.4 Local Work
+
+The current local work is the v1.4 settings/cache/recovery cleanup:
+
+- Settings UI writes user preferences to `data/user_settings.json`.
+- Alias/TARGETS edits write to `data/user_targets.json`.
+- `config/settings.py` keeps tracked defaults and imports those sidecars at
+  module load.
+- `config/settings.defaults.py` is the restore/diff snapshot for
+  `python -m cli.main migrate-settings`.
+- The menubar popover now uses `cli.main popover-feed`; successful payloads
+  are cached in `data/popover_cache.json` for up to 24 hours.
+- If the popover refresh fails but cache is usable, UI shows stale cached data
+  with an amber retry banner rather than going empty.
+- Menu bar LaunchAgent lifecycle failures now include `error` and `recovery`
+  steps with reset commands/log paths.
+
+Do not reintroduce writes to tracked `config/settings.py` from Settings UI
+or TARGETS editor. Runtime writes belong under `data/`.
 
 ## GitHub Push Freeze
 

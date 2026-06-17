@@ -138,6 +138,22 @@ def menubar_status() -> dict[str, Any]:
     }
 
 
+def _recovery_steps(reason: str) -> list[str]:
+    return [
+        f"Reason: {reason}",
+        "Reset the menu bar LaunchAgent: python3 -m cli.main menubar-uninstall && python3 -m cli.main menubar-install",
+        f"Inspect logs: tail -n 80 {DATA_DIR / 'menubar.err.log'}",
+        f"If launchctl is wedged, unload manually: launchctl unload {MENUBAR_PLIST_PATH}",
+    ]
+
+
+def _attach_failure_recovery(status: dict[str, Any], reason: str) -> dict[str, Any]:
+    status["ok"] = False
+    status["error"] = reason
+    status["recovery"] = _recovery_steps(reason)
+    return status
+
+
 def install_menubar(load: bool = True) -> dict[str, Any]:
     MENUBAR_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MENUBAR_PLIST_PATH.write_text(generate_menubar_plist(), encoding="utf-8")
@@ -148,13 +164,17 @@ def install_menubar(load: bool = True) -> dict[str, Any]:
         load_result = _run_launchctl(["load", "-w", str(MENUBAR_PLIST_PATH)])
 
     status = menubar_status()
+    ok = load_result is None or load_result.returncode == 0 or status["loaded"]
     status.update({
         "action": "install",
-        "ok": load_result is None or load_result.returncode == 0 or status["loaded"],
+        "ok": ok,
         "unload_exit_code": unload.returncode,
         "load_exit_code": None if load_result is None else load_result.returncode,
         "load_stderr": None if load_result is None else load_result.stderr.strip(),
     })
+    if not ok:
+        reason = (load_result.stderr or "launchctl load failed").strip() if load_result else "install failed"
+        _attach_failure_recovery(status, reason)
     return status
 
 
@@ -182,6 +202,14 @@ def start_menubar() -> dict[str, Any]:
         "exit_code": result.returncode,
         "stderr": result.stderr.strip(),
     })
+    if not status["ok"]:
+        if result.returncode != 0:
+            reason = result.stderr.strip() or "launchctl start failed"
+        elif not lock.get("alive"):
+            reason = "LaunchAgent loaded, but the menu bar process did not become ready"
+        else:
+            reason = "menu bar start failed"
+        _attach_failure_recovery(status, reason)
     return status
 
 
@@ -194,6 +222,8 @@ def stop_menubar() -> dict[str, Any]:
         "exit_code": result.returncode,
         "stderr": result.stderr.strip(),
     })
+    if not status["ok"]:
+        _attach_failure_recovery(status, result.stderr.strip() or "launchctl unload failed")
     return status
 
 

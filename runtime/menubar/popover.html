@@ -481,6 +481,28 @@ button:disabled { opacity: 0.56; cursor: not-allowed; }
   padding: 12px 14px;
   font-size: 13px;
 }
+.cache-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0.5px solid rgba(255,190,94,0.48);
+  background: rgba(255,190,94,0.16);
+  color: #ffd89b;
+  border-radius: 10px;
+  padding: 11px 13px;
+  margin-top: 12px;
+  font-size: 12.8px;
+}
+.cache-banner button {
+  color: #fff1d5;
+  border-bottom: 1px solid rgba(255,241,213,0.62);
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: nowrap;
+}
 .skeleton {
   background: linear-gradient(90deg,
     rgba(255,255,255,0.05) 0%,
@@ -675,6 +697,9 @@ const state = {
   refreshing: false,
   refreshMessage: "",
   refreshError: false,
+  cacheStale: false,
+  cachedAt: null,
+  cacheError: "",
 };
 
 function renderHeader() {
@@ -701,6 +726,30 @@ function renderHeader() {
     +     '<button class="icon-btn" title="Settings" onclick="cfOpenSettings()" aria-label="Settings">' + svg("gear", 25) + '</button>'
     +   '</div>'
     + '</div>';
+}
+
+function humanCacheAge(iso) {
+  if (!iso) return "cached";
+  try {
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return "cached";
+    const sec = Math.floor(ms / 1000);
+    if (sec < 60) return "less than 1-min-old";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + "-min-old";
+    const h = Math.floor(min / 60);
+    return h + "-hour-old";
+  } catch (e) {
+    return "cached";
+  }
+}
+
+function renderCacheBanner() {
+  if (!state.cacheStale) return "";
+  return '<div class="cache-banner">'
+       +   '<span>Showing ' + esc(humanCacheAge(state.cachedAt)) + ' data &middot; refresh failed</span>'
+       +   '<button onclick="cfRefresh(true)">Retry</button>'
+       + '</div>';
 }
 
 function timelineStatus(ev) {
@@ -877,6 +926,7 @@ function render() {
   if (!root) return;
   root.innerHTML =
       renderHeader()
+    + renderCacheBanner()
     + renderTimeline()
     + renderMissed()
     + renderQuickActions()
@@ -902,22 +952,22 @@ async function cfRefresh(force) {
   state.refreshError = false;
   render();
   try {
-    const [status, stats, upcoming, missed] = await Promise.all([
-      bridge("status").catch(e => ({ error: String(e) })),
-      bridge("stats").catch(e => ({ error: String(e) })),
-      bridge("upcoming", { hours: 30 }).catch(e => ({ error: String(e) })),
-      bridge("missed", { hours: 12 }).catch(e => ({ error: String(e) })),
-    ]);
-    state.status = status;
-    state.stats = stats;
-    state.upcoming = upcoming;
-    state.missed = missed;
+    const feed = await bridge("popover-feed", { hours: 30 });
+    state.status = feed.status || {};
+    state.stats = feed.stats || {};
+    state.upcoming = feed.upcoming || {};
+    state.missed = feed.missed || {};
     state.lastRefresh = new Date().toISOString();
-    const failed = [status, stats, upcoming, missed].some(x => x && x.error);
+    state.cacheStale = !!feed.stale;
+    state.cachedAt = feed.cached_at || null;
+    state.cacheError = feed.google_error || feed.error || "";
+    const failed = !!feed.error && !feed.stale;
     state.refreshMessage = failed ? "Refresh failed" : "";
     state.refreshError = failed;
     render();
   } catch (e) {
+    state.cacheStale = false;
+    state.cachedAt = null;
     state.refreshMessage = "Refresh failed";
     state.refreshError = true;
     render();
@@ -930,6 +980,7 @@ async function cfRefresh(force) {
 
 window.addEventListener("DOMContentLoaded", () => cfRefresh(true));
 setInterval(() => cfRefresh(false), 30000);
+setInterval(() => { if (state.cacheStale) render(); }, 30000);
 window.cf_onShow = function() { cfRefresh(true); };
 
 async function cfRunEvent(id, btn) {

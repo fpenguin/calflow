@@ -365,7 +365,8 @@ click text("Submit")
 
 ### Validation Rules
 
-- MUST exist in `config/settings.py` (under `TARGETS`)  
+- MUST exist in the effective `TARGETS` table (`config/settings.py`
+  defaults plus any Settings → Aliases overrides)
 - MAY expand to:
   - single app  
   - multiple apps  

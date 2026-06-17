@@ -1,20 +1,19 @@
 """
-CalFlow settings writer (v1.3.2).
+CalFlow settings writer (v1.4.1).
 
-Writes user-edited values back into `config/settings.py` from the
-menubar Settings window.
+Writes user-edited values from the menubar Settings window into
+`data/user_settings.json`. Project defaults remain in tracked
+`config/settings.py`.
 
 Design principles:
 - WHITELIST. Only fields explicitly in EDITABLE_SETTINGS may be
   written. Unknown keys are rejected, never coerced.
 - VALIDATE first. Type / range / choice checks BEFORE any disk write.
   An invalid value never reaches the file.
-- BACKUP first. `config/settings.py` is copied to
-  `config/settings.py.bak` on every successful write batch.
-- LINE-BASED REPLACE. We match `^KEY = …$` once at module top level
-  and rewrite the value in place. Comments outside the line are
-  preserved; an inline `# …` comment on the assignment line is dropped
-  (rare in our settings.py).
+- BACKUP first. Existing `data/user_settings.json` is copied to
+  `data/user_settings.json.bak` on every successful write batch.
+- DEFAULTS STAY TRACKED. Runtime imports merge defaults from
+  `config/settings.py` with this gitignored JSON sidecar.
 - LAUNCHD-FREE. Toggles that depend on launchctl (e.g.
   `auto_start_at_login`) are NOT auto-applied — per CLAUDE.md, CalFlow
   never modifies launchd state autonomously. They return
@@ -46,104 +45,19 @@ __all__ = [
     "get_current_value",
 ]
 
-import re
-import shutil
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config.config import BASE_DIR
-from core.utils import log
+from core.settings_reader import (
+    USER_SETTINGS_BACKUP_PATH,
+    USER_SETTINGS_PATH,
+    load_user_overrides,
+    save_user_overrides,
+)
+from core.settings_schema import EDITABLE_SETTINGS
 
 
-SETTINGS_PATH = Path(BASE_DIR) / "config" / "settings.py"
-BACKUP_PATH   = Path(BASE_DIR) / "config" / "settings.py.bak"
-
-
-# =========================================================
-# 📋 WHITELIST
-# =========================================================
-#
-# Each entry maps a UI-side dotted key to the settings.py constant
-# name + a type rule + (optional) range / choices / unit conversion.
-#
-# Format:
-#   ui_key: {
-#     "const":      "CONSTANT_NAME",   # symbol in settings.py
-#     "py_type":    int|float|str,     # Python type to coerce to
-#     "min": …, "max": …               # numeric range (inclusive)
-#     "choices":    [...]              # allowed string values
-#     "unit_in":    "minutes" | "seconds"   # what the UI sends
-#     "unit_out":   "seconds"               # what settings.py stores
-#   }
-
-EDITABLE_SETTINGS: Dict[str, Dict[str, Any]] = {
-    # ----- Events -----
-    "events.open_minutes_early": {
-        "const": "DEFAULT_ALERT_SECONDS",
-        "py_type": int, "min": 0, "max": 60,
-        "unit_in": "minutes", "unit_out": "seconds",
-    },
-    "events.fetch_window_hours": {
-        "const": "FETCH_WINDOW_HOURS",
-        "py_type": int, "min": 1, "max": 24,
-    },
-    "events.status_lookahead_h": {
-        "const": "STATUS_LOOKAHEAD_HOURS",
-        "py_type": int, "min": 1, "max": 168,
-    },
-
-    # ----- Title links -----
-    "title_links.open_mode": {
-        "const": "TITLE_URL_OPEN_DEFAULT",
-        "py_type": str, "choices": ["tab", "window"],
-    },
-    "title_links.autofill": {
-        "const": "TITLE_URL_AUTOFILL_DEFAULT",
-        "py_type": str, "choices": ["none", "fill", "submit"],
-    },
-
-    # ----- Passwords -----
-    "passwords.provider": {
-        "const": "AUTOFILL_PROVIDER",
-        "py_type": str, "choices": ["apple", "1password", "bitwarden", "default"],
-    },
-    # v1.3.7 — UI sends a bool toggle; map True→"semi-auto", False→"off".
-    "passwords.autofill_on_open": {
-        "const": "AUTOFILL_MODE",
-        "py_type": str, "choices": ["off", "semi-auto"],
-        "from_bool": True,
-    },
-
-    # ----- Advanced -----
-    "advanced.trigger_grace_seconds": {
-        "const": "GRACE_SECONDS",
-        "py_type": int, "min": 0, "max": 3600,
-    },
-    "advanced.early_tolerance_sec": {
-        "const": "EARLY_TOLERANCE",
-        "py_type": int, "min": 0, "max": 600,
-    },
-    "advanced.max_urls_per_event": {
-        "const": "MAX_URLS",
-        "py_type": int, "min": 1, "max": 50,
-    },
-    "advanced.log_mode": {
-        "const": "LOG_MODE",
-        "py_type": str, "choices": ["stdout", "stderr", "both"],
-    },
-    "advanced.plus_max_commands": {
-        "const": "PLUS_MAX_COMMANDS",
-        "py_type": int, "min": 1, "max": 200,
-    },
-    "advanced.plus_inter_command_delay_sec": {
-        "const": "PLUS_INTER_COMMAND_DELAY",
-        "py_type": float, "min": 0.0, "max": 10.0,
-    },
-    "advanced.plus_screenshot_dir": {
-        "const": "PLUS_SCREENSHOT_DIR",
-        "py_type": str,
-    },
-}
+SETTINGS_PATH = USER_SETTINGS_PATH
+BACKUP_PATH = USER_SETTINGS_BACKUP_PATH
 
 
 # =========================================================
@@ -169,7 +83,7 @@ _LAUNCHD_KEYS: Dict[str, str] = {
 
 def apply_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Validate + apply a batch of UI edits to settings.py.
+    Validate + apply a batch of UI edits to data/user_settings.json.
 
     Returns a dict summarising what happened:
         applied:           [ui_key, …]               — written to disk
@@ -215,47 +129,32 @@ def apply_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
             "py_value": coerced,
         })
 
-    # --- Pass 2: write-back, only if anything passed validation ---
+    # --- Pass 2: write sidecar, only if anything passed validation ---
     backup: Optional[str] = None
     if write_plan:
         try:
-            text = SETTINGS_PATH.read_text(encoding="utf-8")
+            overrides = load_user_overrides(SETTINGS_PATH)
         except Exception as exc:
             for w in write_plan:
-                rejected.append({"key": w["ui_key"], "reason": f"could not read settings.py: {exc}"})
-            # v1.3.14 — was `needs_term` (undefined name from pre-v1.3.6
-            # refactor); now matches the v1.3.6+ schema with daemon_actions.
+                rejected.append({"key": w["ui_key"], "reason": f"could not read user_settings.json: {exc}"})
             return {"applied": applied, "rejected": rejected,
                     "requires_terminal": [], "daemon_actions": daemon_actions,
                     "backup_path": None}
 
-        new_text = text
-        ok_writes: List[Dict[str, Any]] = []
         for w in write_plan:
-            updated, hit = _replace_assignment(new_text, w["const"], w["py_value"])
-            if not hit:
-                rejected.append({"key": w["ui_key"],
-                                 "reason": f"constant {w['const']} not found in settings.py"})
-                continue
-            new_text = updated
-            ok_writes.append(w)
+            overrides[w["const"]] = w["py_value"]
 
-        if ok_writes:
-            # Backup once per successful batch.
-            try:
-                shutil.copyfile(str(SETTINGS_PATH), str(BACKUP_PATH))
-                backup = str(BACKUP_PATH)
-            except Exception as exc:
-                log(f"[WARN] settings backup failed: {exc}")
-            try:
-                tmp = str(SETTINGS_PATH) + ".tmp"
-                Path(tmp).write_text(new_text, encoding="utf-8")
-                Path(tmp).replace(SETTINGS_PATH)
-                applied.extend(w["ui_key"] for w in ok_writes)
-            except Exception as exc:
-                for w in ok_writes:
-                    rejected.append({"key": w["ui_key"],
-                                     "reason": f"write failed: {exc}"})
+        try:
+            backup = save_user_overrides(
+                overrides,
+                path=SETTINGS_PATH,
+                backup_path=BACKUP_PATH,
+            )
+            applied.extend(w["ui_key"] for w in write_plan)
+        except Exception as exc:
+            for w in write_plan:
+                rejected.append({"key": w["ui_key"],
+                                 "reason": f"write failed: {exc}"})
 
     return {
         "applied": applied,
@@ -379,34 +278,3 @@ def _validate(spec: Dict[str, Any], raw_value: Any):
         out_value = int(input_val) * 60
 
     return out_value, None
-
-
-def _replace_assignment(text: str, const_name: str, py_value: Any):
-    """
-    Replace the FIRST top-level `CONST = …` assignment in `text`.
-
-    Returns (new_text, hit) where hit is True if the assignment was
-    found and replaced.
-    """
-    formatted = _format_python_value(py_value)
-    pattern = re.compile(
-        r"(?m)^([ \t]*)" + re.escape(const_name) + r"\s*=[^\n]*$"
-    )
-    new_text, n = pattern.subn(rf"\1{const_name} = {formatted}", text, count=1)
-    return new_text, n > 0
-
-
-def _format_python_value(value: Any) -> str:
-    """Render a Python value as it should appear on the right side of `=`."""
-    if isinstance(value, bool):
-        return "True" if value else "False"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, str):
-        # Validation already rejected embedded quotes / newlines.
-        # v1.3.14 — also escape backslashes so paths like "C:\foo" round-trip
-        # cleanly (a literal "\n" in the input would otherwise become a real
-        # newline at next module-load, breaking syntax).
-        return '"' + value.replace("\\", "\\\\") + '"'
-    # Defensive: never write a list / dict via this path.
-    return repr(value)

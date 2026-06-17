@@ -9,8 +9,7 @@ interactive Recipes editor, and an editable Settings page.
 - **v1.3.0** — popover (status, upcoming, missed, stats).
 - **v1.3.1** — Recipes window (3-col: categories / list / sandbox) and
   Settings window (2-col, read-only display).
-- **v1.3.2** — Singleton lock + interactive Settings (Apply writes back to
-  `config/settings.py`, with backup, validation, launchd-safe handling).
+- **v1.3.2** — Singleton lock + interactive Settings.
 - **v1.3.3** — Pages render structure on boot before bridge resolves
   (no more blank panes during slow subprocess starts).
 - **v1.3.4** — Diagnostics panel + clearer Apply feedback (Saving… toasts,
@@ -36,6 +35,13 @@ interactive Recipes editor, and an editable Settings page.
 - **v1.4.0-dev** — Dynamic popover sizing (shrinks to content;
   timeline and missed-events sections get internal scroll if they
   overflow 320 px).
+- **v1.4.1-dev** — Settings storage cleanup: defaults stay in
+  `config/settings.py`; user edits move to gitignored
+  `data/user_settings.json` and `data/user_targets.json`.
+- **v1.4.1-dev** — Popover cached-data fallback: refresh failures render
+  the last good `popover-feed` snapshot with a stale-data banner.
+- **v1.4.1-dev** — LaunchAgent failure recovery: failed menu bar lifecycle
+  commands return recovery steps and log paths.
 
 ## Install / Run
 
@@ -146,6 +152,7 @@ All endpoints print one JSON object to stdout, exit 0 on success.
 | Subcommand | Since | Notes |
 |------------|-------|-------|
 | `cli.main status --json` | v1.1.27 | Daemon state + next event + version |
+| `cli.main popover-feed --json [--hours N]` | v1.4.1-dev | Combined status/stats/upcoming/missed feed with 24 h cache fallback |
 | `cli.main stats --json` | v1.3.0 | Lifetime action counter + time saved |
 | `cli.main upcoming --json [--hours N]` | v1.3.0 | Default 24 h |
 | `cli.main missed --json [--hours N]` | v1.3.0 | Default 12 h, most recent first |
@@ -169,8 +176,11 @@ no new permissions.
 | Subcommand | Notes |
 |------------|-------|
 | `cli.main settings --json` | Beginner-friendly view; runs Accessibility + Apple Events probes |
-| `cli.main apply-settings` | Reads JSON `{ui_key: value}` from **stdin**, writes via the whitelist |
-| `cli.main edit-settings-file` | Opens settings.py in the user's default editor |
+| `cli.main apply-settings` | Reads JSON `{ui_key: value}` from **stdin**, writes `data/user_settings.json` via the whitelist |
+| `cli.main targets --json` | Returns the effective alias map (`data/user_targets.json` if present, else defaults) |
+| `cli.main apply-targets` | Reads JSON `{"targets": {...}}` from **stdin**, writes `data/user_targets.json` |
+| `cli.main migrate-settings` | Moves legacy `settings.py` / `TARGETS` drift into JSON sidecars |
+| `cli.main edit-settings-file` | Opens defaults file for advanced manual edits |
 
 ### Daemon control (v1.3.6)
 
@@ -199,7 +209,8 @@ daemon launchctl state.
 
 Menu bar lifecycle commands return the LaunchAgent status object:
 `loaded`, `raw_line`, `plist_path`, `lock`, `stdout_log`, and
-`stderr_log`.
+`stderr_log`. On failure, they also return `error` plus `recovery`
+steps with reset commands and log paths.
 
 ### Permissions / OS deep-links (v1.3.7)
 
@@ -214,16 +225,20 @@ Privacy & Security pane on unknown panes.
 ## Settings writes
 
 The Settings window's **Apply & restart** button writes user changes
-back to `config/settings.py` and (when a settings.py value actually
-changed) restarts the daemon so it picks up the new value immediately.
+to gitignored JSON sidecars and restarts the daemon so it picks up the
+new values immediately.
 
 - A whitelist (see `core.settings_writer.EDITABLE_SETTINGS`) defines
   which UI keys are writable. Non-whitelisted keys are rejected with
   `"not editable from UI"`.
 - Each value is type-coerced + range-checked + (for strings)
   quote/newline-stripped *before* any disk write.
-- A backup is created at `config/settings.py.bak` on every successful
-  write batch.
+- Preferences are stored in `data/user_settings.json`; alias edits are
+  stored in `data/user_targets.json`.
+- Existing sidecars are backed up to `data/user_settings.json.bak` or
+  `data/user_targets.json.bak` before a successful write batch.
+- `config/settings.py` and `config/settings.defaults.py` stay tracked
+  defaults and should not be modified by the Settings UI.
 - Launchd-controlled toggles (`Auto-start at login`) **execute natively**
   via `launchctl load -w` / `unload -w` (v1.3.6 — was a copy-this-into-
   Terminal hint in v1.3.2-v1.3.5).
@@ -270,13 +285,52 @@ echo '{"events.fetch_window_hours": 4, "advanced.log_mode": "stderr"}' \
   "rejected":          [],
   "requires_terminal": [],
   "daemon_actions":    [],
-  "backup_path":       "/Users/.../config/settings.py.bak"
+  "backup_path":       "/Users/.../data/user_settings.json.bak"
 }
 ```
 
 Mixed payloads (some valid, some invalid, some launchd) are partially
-applied — valid keys land on disk; rejected keys come back with reasons;
-launchd keys produce a `daemon_actions` entry.
+applied — valid keys land in the sidecar; rejected keys come back with
+reasons; launchd keys produce a `daemon_actions` entry.
+
+### Settings sidecars (v1.4.1-dev)
+
+```json
+{
+  "schema_version": 1,
+  "overrides": {
+    "FETCH_WINDOW_HOURS": 4,
+    "AUTOFILL_PROVIDER": "bitwarden"
+  }
+}
+```
+
+`data/user_targets.json` uses the same `schema_version` wrapper with a
+`targets` object. `python3 -m cli.main migrate-settings` moves legacy
+local edits from `config/settings.py` / `TARGETS` into these sidecars and
+restores `settings.py` from `config/settings.defaults.py`.
+
+## Popover cache (`data/popover_cache.json`)
+
+The popover calls `cli.main popover-feed --json`, which combines status,
+stats, upcoming events, and missed events into one payload. Each
+successful feed is cached for up to 24 hours:
+
+```json
+{
+  "schema_version": 1,
+  "cached_at": "2026-06-15T19:26:03+00:00",
+  "status": {},
+  "stats": {},
+  "upcoming": {"events": []},
+  "missed": {"events": []}
+}
+```
+
+If a later refresh fails but the cache is still fresh, the popover renders
+that snapshot with an amber "showing cached data" banner and a Retry
+action. If there is no usable cache, the existing cold-state error banner
+is shown instead.
 
 `requires_terminal` is empty in v1.3.6+ (kept for back-compat).
 
@@ -374,7 +428,8 @@ toggle / dropdown / number / text field; the row turns amber with an
 1. POSTs the dirty diff to `cli.main apply-settings`.
 2. If any settings.py value actually changed, runs `daemon-restart` so
    the running daemon picks up the new value immediately.
-3. Toast confirms `"Saved N changes · daemon restarted · backup at config/settings.py.bak"`.
+3. Toast confirms `"Saved N changes · daemon restarted"` and notes when a
+   sidecar backup was saved.
 
 If `Auto-start at login` was the only change, only the `launchctl`
 toggle runs (no double restart).
@@ -407,12 +462,19 @@ When `Accessibility` or `Apple Events` is **Denied** or **Unknown**:
 | `runtime/menubar/__init__.py` | exports `POPOVER_HTML`, `RECIPES_HTML`, `SETTINGS_HTML` |
 | `core/stats.py` | `ACTION_WEIGHTS`, `format_time_saved`, `compute_time_saved` |
 | `core/recipes.py` | stock catalog + `data/my_recipes.json` store (v1.3.1) |
-| `core/settings_writer.py` | `EDITABLE_SETTINGS` + `apply_settings()` (v1.3.2) |
+| `core/settings_schema.py` | shared editable settings whitelist |
+| `core/settings_reader.py` | `data/user_settings.json` load/save/migration |
+| `core/settings_writer.py` | `apply_settings()` validation + sidecar write |
+| `core/targets_reader.py` | `data/user_targets.json` load/save/migration |
+| `core/targets_writer.py` | alias validation + sidecar write |
+| `state/popover_cache.py` | 24 h cached `popover-feed` snapshot |
 | `state/stats_store.py` | `load_stats`, `save_stats`, `record_action`, `snapshot` |
 | `tests/test_v3_menubar_stats.py` | Stats backend + JSON contract tests |
 | `tests/test_v3_menubar_launchd.py` | Menu bar LaunchAgent lifecycle tests |
 | `tests/test_v3_recipes.py` | Recipe catalog + my_recipes round-trip tests (v1.3.1) |
 | `tests/test_v3_settings_writer.py` | Whitelist + validation + backup + bool-mapping tests (v1.3.2 / v1.3.7) |
+| `tests/test_v4_user_settings.py` | user settings/targets sidecars + migration tests |
+| `tests/test_v2_popover_cache.py` | popover cache round-trip + age tests |
 
 ## Roadmap (v1.3.9+)
 
@@ -421,9 +483,9 @@ Deferred from the v1.3.x audit:
 - **Default browser editable**: add `DEFAULT_BROWSER_ALIAS` setting +
   parser change so URLs without `@target` route through it. Today
   unrouted URLs go to macOS's default browser.
-- **TARGETS / aliases editor**: in-UI editor for adding / removing /
-  editing the `@alias` → app(s) mapping. Today: edit `TARGETS` in
-  settings.py manually.
+- **Aliases import/export**: the in-UI alias editor now writes
+  `data/user_targets.json`; a future pass can add import/export and
+  bulk-edit tools for larger alias libraries.
 - **Calendars-to-watch picker**: sub-window with checkboxes per Google
   calendar. Today: re-run `python -m cli.main setup`.
 - **Blocked URL patterns** + **Ignored protocols** list editors.

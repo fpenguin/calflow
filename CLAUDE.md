@@ -67,9 +67,9 @@ accept the discrepancy.
 
 ### User configuration
 
-- **Never modify** `TARGETS`, `BUNDLES`, `AUTOFILL_PROVIDER`, or any other
-  user-customisable section of `config/settings.py`. Onboarding writes there;
-  agents don't.
+- **Never modify tracked `config/settings.py` for personal preferences.**
+  Defaults live there; runtime/user edits belong in `data/user_settings.json`
+  and `data/user_targets.json`.
 - **Never change `BLACKLIST_REGEX`, `IGNORED_PROTOCOLS`, `MAP_DOMAINS`** without
   treating it as a security review (these are user-protection lists).
 

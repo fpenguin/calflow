@@ -118,8 +118,8 @@ def resolve_target_expansion(token: Optional[str]) -> List[str]:
             literal = token.lstrip("@")
             log(
                 f"[WARN] Unknown @alias {token!r}; treating as a literal "
-                f"app name ({literal!r}). Add it to TARGETS in "
-                f"config/settings.py to silence this warning."
+                f"app name ({literal!r}). Add it in Settings → Aliases "
+                f"to silence this warning."
             )
             return [literal] if literal else []
         return list(value) if isinstance(value, list) else [value]

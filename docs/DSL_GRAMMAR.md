@@ -442,7 +442,7 @@ two settings tables. A name MUST appear in exactly one of them.
 ### Constraints
 
 - must start with `@`  
-- must exist in `TARGETS` or `BUNDLES`  
+- must exist in the effective `TARGETS` table or `BUNDLES`
 - a bundle is **never** combined with another argument (see §5)  
 - otherwise skipped + `[WARN]` logged  
 

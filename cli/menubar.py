@@ -605,6 +605,15 @@ class _CFApp(NSObject):
             return base + ["status", "--json"]
         if op == "stats":
             return base + ["stats"]
+        if op == "popover-feed":
+            cmd = base + ["popover-feed"]
+            hours = args.get("hours")
+            if hours:
+                try:
+                    cmd += ["--hours", str(int(hours))]
+                except (TypeError, ValueError):
+                    pass
+            return cmd
         if op in ("upcoming", "missed"):
             cmd = base + [op]
             hours = args.get("hours")
