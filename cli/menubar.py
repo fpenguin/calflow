@@ -275,6 +275,29 @@ def _make_status_icon(today: date | None = None) -> NSImage:
 # We forward to _CFApp.handle_message which dispatches to subprocess
 # or local action and resolves the JS Promise via evaluateJavaScript.
 
+
+def _ns_to_python(obj):
+    """JSON encoder fallback for PyObjC NS containers.
+
+    PyObjC bridges NSString to Python str and NSNumber to int / float
+    transparently, but nested NSDictionary / NSArray come through
+    WKScriptMessage.body() unwrapped. json.dumps then raises
+    `TypeError: Object of type INSDictionaryM is not JSON serializable`.
+    Passing this as `json.dumps(payload, default=_ns_to_python)` lets
+    json.dumps convert one level at a time and recurse through the
+    plain Python values returned.
+
+    Regression: v1.4.0-dev — "Save failed: bad apply-targets payload:
+    Object of type INSDictionaryM is not JSON serializable" hit by
+    the Aliases editor save / remove paths.
+    """
+    if hasattr(obj, "keyEnumerator"):       # NSDictionary
+        return {str(k): obj[k] for k in obj}
+    if hasattr(obj, "objectAtIndex_"):      # NSArray
+        return list(obj)
+    return str(obj)                          # NSString / NSNumber fallback
+
+
 class _CFBridge(NSObject):
     def initWithApp_(self, app):           # noqa: N802 (Cocoa naming)
         self = objc.super(_CFBridge, self).init()
@@ -564,7 +587,7 @@ class _CFApp(NSObject):
         stdin_payload: bytes | None = None
         if op == "save-recipe":
             try:
-                stdin_payload = json.dumps(args or {}).encode("utf-8")
+                stdin_payload = json.dumps(args or {}, default=_ns_to_python).encode("utf-8")
             except Exception as exc:
                 self._reject(msg_id, f"bad save-recipe payload: {exc}", src_wv)
                 return
@@ -576,13 +599,13 @@ class _CFApp(NSObject):
             stdin_payload = str(body).encode("utf-8")
         elif op == "apply-settings":
             try:
-                stdin_payload = json.dumps(args or {}).encode("utf-8")
+                stdin_payload = json.dumps(args or {}, default=_ns_to_python).encode("utf-8")
             except Exception as exc:
                 self._reject(msg_id, f"bad apply-settings payload: {exc}", src_wv)
                 return
         elif op == "apply-targets":
             try:
-                stdin_payload = json.dumps(args or {}).encode("utf-8")
+                stdin_payload = json.dumps(args or {}, default=_ns_to_python).encode("utf-8")
             except Exception as exc:
                 self._reject(msg_id, f"bad apply-targets payload: {exc}", src_wv)
                 return

@@ -35,6 +35,22 @@ interactive Recipes editor, and an editable Settings page.
 - **v1.4.0-dev** — Dynamic popover sizing (shrinks to content;
   timeline and missed-events sections get internal scroll if they
   overflow 320 px).
+- **v1.4.0-dev** — Settings UX fixes:
+  - Aliases save / remove no longer crash on nested PyObjC dicts
+    (`json.dumps` now uses a `_ns_to_python` `default=` helper that
+    recursively coerces `NSDictionary` / `NSArray` for the
+    `apply-targets`, `save-recipe`, and `apply-settings` paths).
+  - Events section: removed the misleading read-only "Default browser"
+    and "Chrome profile" rows (both are per-event via `@alias` /
+    `profile(N)`; no global default exists).
+  - Permissions section: reordered so Apple Events sits above
+    Accessibility (the Accessibility status probe depends on Apple
+    Events being granted first); replaced the bare "Unknown" status
+    with explicit "Pending — grant Apple Events first" when the
+    dependency is the cause, and "Couldn't check" elsewhere; added
+    plain-English explanation of why System Settings shows
+    `python3.11` instead of "CalFlow" (real fix lands with the
+    future `.app` bundle).
 - **v1.4.1-dev** — Settings storage cleanup: defaults stay in
   `config/settings.py`; user edits move to gitignored
   `data/user_settings.json` and `data/user_targets.json`.

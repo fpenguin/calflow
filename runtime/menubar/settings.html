@@ -449,8 +449,9 @@ const SECTIONS = [
   { id:"events", label:"Events", group:"General", title:"Events", lead:"How and when calendar events become automations.",
     rows: [
       { lbl:"Open how many minutes early",  desc:"Lead time before the event starts.", key:"events.open_minutes_early",  control:"number", editable:true, unit:"min", min:0, max:60 },
-      { lbl:"Default browser",              desc:"Browser CalFlow uses when an event does not specify @chrome, @safari, etc.", key:"events.default_browser", control:"tag", editable:false },
-      { lbl:"Chrome profile",               desc:"Chosen per event with profile(N); there is no global profile default.", key:"events.default_profile", control:"tag", editable:false },
+      /* v1.4.0-dev — removed "Default browser" and "Chrome profile" rows.
+         Both are per-event (chosen via @alias / profile(N) in the event
+         body); a global default surfaced here was misleading. */
       { lbl:"Per-cycle fetch window",       desc:"How far ahead each daemon poll looks for events.", key:"events.fetch_window_hours", control:"number", editable:true, unit:"h", min:1, max:24 },
       { lbl:"Status look-ahead window",     desc:"How far ahead the status / menubar dashboards look.", key:"events.status_lookahead_h", control:"number", editable:true, unit:"h", min:1, max:168 },
     ] },
@@ -473,12 +474,12 @@ const SECTIONS = [
     ] },
   /* Notifications section removed in v1.3.7 — feature not yet built. */
 
-  { id:"permissions", label:"Permissions", group:"Power user", title:"Permissions", lead:"macOS access CalFlow needs to do its job. If you don't see CalFlow's Python in the access list, copy the path below and click + in System Settings to add it manually.",
+  { id:"permissions", label:"Permissions", group:"Power user", title:"Permissions", lead:"macOS access CalFlow needs to work. Grant in the order listed — each row's status check depends on the previous one. Until CalFlow ships as a .app bundle, System Settings labels these grants by the Python binary path shown at the bottom of this section (not 'CalFlow'). That's expected.",
     rows: [
-      { lbl:"Calendar OAuth",  desc:"Grant once via `python -m cli.main setup`.", key:"permissions.calendar_oauth", control:"status", editable:false },
-      { lbl:"Accessibility",   desc:"Required for hide-by-display, type, click. Add the Python path below to System Settings → Accessibility.", key:"permissions.accessibility",  control:"status", editable:false, grantPane:"accessibility" },
-      { lbl:"Apple Events",    desc:"Required for closing / hiding apps. Granted automatically on first probe.", key:"permissions.apple_events",   control:"status", editable:false, grantPane:"appleevents" },
-      { lbl:"Python binary path",desc:"This is the binary CalFlow runs as. Copy it, then in System Settings click + in the Accessibility list and paste this path.", key:"permissions.python_binary",  control:"copyable", editable:false },
+      { lbl:"Calendar OAuth",    desc:"Lets CalFlow read your Google Calendar. Grant once by running `python -m cli.main setup` in Terminal.", key:"permissions.calendar_oauth", control:"status", editable:false },
+      { lbl:"Apple Events",      desc:"Lets CalFlow talk to other apps so it can close, hide, or focus them. macOS prompts you the first time CalFlow tries. Grant this BEFORE Accessibility — the Accessibility check below uses Apple Events under the hood to read its own state.", key:"permissions.apple_events",   control:"status", editable:false, grantPane:"appleevents" },
+      { lbl:"Accessibility",     desc:"Lets CalFlow simulate keys and clicks, and arrange windows by display. If this row stays \"Pending\" after you grant, check that Apple Events above is Granted first.", key:"permissions.accessibility",  control:"status", editable:false, grantPane:"accessibility" },
+      { lbl:"Python binary path",desc:"This is the binary System Settings is granting permission to — that's why the entry in Privacy & Security reads something like \"python3.11\" instead of \"CalFlow\". Copy this path; in System Settings → Privacy & Security click + and paste it if you don't see it in the list yet.", key:"permissions.python_binary",  control:"copyable", editable:false },
     ] },
   { id:"advanced", label:"Advanced", group:"Power user", title:"Advanced", lead:"Tuning knobs. Touch only if you know what you're doing.",
     rows: [
@@ -637,9 +638,28 @@ function renderControl(row) {
     }
     case "status": {
       let badge;
-      if (v === "ok" || v === "granted")      badge = '<span class="tag ok">Granted</span>';
-      else if (v === "denied" || v === "missing") badge = '<span class="tag err">Denied</span>';
-      else                                        badge = '<span class="tag">Unknown</span>';
+      if (v === "ok" || v === "granted") {
+        badge = '<span class="tag ok">Granted</span>';
+      } else if (v === "denied" || v === "missing") {
+        badge = '<span class="tag err">Denied</span>';
+      } else {
+        // v1.4.0-dev — "Unknown" alone left users wondering what to
+        // do. The most common cause for Accessibility specifically is
+        // that Apple Events hasn't been granted yet (macOS won't let
+        // us probe AX through System Events until AE is granted).
+        // Spell that out; fall back to a generic "Couldn't check" for
+        // the other rows.
+        const ae = getKey(state.data, "permissions.apple_events");
+        const blockedByAE = (row.key === "permissions.accessibility"
+                             && ae !== "ok" && ae !== "granted");
+        const label = blockedByAE
+          ? "Pending — grant Apple Events first"
+          : "Couldn't check";
+        const tip = blockedByAE
+          ? "macOS won't let CalFlow probe Accessibility until Apple Events is granted. Use the Apple Events row above first, then reopen this page."
+          : "Click Open System Settings to grant access, then reopen this page so CalFlow can re-probe.";
+        badge = '<span class="tag" title="'+esc(tip)+'">'+esc(label)+'</span>';
+      }
       // Add a "Open System Settings" deep-link button when not granted
       // and the row knows which pane to open.
       const grantBtn = (row.grantPane && (v === "denied" || v === "unknown" || v == null))
