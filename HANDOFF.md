@@ -29,6 +29,27 @@ The current local work is the v1.4 settings/cache/recovery cleanup:
 Do not reintroduce writes to tracked `config/settings.py` from Settings UI
 or TARGETS editor. Runtime writes belong under `data/`.
 
+## Recently Completed (v1.4.1-dev)
+
+- **Q3 Settings vocabulary pass** (`d4c4594`) — rewrote ~50 user-facing strings
+  in `runtime/menubar/settings.html` to remove jargon (daemon, launchd, OAuth,
+  regex, URI scheme, TARGETS, etc.). No behaviour changes.
+- **Settings UX fixes** (`78db945`) — Aliases save/remove crash (INSDictionaryM
+  serialization), Events section cleanup (removed Default browser / Chrome profile
+  rows), Permissions section reordering and Accessibility status clarification.
+- **Dynamic popover sizing** — `resize-popover` bridge op + `resizePopover()` JS,
+  clamped to `[200, 720]px`. Tests in `tests/test_v3_menubar_resize.py`.
+
+## Pending (next sessions)
+
+- **Q1 — Multi-account calendar** (user confirmed: wants this): allow
+  connecting/disconnecting Google accounts and per-account calendar pickers.
+  Feature needs design/spec before implementation. Multi-session.
+- **Q2 — .app bundle** (user confirmed: wants this): proper macOS app bundle with
+  `Info.plist` so System Settings shows "CalFlow" instead of `python3.11`.
+  When shipped, the `permissions.python_binary` row in Settings can be removed.
+  Multi-session packaging work.
+
 ## GitHub Push Freeze
 
 **Until further notice, do not push anything to GitHub.**
