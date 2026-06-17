@@ -51,6 +51,51 @@ crashes.
 
 ---
 
+# v1.5 — Multi-account Google Calendar (designed · tabled)
+
+> **Status:** spec written, decisions locked, **implementation tabled.**
+> Full design: `_workspace/specs/v1.5.0-multi-account-calendar.md`.
+
+## Goal
+Watch calendars across **N independent Google accounts**, each with its own
+OAuth token — connect/disconnect accounts and pick per-account calendars from
+the Settings UI without Terminal. Today CalFlow authenticates as exactly one
+Google identity (`secrets/token.json`); calendars from other accounts only work
+if they're *shared into* that one login.
+
+## Shape (why it's not a small change)
+- Unit of work shifts from a bare `calendar_id` to an **(account, calendar_id)**
+  pair — the same shared calendar can appear under two logins.
+- Storage: `secrets/token.json` → `secrets/tokens/<email>.json` (one per account)
+  + a `data/accounts.json` registry. Reuses the [[v1.4.0-user-settings-json]]
+  sidecar pattern.
+- `build_service()` (one service) → `build_services()` (one per account); 8
+  fetch sites in `cli/main.py` rewrite to nest account → calendar.
+- Dedup merged streams by `(calendar_id, event_id)`.
+- Settings Calendar section becomes a custom renderer (account cards +
+  per-account calendar checklists), like the Aliases editor.
+
+## Decisions locked (2026-06-17)
+- **In-app OAuth** on a background thread (`account-add` bridge op, cancel +
+  120 s timeout) — no Terminal.
+- **Add `userinfo.email` + `openid` scope** for reliable account labels; legacy
+  token keeps fetching, wider scope acquired lazily on reconnect (zero upgrade
+  friction).
+- Email-named token files; soft cap of 5 accounts.
+
+## Phasing (2 PRs)
+1. Data model + migration + widened scopes + `build_services()` + fetch-loop
+   rewrite + dedup + background-thread OAuth backend + `account add/remove/list`
+   CLI. Ships standalone; existing installs migrate transparently.
+2. Settings UI: Calendar custom renderer, in-app Connect/Disconnect, per-account
+   calendar pickers.
+
+## Why tabled
+Designed but not yet scheduled. Resume from the spec when prioritized; no code
+exists yet.
+
+---
+
 # v2.1 — UI Action Backends
 
 ## Goal

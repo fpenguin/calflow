@@ -42,9 +42,13 @@ or TARGETS editor. Runtime writes belong under `data/`.
 
 ## Pending (next sessions)
 
-- **Q1 — Multi-account calendar** (user confirmed: wants this): allow
-  connecting/disconnecting Google accounts and per-account calendar pickers.
-  Feature needs design/spec before implementation. Multi-session.
+- **Q1 — Multi-account calendar** (designed · tabled): true multi-account
+  (N independent Google logins, one OAuth token each). Spec written with locked
+  decisions — `_workspace/specs/v1.5.0-multi-account-calendar.md`; roadmap entry
+  under `docs/roadmap.md` "v1.5". Decisions: in-app background-thread OAuth,
+  `userinfo.email`+`openid` scope (lazy upgrade), email-named token files,
+  5-account soft cap. 2 PRs (data model+CLI, then Settings UI). Implementation
+  tabled — resume from the spec when prioritized.
 - **Q2 — .app bundle** (deferred to pre-launch): proper macOS app bundle so
   System Settings shows "CalFlow" instead of `python3.11`. Approach: py2app
   (Option A). When shipped, the `permissions.python_binary` row in Settings
