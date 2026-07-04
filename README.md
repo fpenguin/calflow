@@ -211,6 +211,32 @@ Use Plus Mode when you want a workflow, not just a list of links.
 
 ---
 
+## Action Verbs
+
+In Plus Mode, each line starts with an action verb. These are the main
+verbs CalFlow understands today:
+
+| Verb | What it does | Example |
+| --- | --- | --- |
+| `open` | Opens a URL, app, file, or bundle. | `open https://zoom.us @chrome #left(50%)` |
+| `focus` | Brings an app or matching window to the front. | `focus @chrome title("Inbox")` |
+| `hide` | Hides apps without quitting them. | `hide @slack` |
+| `close` | Quits/closes apps; requires an explicit target. | `close @spotify` |
+| `wait` | Pauses the workflow briefly. | `wait 5s` |
+| `screenshot` | Captures the screen, active window, display, window title, or area. | `screenshot to("~/Desktop/meeting.png")` |
+| `click` | Clicks by visible text, selector, or position. | `click text("Submit")` |
+| `type` | Types text into the focused app/window. | `type("hello")` |
+| `press` | Sends a key or keyboard shortcut. | `press {cmd+k}` |
+| `copy` | Copies from the current focused context. | `copy` |
+| `paste` | Pastes clipboard contents. | `paste` |
+| `save` | Saves a source, such as clipboard or run result, to a file. | `save source(clipboard) to("~/Desktop/file.txt")` |
+| `run` | Runs an external automation backend. | `run shortcut("Start Focus")` |
+
+Smart Mode does not require verbs. A plain URL line is treated like
+`open` automatically.
+
+---
+
 ## Running Local Tools
 
 CalFlow can trigger a few local automation systems.
