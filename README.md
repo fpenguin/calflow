@@ -1,6 +1,6 @@
 # CalFlow
 
-**CalFlow prepares your Mac from your calendar.**
+**CalFlow gets your Mac ready before each calendar event.**
 
 CalFlow watches your Google Calendar and runs small local automations
 before an event starts. It can open meeting links, choose a browser,
