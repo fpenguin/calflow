@@ -1,116 +1,242 @@
 # CalFlow
 
-**Your calendar already knows what you are about to do. CalFlow prepares
-your Mac for it.**
+**CalFlow prepares your Mac from your calendar.**
 
-CalFlow turns calendar events into trusted local automations. Put a
-small instruction block in an event, and CalFlow can open the right
-links, route them to the right apps, trigger BetterTouchTool, run Apple
-Shortcuts, fire Alfred External Triggers, or execute small inline
-AppleScripts before the event starts.
+CalFlow watches your Google Calendar and runs small local automations
+before an event starts. It can open meeting links, choose a browser,
+arrange windows, start Apple Shortcuts, trigger BetterTouchTool, or fire
+an Alfred External Trigger.
 
-It is built for the recurring setup work that quietly eats your day:
-meeting prep, focus blocks, coding sessions, dashboards, reporting
-rituals, and personal Mac workflows that should happen because they are
-on the calendar.
+Think of it as a bridge:
+
+```text
+calendar event -> CalFlow -> your Mac is ready
+```
+
+Example: five minutes before a meeting, CalFlow can open Zoom on the
+left side of your screen and the agenda on the right side.
+
+CalFlow is currently a **macOS beta** for people who are comfortable
+using a terminal during setup.
+
+---
+
+## What CalFlow Is For
+
+CalFlow is useful when your calendar already describes what you are
+about to do, but your Mac still waits for you to set everything up by
+hand.
+
+Common examples:
+
+- Open Zoom, Google Meet, or Teams before a meeting.
+- Open the agenda, notes, CRM, dashboard, or GitHub repo next to it.
+- Start a Focus mode or Apple Shortcut for deep work.
+- Trigger a BetterTouchTool or Alfred workflow from a calendar event.
+- Prepare the same workspace every week for recurring routines.
+
+CalFlow is **not** a calendar replacement. It does not edit your Google
+Calendar. It reads upcoming events and uses them as local automation
+instructions.
+
+---
+
+## The Simplest Example
+
+Add this to a calendar event description:
+
+```text
+zoom.us @chrome #left(50%)
+docs.google.com @chrome #right(50%)
+```
+
+When the event is about to start, CalFlow reads those two lines as:
+
+1. Open Zoom in Chrome.
+2. Put it on the left half of the screen.
+3. Open Google Docs in Chrome.
+4. Put it on the right half of the screen.
+
+That is called **Smart Mode**. It is the best place to start.
+
+---
+
+## A More Explicit Example
+
+For a repeatable workflow, add a `+CalFlow+` block:
 
 ```text
 +CalFlow+
 
 open https://zoom.us/j/123456789 @chrome #left(60%)
 open https://docs.google.com/document/d/agenda @chrome #right(40%)
-run shortcut("Start Focus") input("deep work")
-run btt("BTT-ClaudeCoworkTryAgain")
+run shortcut("Start Focus") input("meeting")
 ```
 
-The calendar event becomes the playbook. CalFlow handles the setup.
+That is called **Plus Mode**. Use it when the order matters or when you
+want to run a Shortcut, BetterTouchTool trigger, Alfred workflow, or
+AppleScript.
 
 ---
 
-## Why CalFlow
+## Install
 
-Most calendar events already contain the context for what comes next:
-the meeting URL, the agenda, the project, the people, the dashboard, the
-tooling. But your Mac still waits for you to do the repetitive part.
+CalFlow requires macOS and Python. It also requires Google Calendar API
+credentials because Google asks each local calendar app to authenticate
+with OAuth.
 
-CalFlow gives that context an execution layer:
+Install from GitHub:
 
-- A sales call can open the CRM, call notes, and meeting link.
-- A coding block can start Focus mode and trigger your editor workflow.
-- A standup can open Slack, Linear, GitHub, and the team dashboard.
-- A recurring report can open the right date-filtered URL.
-- A Claude cowork session can fire a BetterTouchTool trigger from the
-  calendar.
+```bash
+curl -fsSL https://raw.githubusercontent.com/fpenguin/calflow/main/scripts/install.sh | bash
+```
 
-The goal is not to turn your calendar into a programming language. The
-goal is to make the obvious setup happen automatically.
+Or install manually:
 
----
+```bash
+git clone https://github.com/fpenguin/calflow.git ~/calflow
+cd ~/calflow
+./scripts/setup.sh
+```
 
-## Two Modes
+Then connect Google Calendar:
 
-### Smart Mode
-
-Smart Mode is for simple events. Paste links and add lightweight tags.
+1. In Google Cloud Console, create an OAuth Client ID for a Desktop App.
+2. Download the file as `credentials.json`.
+3. Put it here:
 
 ```text
-zoom.us @chrome #left(40%)
-notion.so @safari #right(60%)
+secrets/credentials.json
 ```
 
-CalFlow reads this as:
+4. Run setup:
 
-- open Zoom in Chrome
-- open Notion in Safari
-- apply the requested layout tags where supported
+```bash
+source .venv/bin/activate
+python3 -m cli.main setup
+python3 -m cli.main status
+```
 
-Use Smart Mode when the event is mostly links.
+If setup works, CalFlow can see your upcoming calendar events.
 
-### Plus Mode
+---
 
-Plus Mode is for explicit multi-step automations. Add `+CalFlow+`, then
-write one command per line.
+## First Run Checklist
+
+After installation, try these commands:
+
+```bash
+source .venv/bin/activate
+python3 -m cli.main --version
+python3 -m cli.main status
+python3 -m cli.main display
+python3 -m cli.repl
+```
+
+Use the REPL to test a CalFlow block without waiting for a real calendar
+event:
 
 ```text
 +CalFlow+
 
-open @work #display(ext)
+open https://github.com/fpenguin/calflow @chrome #left(60%)
+```
+
+If that opens and positions a browser window, your local automation path
+is working.
+
+---
+
+## Menu Bar Companion
+
+CalFlow includes a small menu bar companion for status, upcoming events,
+manual run buttons, playbooks, and settings.
+
+Install it with:
+
+```bash
+python3 -m cli.main menubar-install
+python3 -m cli.main menubar-status
+```
+
+Look for the month/day icon in the macOS menu bar, for example `JUN`
+over `3`.
+
+The menu bar app is separate from the background automation loop:
+
+- the daemon watches calendar events and runs automations
+- the menu bar app shows status and gives you manual controls
+
+---
+
+## Two Ways To Write Automations
+
+### 1. Smart Mode
+
+Smart Mode is just links plus lightweight tags.
+
+```text
+zoom.us @chrome #left(40%)
+notion.so @safari #right(60%)
+docs.google.com #display(ext)
+```
+
+Use Smart Mode when the calendar event is mostly links.
+
+Common tags:
+
+| Tag | Meaning |
+| --- | --- |
+| `@chrome` | Open in Chrome |
+| `@safari` | Open in Safari |
+| `#left(50%)` | Put the window on the left half |
+| `#right(50%)` | Put the window on the right half |
+| `#full` | Fill the display |
+| `#display(ext)` | Prefer an external display |
+
+### 2. Plus Mode
+
+Plus Mode starts with `+CalFlow+` and uses one command per line.
+
+```text
++CalFlow+
+
 open https://github.com/fpenguin/calflow @chrome #left(60%)
 open https://linear.app @chrome #right(40%)
 wait 2
 screenshot
 ```
 
-Use Plus Mode when order matters, when you want run backends, or when
-the event should become a repeatable workflow.
+Use Plus Mode when you want a workflow, not just a list of links.
 
 ---
 
-## V2.0 Examples
+## Running Local Tools
 
-### Meeting Prep
+CalFlow can trigger a few local automation systems.
+
+### Apple Shortcuts
 
 ```text
 +CalFlow+
 
-open https://zoom.us/j/123456789 @chrome #left(55%)
-open https://docs.google.com/document/d/agenda @chrome #right(45%)
-run shortcut("Start Focus") input("meeting")
+run shortcut("Start Focus")
+run shortcut("Open Deep Work Stack") input("calflow")
 ```
 
-### Better Touch Tool Trigger
+### BetterTouchTool
 
 ```text
 +CalFlow+
 
 run btt("BTT-ClaudeCoworkTryAgain")
 ```
-Hit your 5h limit already? Set up your BTT automation to click on "Try Again" and fire your next command on queue while you're away or asleep, so that the work is done when you're back at desk.
 
+The trigger name should match the BetterTouchTool trigger you created.
 
 ### Alfred External Trigger
 
-Alfred requires the workflow bundle id and external trigger id. The
+Alfred needs the workflow bundle ID and the external trigger ID. The
 workflow display name alone is not enough.
 
 ```text
@@ -127,15 +253,6 @@ Combined form is also supported:
 run alfred("com.example.workflow/try-again") input("meeting prep")
 ```
 
-### Apple Shortcuts
-
-```text
-+CalFlow+
-
-run shortcut("Start Focus")
-run shortcut("Open Deep Work Stack") input("calflow")
-```
-
 ### Inline AppleScript
 
 Small AppleScripts can live directly in the calendar event:
@@ -149,13 +266,15 @@ display notification "Meeting setup complete"
 +++
 ```
 
-The `+++` delimiters keep embedded AppleScript visually separate from
-CalFlow commands.
+The `+++` delimiters keep AppleScript visually separate from CalFlow
+commands.
 
-### Capturing Run Errors
+---
+
+## Error Handling
 
 Run backends can report their result to a notification, the clipboard,
-or a file:
+or a file.
 
 ```text
 +CalFlow+
@@ -166,22 +285,28 @@ error "Demo failure"
 +++
 ```
 
-You can also react to successful runs or returned output:
+You can also react to successful runs:
 
 ```text
 +CalFlow+
 
 run shortcut("Start Focus") if(success) notify("Focus mode started")
-run applescript if(output) copy(result)
-+++
-return "Daily setup complete"
-+++
 ```
 
-### Dynamic Dates
+Run backend errors are logged and, by default, shown as macOS
+notifications. This includes blocked backends, missing trigger names,
+AppleScript failures, Shortcut failures, and local URL-launch failures
+for BetterTouchTool and Alfred.
 
-Dynamic expressions resolve at execution time, which makes recurring
-events useful for reports and dashboards.
+Alfred's URL scheme does not report workflow-internal failures back to
+CalFlow, so those still need to be checked in Alfred.
+
+---
+
+## Dynamic Dates
+
+Dynamic expressions are resolved when the event runs. They are useful
+for recurring reports and dashboards.
 
 ```text
 +CalFlow+
@@ -189,46 +314,28 @@ events useful for reports and dashboards.
 open "https://reports.example.com/monthly?start={now-1mo > start_of_month}&end={now-1mo > end_of_month}"
 ```
 
----
+Examples:
 
-## What Works Today
-
-| Feature | V2.0 status |
+| Expression | Meaning |
 | --- | --- |
-| Smart Mode URL extraction | Real |
-| Browser/app target tags like `@chrome`, `@safari` | Real |
-| Bundles like `@work` | Real |
-| Dynamic dates like `{now-7d}` | Real |
-| `open` | Real |
-| `wait` | Real |
-| `screenshot` | Real for standard capture; some variants still fall back |
-| `run btt(...)` | Real via BetterTouchTool URL scheme |
-| `run shortcut(...)` | Real via macOS `shortcuts run` |
-| `run alfred(...)` | Real via Alfred External Trigger URL scheme |
-| `run applescript` | Real via `osascript` |
-| Calendar invite trust gate | Real |
-| Run failure notifications | Real, best-effort macOS notifications |
-| Arbitrary shell/script backend | Not part of the v2.0 grammar |
-| UI actions like `click`, `type`, `press`, `copy`, `paste`, `save` | Parsed and routed; backend work is staged for later releases |
-
-CalFlow is intentionally conservative about local execution. The useful
-automation backends are available, but arbitrary shell/script execution
-is not enabled by default.
+| `{now}` | Current date/time |
+| `{now-7d}` | Seven days ago |
+| `{now-1mo > start_of_month}` | Start of last month |
+| `{now > YYYY-MM-DD}` | Format the current date |
 
 ---
 
 ## Safety Model
 
-Calendar automation is powerful, so CalFlow treats event origin as a
-permission boundary.
+Calendar automation is powerful, so CalFlow is conservative by default.
 
 Default policy:
 
-- self-authored events can execute
+- events you created can run automations
 - third-party calendar invites are blocked
-- trusted domains and emails are empty by default
+- trusted domains and trusted emails are empty by default
 - run backends are allowed by trust level
-- dangerous arbitrary script/shell execution is disabled by default
+- arbitrary shell/script execution is not part of the default grammar
 
 Configure trust and backend allowlists in `config/settings.py`:
 
@@ -239,10 +346,6 @@ TRUSTED_INVITE_EMAILS = set()
 ALLOW_RUN_BACKENDS_SELF = {"btt", "alfred", "shortcut", "applescript"}
 ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
 ALLOW_RUN_BACKENDS_TRUSTED_EMAIL = {"shortcut"}
-RUN_APPLESCRIPT_TIMEOUT = 10
-RUN_BTT_TIMEOUT = 5
-RUN_SHORTCUT_TIMEOUT = 30
-RUN_ALFRED_TIMEOUT = 5
 RUN_ERROR_NOTIFICATIONS = True
 ```
 
@@ -254,73 +357,36 @@ ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
 ```
 
 The trust gate applies to daemon auto-runs and manual `run-event`
-execution from the menubar or CLI. Local REPL and recipe sandbox runs
+execution from the menu bar or CLI. Local REPL and recipe sandbox runs
 are treated as user-initiated local actions.
-
-Run backend errors are logged and, by default, shown as macOS
-notifications. This includes blocked backends, missing trigger names,
-AppleScript failures, Shortcut failures, and local URL-launch failures
-for BTT and Alfred. Alfred's URL scheme does not report
-workflow-internal failures back to CalFlow, so those still need to be
-checked in Alfred.
 
 ---
 
-## Install
+## What Works Today
 
-One-line install:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/fpenguin/calflow/main/scripts/install.sh | bash
-```
-
-Manual install:
-
-```bash
-git clone https://github.com/fpenguin/calflow.git ~/calflow
-cd ~/calflow
-./scripts/setup.sh
-```
-
-Connect Google Calendar:
-
-1. In Google Cloud Console, create an OAuth Client ID for a Desktop App.
-2. Download `credentials.json`.
-3. Place it at `secrets/credentials.json`.
-4. Run setup:
-
-```bash
-source .venv/bin/activate
-python3 -m cli.main setup
-python3 -m cli.main status
-```
-
-Useful first checks:
-
-```bash
-python3 -m cli.main display
-python3 -m cli.repl
-```
-
-Install the menu bar companion:
-
-```bash
-python3 -m cli.main menubar-install
-python3 -m cli.main menubar-status
-```
-
-Look for the current month/day icon in the macOS menu bar, e.g. `JUN`
-over `3`. The companion is separate from the background daemon: the
-daemon runs calendar automation, while the menu bar companion gives you
-status, missed events, recipes, and settings. `menubar-install` creates
-`~/Library/LaunchAgents/com.calflow.menubar.plist` so the icon appears
-now and after login.
+| Feature | Status |
+| --- | --- |
+| Smart Mode URL extraction | Works |
+| Browser/app target tags like `@chrome`, `@safari` | Works |
+| Bundle aliases like `@work` | Works |
+| Window layout tags like `#left(50%)` | Works |
+| Dynamic dates like `{now-7d}` | Works |
+| `open` | Works |
+| `wait` | Works |
+| `screenshot` | Works for standard capture; some variants still fall back |
+| `run btt(...)` | Works via BetterTouchTool URL scheme |
+| `run shortcut(...)` | Works via macOS `shortcuts run` |
+| `run alfred(...)` | Works via Alfred External Trigger URL scheme |
+| `run applescript` | Works via `osascript` |
+| Calendar invite trust gate | Works |
+| Run failure notifications | Works, best-effort macOS notifications |
+| UI actions like `click`, `type`, `press`, `copy`, `paste`, `save` | Parsed and routed; backend work continues |
 
 ---
 
 ## Grammar Cheatsheet
 
-### Smart Mode
+Smart Mode:
 
 ```text
 https://example.com @chrome #left(50%)
@@ -328,7 +394,7 @@ zoom.us @chrome
 docs.google.com #display(ext)
 ```
 
-### Plus Mode
+Plus Mode:
 
 ```text
 +CalFlow+
@@ -357,7 +423,7 @@ Common symbols:
 | `if(error) notify(result)` | Run-result handler |
 | `if(error) save to("~/x.txt")` | Save the latest run error/result |
 
-More details:
+More detail:
 
 - [DSL grammar](docs/DSL_GRAMMAR.md)
 - [DSL spec](docs/DSL_SPEC.md)
@@ -376,22 +442,13 @@ Default timing is roughly five minutes before the event starts. Timing,
 calendar choices, backend allowlists, trusted invite policy, and run
 notifications are configured in `config/settings.py`.
 
-For local experimentation:
-
-```bash
-python3 -m cli.repl
-```
-
-For daemon status:
+Useful commands:
 
 ```bash
 python3 -m cli.main status
-```
-
-For menu bar status:
-
-```bash
+python3 -m cli.main display
 python3 -m cli.main menubar-status
+python3 -m cli.repl
 ```
 
 ---
