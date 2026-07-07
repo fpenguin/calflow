@@ -24,9 +24,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from core.models import (
-    ClickCommand,
     MODE_PLUS,
     MODE_SMART,
+    ClickCommand,
     OpenCommand,
     RunCommand,
     ScreenshotCommand,
@@ -51,6 +51,40 @@ class SmartModeRegression(unittest.TestCase):
         self.assertEqual(len(result.entries), 1)
         self.assertIn("#force", result.entries[0]["tags"])
 
+    def test_function_style_layout_tags_work_on_url_line(self) -> None:
+        result = parse("zoom.us @chrome profile(3) grid(1@2x2) display(2)")
+        self.assertEqual(result.mode, MODE_SMART)
+        self.assertEqual(len(result.entries), 1)
+        tags = result.entries[0]["tags"]
+        self.assertIn("@chrome", tags)
+        self.assertIn("#profile(3)", tags)
+        self.assertIn("#grid(1@2x2)", tags)
+        self.assertIn("#display(2)", tags)
+
+    def test_function_style_layout_tags_work_with_open_prefix(self) -> None:
+        result = parse("Open @chrome https://example.com profile(3) grid(1@2x2) display(2)")
+        self.assertEqual(result.mode, MODE_SMART)
+        self.assertEqual(len(result.entries), 1)
+        tags = result.entries[0]["tags"]
+        self.assertEqual(result.entries[0]["url"], "https://example.com")
+        self.assertIn("@chrome", tags)
+        self.assertIn("#profile(3)", tags)
+        self.assertIn("#grid(1@2x2)", tags)
+        self.assertIn("#display(2)", tags)
+
+    def test_function_style_layout_tags_work_as_global_modifier_line(self) -> None:
+        result = parse("display(2) profile(3)\nhttps://example.com")
+        self.assertEqual(result.mode, MODE_SMART)
+        self.assertEqual(len(result.entries), 1)
+        tags = result.entries[0]["tags"]
+        self.assertIn("#display(2)", tags)
+        self.assertIn("#profile(3)", tags)
+
+    def test_non_layout_function_is_not_promoted_in_smart_mode(self) -> None:
+        result = parse('zoom.us text("Submit")')
+        self.assertEqual(len(result.entries), 1)
+        self.assertNotIn('#text("submit")', result.entries[0]["tags"])
+
     def test_email_address_not_extracted_as_bare_domains(self) -> None:
         result = parse("moveu.crew@ubc.ca")
         self.assertEqual(result.entries, [])
@@ -69,8 +103,6 @@ class SmartModeRegression(unittest.TestCase):
         result = parse("Please email moveu.crew@ubc.ca and visit recreation.ubc.ca")
         self.assertEqual(result.mode, MODE_SMART)
         self.assertEqual([entry["url"] for entry in result.entries], ["https://recreation.ubc.ca"])
-
-
 
 
 # v1.1.25 — three Plus-Mode-detection tests removed:
@@ -166,9 +198,7 @@ class PlusModeAST(unittest.TestCase):
         self.assertEqual(cmd.shortcut_input, "deep work")
 
     def test_run_alfred_function_command(self) -> None:
-        result = parse(
-            '+CalFlow+\nrun alfred("com.example.workflow", "try-again") input("now")'
-        )
+        result = parse('+CalFlow+\nrun alfred("com.example.workflow", "try-again") input("now")')
         self.assertEqual(len(result.commands), 1)
         cmd = result.commands[0]
         self.assertIsInstance(cmd, RunCommand)
@@ -178,9 +208,7 @@ class PlusModeAST(unittest.TestCase):
         self.assertEqual(cmd.alfred_argument, "now")
 
     def test_run_alfred_combined_function_command(self) -> None:
-        result = parse(
-            '+CalFlow+\nrun alfred("com.example.workflow/try-again") input("now")'
-        )
+        result = parse('+CalFlow+\nrun alfred("com.example.workflow/try-again") input("now")')
         self.assertEqual(len(result.commands), 1)
         cmd = result.commands[0]
         self.assertIsInstance(cmd, RunCommand)
@@ -191,11 +219,11 @@ class PlusModeAST(unittest.TestCase):
 
     def test_run_applescript_plus_block_with_handler(self) -> None:
         result = parse(
-            '+CalFlow+\n'
-            'run applescript timeout(10) if(error) notify(result)\n'
-            '+++\n'
+            "+CalFlow+\n"
+            "run applescript timeout(10) if(error) notify(result)\n"
+            "+++\n"
             'display dialog "hello"\n'
-            '+++\n'
+            "+++\n"
         )
         self.assertEqual(len(result.commands), 1)
         cmd = result.commands[0]

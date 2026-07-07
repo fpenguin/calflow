@@ -22,7 +22,6 @@ Design:
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Set, Tuple
 
 from config.settings import (
     BLACKLIST_ONLY_IF_MULTIPLE,
@@ -42,7 +41,6 @@ from config.settings import (
 )
 from core.utils import log, strip_inline_comment
 
-
 # =========================================================
 # 🔎 REGEX
 # =========================================================
@@ -54,11 +52,11 @@ from core.utils import log, strip_inline_comment
 #   https://report.com?date={now > YYYY-MM-DD}
 # without breaking at the inner whitespace.
 _URL_CHARS = r'[^\s<>"\]\[{}]+'
-_URL_DYNAMIC = r'\{[^{}]*\}'
-_URL_BODY = rf'(?:{_URL_CHARS}|{_URL_DYNAMIC})+'
+_URL_DYNAMIC = r"\{[^{}]*\}"
+_URL_BODY = rf"(?:{_URL_CHARS}|{_URL_DYNAMIC})+"
 
 URL_PATTERN = re.compile(
-    rf'(?i)(https?://{_URL_BODY}|www\.{_URL_BODY}|\b[a-z0-9.-]+\.[a-z]{{2,}}(?:/{_URL_BODY})?)'
+    rf"(?i)(https?://{_URL_BODY}|www\.{_URL_BODY}|\b[a-z0-9.-]+\.[a-z]{{2,}}(?:/{_URL_BODY})?)"
 )
 EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
@@ -77,20 +75,49 @@ EMAIL_PATTERN = re.compile(
 #                                     contain spaces — used by
 #                                     #display("Samsung S90D") )
 HASHTAG_PATTERN = re.compile(
-    r'(?<!#)(#[\w][\w\-=%.,@/]*'
+    r"(?<!#)(#[\w][\w\-=%.,@/]*"
     r'(?:\((?:"[^"]*"|[^)]*)\))?)'
 )
-TARGET_PATTERN = re.compile(r'(?<!\w)(@[\w][\w\-]*)')
+TARGET_PATTERN = re.compile(r"(?<!\w)(@[\w][\w\-]*)")
 ALERT_PATTERN = re.compile(r"#alert=(\d+)([sm])", re.IGNORECASE)
+_FUNCTION_TAG_NAMES = (
+    "left",
+    "right",
+    "middle",
+    "top",
+    "bottom",
+    "full",
+    "area",
+    "grid",
+    "display",
+    "profile",
+)
+# v1.5.3 — the argument body is restricted to VALUE-shaped args
+# (quoted string, `ext`/`external`, or digits/`,`/`%`/`@`/`x`/`.`/`-`),
+# matching what the layout resolver actually accepts: left(50%),
+# display(2), display("Samsung S90D"), display(ext), grid(1@3x2),
+# area(0,0,1920,1080), profile(3). Without this, prose like
+# "the top(ic) is" produced a bogus `#top(ic)` layout tag — which also
+# silently flipped tab→window mode via the layout-implies-window rule.
+_FUNCTION_TAG_ARGS = r'(?:"[^"]*"|(?:ext|external)|[\dx@.,%\s-]*)'
+FUNCTION_TAG_PATTERN = re.compile(
+    r"(?<![#\w/=&?.-])"
+    r"((?:" + "|".join(_FUNCTION_TAG_NAMES) + r")\(" + _FUNCTION_TAG_ARGS + r"\))",
+    re.IGNORECASE,
+)
+FUNCTION_TAG_TOKEN_PATTERN = re.compile(
+    r"^(?:" + "|".join(_FUNCTION_TAG_NAMES) + r")\(" + _FUNCTION_TAG_ARGS + r"\)$",
+    re.IGNORECASE,
+)
 
 
-def _find_urls(text: str) -> List[str]:
+def _find_urls(text: str) -> list[str]:
     """Return URL-like matches, excluding bare domains inside email addresses."""
     if not text:
         return []
 
     email_spans = [match.span() for match in EMAIL_PATTERN.finditer(text)]
-    urls: List[str] = []
+    urls: list[str] = []
 
     for match in URL_PATTERN.finditer(text):
         start, end = match.span(1)
@@ -105,7 +132,8 @@ def _find_urls(text: str) -> List[str]:
 # 🌐 URL NORMALIZATION
 # =========================================================
 
-def normalize_url(raw_url: str) -> Optional[str]:
+
+def normalize_url(raw_url: str) -> str | None:
     if not raw_url:
         return None
 
@@ -133,6 +161,7 @@ def normalize_url(raw_url: str) -> Optional[str]:
 # 🚫 FILTERS
 # =========================================================
 
+
 def is_blacklisted(url: str) -> bool:
     url_lower = url.lower()
     return any(re.search(pattern, url_lower) for pattern in BLACKLIST_REGEX)
@@ -147,6 +176,7 @@ def is_map_url(url: str) -> bool:
 # 🏷️ TAGS / TARGETS
 # =========================================================
 
+
 def _strip_comments(text: str) -> str:
     """Remove inline `## …` comments from every line in `text`."""
     if not text:
@@ -154,14 +184,17 @@ def _strip_comments(text: str) -> str:
     return "\n".join(strip_inline_comment(line) for line in text.splitlines())
 
 
-def extract_tags(text: str) -> Set[str]:
+def extract_tags(text: str) -> set[str]:
     """All `#tags` from text, lowercased; `##` comments stripped first."""
     if not text:
         return set()
-    return {t.lower() for t in HASHTAG_PATTERN.findall(_strip_comments(text))}
+    clean = _strip_comments(text)
+    tags = {t.lower() for t in HASHTAG_PATTERN.findall(clean)}
+    tags.update(f"#{t.lower()}" for t in FUNCTION_TAG_PATTERN.findall(clean))
+    return tags
 
 
-def extract_targets(text: str) -> List[str]:
+def extract_targets(text: str) -> list[str]:
     """All `@target` tokens from text, lowercased, in order of appearance."""
     if not text:
         return []
@@ -171,6 +204,7 @@ def extract_targets(text: str) -> List[str]:
 # =========================================================
 # ⏱️ ALERT
 # =========================================================
+
 
 def extract_alert_offset(tags) -> int:
     """
@@ -192,19 +226,30 @@ def extract_alert_offset(tags) -> int:
 # 🧠 LINE CLASSIFICATION
 # =========================================================
 
+
 def _is_global_modifier_line(line: str) -> bool:
     """
     A line is a global modifier line iff it contains no URL and consists
-    only of `#tags` and `@targets` (and whitespace).
+    only of `#tags`, hash-dropped function tags, and `@targets` (plus
+    whitespace).
+
+    v1.5.3 — residue check instead of per-token startswith. Whitespace
+    token-splitting broke quoted args containing spaces: both
+    `#display("Samsung S90D")` and `display("Samsung S90D")` split into
+    two tokens and were misclassified as prose. We now strip every
+    modifier match from the line; if nothing but whitespace remains,
+    the line was all modifiers.
     """
     if not line:
         return False
     if _find_urls(line):
         return False
-    tokens = [t for t in line.split() if t]
-    if not tokens:
+    stripped = HASHTAG_PATTERN.sub("", line)
+    stripped = FUNCTION_TAG_PATTERN.sub("", stripped)
+    stripped = TARGET_PATTERN.sub("", stripped)
+    if stripped.strip():
         return False
-    return all(t.startswith("#") or t.startswith("@") for t in tokens)
+    return bool(line.strip())
 
 
 def _tag_category(tag: str) -> str:
@@ -236,7 +281,8 @@ def _tag_category(tag: str) -> str:
 # 🚀 MAIN PARSER
 # =========================================================
 
-def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
+
+def extract_url_entries(text: str, title: str | None = None) -> list[dict]:
     """
     Parse Smart Mode text into executable entries.
 
@@ -252,15 +298,15 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
     # Strip `##` comments line-by-line BEFORE any URL/tag scanning so
     # they don't pollute counts, blacklist heuristics, or extraction.
     text = _strip_comments(text or "")
-    entries: List[Dict] = []
-    seen: Set[str] = set()
+    entries: list[dict] = []
+    seen: set[str] = set()
 
     # Pre-scan total URL count for blacklist semantics
     raw_urls = _find_urls(text)
     total_url_count = len(raw_urls)
 
     # --- Title override URLs (whitelist) --------------------------------
-    title_urls: Set[str] = set()
+    title_urls: set[str] = set()
     if title:
         for raw in _find_urls(title):
             normalized = normalize_url(raw)
@@ -269,8 +315,8 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
 
     # --- Global state (Smart Mode only) ---------------------------------
     # Map of category → tag (last write wins).
-    global_tags_by_cat: Dict[str, str] = {}
-    global_target: Optional[str] = None  # @ alias
+    global_tags_by_cat: dict[str, str] = {}
+    global_target: str | None = None  # @ alias
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -279,7 +325,7 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
 
         # Standalone modifier line → updates global state, no execute
         if _is_global_modifier_line(line):
-            for tag in HASHTAG_PATTERN.findall(line):
+            for tag in extract_tags(line):
                 global_tags_by_cat[_tag_category(tag)] = tag.lower()
             tgts = TARGET_PATTERN.findall(line)
             if tgts:
@@ -292,7 +338,7 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
             continue
 
         # Per-line tags + URL
-        line_tags = {t.lower() for t in HASHTAG_PATTERN.findall(line)}
+        line_tags = extract_tags(line)
         line_targets = [t.lower() for t in TARGET_PATTERN.findall(line)]
 
         for raw_url in _find_urls(line):
@@ -305,7 +351,7 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
 
             # Merge global state into per-line tags (same category → line wins)
             line_categories = {_tag_category(t) for t in line_tags}
-            merged_tags: Set[str] = set(line_tags)
+            merged_tags: set[str] = set(line_tags)
             for cat, gtag in global_tags_by_cat.items():
                 if cat not in line_categories:
                     merged_tags.add(gtag)
@@ -316,9 +362,8 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
                 merged_tags.add(entry_target)
 
             # Forced URL semantics
-            is_forced = (
-                (IGNORE_BLACKLIST_FOR_TITLE_URLS and url in title_urls)
-                or (FORCE_URL_TAG in merged_tags)
+            is_forced = (IGNORE_BLACKLIST_FOR_TITLE_URLS and url in title_urls) or (
+                FORCE_URL_TAG in merged_tags
             )
 
             # Map filtering
@@ -376,16 +421,18 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
         # wants_new_window — only act here when no such tag is set
         # AND the user hasn't explicitly tagged #window/#tab somewhere.
         layout_prefixes = (
-            "#left", "#right", "#middle", "#top", "#bottom", "#full",
-            "#grid(", "#area(", "#display",
+            "#left",
+            "#right",
+            "#middle",
+            "#top",
+            "#bottom",
+            "#full",
+            "#grid(",
+            "#area(",
+            "#display",
         )
-        has_layout = any(
-            any(t.lower().startswith(p) for p in layout_prefixes)
-            for t in merged_tags
-        )
-        has_explicit_open = bool(
-            merged_tags & {"#window", "#new-window", "#tab", "#new-tab"}
-        )
+        has_layout = any(any(t.lower().startswith(p) for p in layout_prefixes) for t in merged_tags)
+        has_explicit_open = bool(merged_tags & {"#window", "#new-window", "#tab", "#new-tab"})
         if not has_layout and not has_explicit_open:
             om = (TITLE_URL_OPEN_DEFAULT or "").strip().lower()
             if om == "window":
@@ -408,7 +455,8 @@ def extract_url_entries(text: str, title: Optional[str] = None) -> List[Dict]:
 # 🧪 INTROSPECTION (for the dispatcher)
 # =========================================================
 
-def smart_global_state(text: str) -> Tuple[Dict[str, str], Optional[str]]:
+
+def smart_global_state(text: str) -> tuple[dict[str, str], str | None]:
     """
     Return (global_tags_by_category, global_target) WITHOUT executing.
     Used by the dispatcher / REPL for debug display.
@@ -416,15 +464,15 @@ def smart_global_state(text: str) -> Tuple[Dict[str, str], Optional[str]]:
     if not text:
         return {}, None
 
-    cats: Dict[str, str] = {}
-    target: Optional[str] = None
+    cats: dict[str, str] = {}
+    target: str | None = None
     for raw in text.splitlines():
         line = strip_inline_comment(raw).strip()
         if not line:
             continue
         if not _is_global_modifier_line(line):
             continue
-        for tag in HASHTAG_PATTERN.findall(line):
+        for tag in extract_tags(line):
             cats[_tag_category(tag)] = tag.lower()
         tgts = TARGET_PATTERN.findall(line)
         if tgts:

@@ -179,6 +179,7 @@ Smart Mode is just links plus lightweight tags.
 zoom.us @chrome #left(40%)
 notion.so @safari #right(60%)
 docs.google.com #display(ext)
+appstoreconnect.apple.com @chrome display(2) grid(1@2x2) profile(3)
 ```
 
 Use Smart Mode when the calendar event is mostly links.
@@ -193,6 +194,11 @@ Common tags:
 | `#right(50%)` | Put the window on the right half |
 | `#full` | Fill the display |
 | `#display(ext)` | Prefer an external display |
+| `grid(1@2x2)` | Put the window in cell 1 of a 2-by-2 grid |
+| `profile(3)` | Open Chrome profile 3 |
+
+For URL lines, layout/session tags can be written either way:
+`#grid(1@2x2)` and `grid(1@2x2)` mean the same thing.
 
 ### 2. Plus Mode
 
