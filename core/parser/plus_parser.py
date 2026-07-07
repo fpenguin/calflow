@@ -28,6 +28,7 @@ from config.settings import (
 from core.models import (
     BaseCommand,
     ClickCommand,
+    DragCommand,
     CloseCommand,
     CopyCommand,
     FocusCommand,
@@ -199,8 +200,8 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
 
     # ---------------- Implicit open ---------------------------------
     if head_upper not in {
-        "OPEN", "FOCUS", "CLOSE", "HIDE", "CLICK", "TYPE", "PRESS",
-        "WAIT", "SCREENSHOT", "COPY", "PASTE", "SAVE", "RUN",
+        "OPEN", "FOCUS", "CLOSE", "HIDE", "CLICK", "DRAG", "TYPE",
+        "PRESS", "WAIT", "SCREENSHOT", "COPY", "PASTE", "SAVE", "RUN",
     }:
         # If it looks like a URL/quoted/file path, normalize to OPEN.
         if (
@@ -243,6 +244,9 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
 
     if head_upper == "CLICK":
         return _build_click(line_no, raw, body_args, tags, fns)
+
+    if head_upper == "DRAG":
+        return _build_drag(line_no, raw, body_args, tags, fns)
 
     if head_upper == "TYPE":
         text = ""
@@ -602,14 +606,32 @@ def _build_click(
         except Exception:
             pass
 
+    # v1.5.4 — gesture modifiers. button(left|right|middle); count(n)
+    # is the CGEvent click-state (count(2) = ONE double-click event),
+    # distinct from repeat(n) = whole-command repetition.
+    button = next((v for (n, v) in fns if n == "button"), None)
+    if button is not None:
+        button = str(button).lower()
+    count_raw = next((v for (n, v) in fns if n == "count"), None)
+    count: Optional[int] = None
+    if count_raw is not None:
+        try:
+            count = int(count_raw)
+        except (TypeError, ValueError):
+            count = None
+
     if text or selector or pos:
         return ClickCommand(
             line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
             text=text, selector=selector, x=x, y=y,
+            button=button, count=count,
         )
 
     if not body:
-        return ClickCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+        return ClickCommand(
+            line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+            button=button, count=count,
+        )
 
     head = body[0]
     coord = _COORD_RE.match(head)
@@ -617,10 +639,53 @@ def _build_click(
         return ClickCommand(
             line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
             x=int(coord.group(1)), y=int(coord.group(2)),
+            button=button, count=count,
         )
     return ClickCommand(
         line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
         selector=" ".join(body),
+        button=button, count=count,
+    )
+
+
+def _build_drag(
+    line_no: int, raw: str, body: List[str],
+    tags: FrozenSet[str], fns: List[Tuple[str, Any]],
+) -> DragCommand:
+    """
+    DRAG from(x,y) to(x,y) [button(…)] [duration(t)]     — v1.5.4
+
+    Malformed endpoints leave the coordinate fields None; the validator
+    has already rejected the line, so this builder never guesses.
+    """
+    def _coords(name: str):
+        v = next((val for (n, val) in fns if n == name), None)
+        if isinstance(v, tuple) and len(v) == 2:
+            try:
+                return int(v[0]), int(v[1])
+            except (TypeError, ValueError):
+                return None, None
+        return None, None
+
+    x1, y1 = _coords("from")
+    x2, y2 = _coords("to")
+
+    button = next((v for (n, v) in fns if n == "button"), None)
+    if button is not None:
+        button = str(button).lower()
+
+    duration_raw = next((v for (n, v) in fns if n == "duration"), None)
+    duration: Optional[float] = None
+    if duration_raw is not None:
+        try:
+            duration = float(duration_raw)
+        except (TypeError, ValueError):
+            duration = None
+
+    return DragCommand(
+        line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+        x1=x1, y1=y1, x2=x2, y2=y2,
+        button=button, duration=duration,
     )
 
 

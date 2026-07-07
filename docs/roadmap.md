@@ -107,6 +107,8 @@ Make Plus Mode actually drive the GUI on macOS.
 | `click text("…")` | AXUIElement (Accessibility API) text search | hard | high — depends on app + accessibility permissions |
 | `click selector("…")` | DOM-driving via AppleScript / WebDriver / browser CDP | hard | high — browser-specific |
 | `click position(x,y)` | CGEventCreateMouseEvent (Quartz) | easy | medium — coordinate drift across displays |
+| `click … button(…) count(…)` | CGEvent button constant + click-state (syntax shipped v1.5.4) | easy | low |
+| `drag from(x,y) to(x,y)` | CGEvent mouseDown → interpolated drags over `duration` → mouseUp (syntax shipped v1.5.4) | medium | medium — drag-threshold timing per app |
 | `type("…")` | CGEventKeyboardSetUnicodeString | easy | medium — focus-dependent |
 | `press {…}` | Keycode mapping + CGEventCreateKeyboardEvent | medium | medium |
 | `press [{…},({…})x5,{…}]` | Sequence orchestration with key-down/key-up state | medium | high |

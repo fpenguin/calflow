@@ -878,6 +878,12 @@ window-mode-agnostic.
 click text("Sign in")
 click selector(".btn")
 click position(100,200)
+click text("row") button(right)          ## v1.5.4 — context-menu click
+click text("report.pdf") count(2)        ## v1.5.4 — double-click
+click text("word") count(3)              ## v1.5.4 — triple-click (select)
+
+drag from(100,200) to(300,400)           ## v1.5.4 — one mouse gesture
+drag from(0,0) to(500,500) button(right) duration(0.5s)
 
 type("hello")
 type("abc") repeat(3) interval(0.5s) speed(0.1s)
@@ -886,6 +892,25 @@ press {enter}
 press {cmd+shift+tab}
 press [{shift_down},({left})x5,{shift_up}]
 ```
+
+### Mouse gesture modifiers (v1.5.4)
+
+| Modifier | Meaning | Default |
+|----------|---------|---------|
+| `button(left\|right\|middle)` | which mouse button | `left` |
+| `count(1\|2\|3)` | click-state: single / double / triple | `1` |
+| `duration(t)` | drag gesture length (DRAG only) | `0.3s` |
+
+> `count(2)` is ONE double-click event (CGEvent click-state 2) — NOT
+> the same as `repeat(2)`, which runs the whole command twice as two
+> independent single clicks. `click text("cell") count(2) repeat(3)`
+> is therefore "double-click three times", and both modifiers keep
+> their own meaning.
+
+> DRAG endpoints are coordinates only for now. Element-based endpoints
+> (`drag from(text("file.pdf")) to(text("Trash"))`) are specified but
+> deferred to the v2.1 AX backend, which they need for element→point
+> resolution anyway.
 
 ---
 

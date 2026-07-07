@@ -327,6 +327,8 @@ Represents one executable instruction.
 open @chrome
 focus @chrome title("Inbox")
 click text("Export")
+click text("row") button(right) count(2) ## v1.5.4 — right / double click
+drag from(100,200) to(300,400)           ## v1.5.4 — one mouse gesture
 type("hello") speed(0.1s)
 press {cmd+shift+tab}
 copy("hello")                            ## v1.5.2 — literal → clipboard
@@ -411,7 +413,7 @@ display dialog "hello"
 
 ```ebnf
 verb ::= "open" | "focus" | "close" | "hide"
-       | "click" | "type" | "press" | "wait"
+       | "click" | "drag" | "type" | "press" | "wait"
        | "screenshot" | "copy" | "paste"
        | "save" | "run"
 ```

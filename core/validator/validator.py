@@ -70,6 +70,7 @@ KNOWN_COMMANDS: dict = {
     "CLOSE":      (0, None),  # arity gate handled per-verb (allows `close except(<…>)`)
     "HIDE":       (0, None),  # bare `hide` is legal (= hide all-except-frontmost)
     "CLICK":      (1, None),
+    "DRAG":       (2, None),  # v1.5.4 — from(x,y) + to(x,y) required
     "TYPE":       (1, None),
     "PRESS":      (1, None),
     "WAIT":       (1, 1),
@@ -208,8 +209,8 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
     # not positionals — they don't satisfy arity by themselves.
     if verb in {"OPEN", "FOCUS", "CLOSE", "HIDE"}:
         positional_count = len(body) + len(targets)
-    elif verb in {"CLICK", "SAVE", "RUN"}:
-        # CLICK / SAVE can use function-calls as their effective payload
+    elif verb in {"CLICK", "DRAG", "SAVE", "RUN"}:
+        # CLICK / DRAG / SAVE use function-calls as their effective payload
         positional_count = len(body) + len(functions)
     else:
         positional_count = len(body)
@@ -391,7 +392,9 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
         if functions:
             # Function-call modifiers like text("…")/selector("…")/position(…)
             # are accepted; unknown modifiers are tolerated (forward-compat).
-            pass
+            # v1.5.4 — button()/count() carry constrained value sets;
+            # a typo'd value must fail loudly, not silently left-click.
+            errors.extend(_check_gesture_functions(line_no, "CLICK", functions))
         elif body:
             head = body[0]
             if not (_COORD_RE.match(head) or _looks_like_selector(head)):
@@ -402,6 +405,37 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
                     )
                 )
         # else: arity check above already complained.
+
+    elif verb == "DRAG":
+        # v1.5.4 — one mouse gesture with two endpoints:
+        #   drag from(x,y) to(x,y) [button(…)] [duration(t)]
+        # Element-based endpoints (from(text("…"))) are deferred to the
+        # v2.1 backend; only coordinate pairs are legal today.
+        fn_by_name = {}
+        for fc in functions:
+            m = _FUNCTION_CALL_RE.match(fc)
+            if m:
+                name = fc.split("(", 1)[0].lower()
+                inner = fc.split("(", 1)[1].rstrip(")")
+                fn_by_name[name] = inner
+        for endpoint in ("from", "to"):
+            if endpoint not in fn_by_name:
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f"DRAG requires both endpoints: "
+                        f'`drag from(x,y) to(x,y)`; missing {endpoint}(…)',
+                    )
+                )
+            elif not _COORD_RE.match(fn_by_name[endpoint].strip()):
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f"DRAG {endpoint}(…) expects coordinates 'x,y'; "
+                        f"got {fn_by_name[endpoint]!r}",
+                    )
+                )
+        errors.extend(_check_gesture_functions(line_no, "DRAG", functions))
 
     elif verb == "TYPE":
         # Accept `type "hi"` (quoted positional) or `type("hi")`
@@ -697,6 +731,49 @@ def _looks_like_selector(token: str) -> bool:
     if any(c in token for c in "#.[]>+~ "):
         return True
     return token.replace("-", "_").isidentifier()
+
+
+_VALID_BUTTONS = frozenset({"left", "right", "middle"})
+
+
+def _check_gesture_functions(line_no: int, verb: str, functions) -> List[ValidationError]:
+    """
+    v1.5.4 — shared value checks for the mouse gesture modifiers:
+
+        button(left|right|middle)     default left
+        count(1|2|3)                  CGEvent click-state; count(2) is
+                                      ONE double-click event — distinct
+                                      from repeat(2) = two single clicks
+
+    Anything outside the value set is a hard error: a typo'd
+    button(rigth) silently degrading to a left-click is the exact
+    class of surprise the validator exists to prevent.
+    """
+    errors: List[ValidationError] = []
+    for fc in functions:
+        name = _function_name(fc)
+        if name == "button":
+            inner = fc.split("(", 1)[1].rstrip(")").strip().lower()
+            if inner not in _VALID_BUTTONS:
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f"{verb} button(…) expects left, right, or middle; "
+                        f"got {inner!r}",
+                    )
+                )
+        elif name == "count":
+            inner = fc.split("(", 1)[1].rstrip(")").strip()
+            if not inner.isdigit() or not (1 <= int(inner) <= 3):
+                errors.append(
+                    ValidationError(
+                        line_no,
+                        f"{verb} count(…) expects 1 (single), 2 (double), "
+                        f"or 3 (triple); got {inner!r}. For repeating the "
+                        f"whole command use repeat(n).",
+                    )
+                )
+    return errors
 
 
 def _strip_quotes(token: str) -> str:

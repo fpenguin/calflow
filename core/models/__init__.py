@@ -13,6 +13,7 @@ from __future__ import annotations
 from .commands import (
     BaseCommand,
     ClickCommand,
+    DragCommand,
     CloseCommand,
     CopyCommand,
     FocusCommand,
@@ -32,6 +33,7 @@ from .parse_result import MODE_NONE, MODE_PLUS, MODE_SMART, ParseResult
 __all__ = [
     "BaseCommand",
     "ClickCommand",
+    "DragCommand",
     "CloseCommand",
     "CopyCommand",
     "FocusCommand",

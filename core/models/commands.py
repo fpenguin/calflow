@@ -152,11 +152,35 @@ class ClickCommand(BaseCommand):
     CLICK selector(".btn")
     CLICK position(100,200)
     CLICK text("X") selector(".y")          ← AND semantics
+    CLICK … button(left|right|middle)       ← v1.5.4; default left
+    CLICK … count(1|2|3)                    ← v1.5.4 click-state; default 1.
+                                              count(2) is ONE double-click
+                                              event — distinct from
+                                              repeat(2) = two single clicks.
     """
     selector: Optional[str] = None
     text: Optional[str] = None
     x: Optional[int] = None
     y: Optional[int] = None
+    button: Optional[str] = None
+    count: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class DragCommand(BaseCommand):
+    """
+    DRAG from(x,y) to(x,y) [button(…)] [duration(t)]     — v1.5.4, verb #14
+
+    One mouse gesture: button-down at (x1,y1), interpolated moves over
+    `duration` seconds, button-up at (x2,y2). Element-based endpoints
+    (from(text("…"))) are specified-but-deferred to the v2.1 backend.
+    """
+    x1: Optional[int] = None
+    y1: Optional[int] = None
+    x2: Optional[int] = None
+    y2: Optional[int] = None
+    button: Optional[str] = None
+    duration: Optional[float] = None
 
 
 @dataclass(frozen=True)

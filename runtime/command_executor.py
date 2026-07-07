@@ -142,6 +142,7 @@ def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
         "CLOSE":      _do_close,
         "HIDE":       _do_hide,
         "CLICK":      _do_click,
+        "DRAG":       _do_drag,
         "TYPE":       _do_type,
         "PRESS":      _do_press,
         "WAIT":       _do_wait,
@@ -458,14 +459,39 @@ def _do_click(params: Dict[str, Any]) -> None:
     text = params.get("text")
     selector = params.get("selector")
     x, y = params.get("x"), params.get("y")
+    # v1.5.4 — gesture modifiers surface in the stub log so a dry run
+    # shows what the v2.1 backend will receive.
+    gesture = ""
+    if params.get("button", "left") != "left":
+        gesture += f" button={params['button']}"
+    if params.get("count", 1) != 1:
+        gesture += f" count={params['count']}"
     if text:
-        log(f"[INFO] CLICK text={text!r} selector={selector!r} (stub)")
+        log(f"[INFO] CLICK text={text!r} selector={selector!r}{gesture} (stub)")
     elif selector:
-        log(f"[INFO] CLICK selector={selector!r} (stub)")
+        log(f"[INFO] CLICK selector={selector!r}{gesture} (stub)")
     elif x is not None and y is not None:
-        log(f"[INFO] CLICK at ({x},{y}) (stub)")
+        log(f"[INFO] CLICK at ({x},{y}){gesture} (stub)")
     else:
         log("[WARN] CLICK missing target")
+
+
+def _do_drag(params: Dict[str, Any]) -> None:
+    """
+    v1.5.4 — parses/validates/resolves today; the Quartz backend
+    (CGEvent mouseDown → interpolated drags over `duration` → mouseUp)
+    lands with the v2.1 UI-action batch.
+    """
+    x1, y1 = params.get("x1"), params.get("y1")
+    x2, y2 = params.get("x2"), params.get("y2")
+    if None in (x1, y1, x2, y2):
+        log("[WARN] DRAG missing endpoints (validator should have caught)")
+        return
+    log(
+        f"[INFO] DRAG ({x1},{y1}) → ({x2},{y2}) "
+        f"button={params.get('button', 'left')} "
+        f"duration={params.get('duration', 0.3)}s (stub)"
+    )
 
 
 def _do_type(params: Dict[str, Any]) -> None:

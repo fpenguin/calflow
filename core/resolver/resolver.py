@@ -32,6 +32,7 @@ from config.settings import (
 from core.models import (
     BaseCommand,
     ClickCommand,
+    DragCommand,
     CloseCommand,
     CopyCommand,
     FocusCommand,
@@ -358,15 +359,32 @@ def resolve_command(
         return base
 
     if isinstance(command, ClickCommand):
+        fns = dict(command.functions)
         base.update({
             "selector": command.selector,
             "text": command.text,
             "x": command.x,
             "y": command.y,
+            # v1.5.4 — gesture modifiers with hard defaults.
+            "button": command.button or "left",
+            "count": command.count or 1,
+            "repeat": fns.get("repeat", 1),
         })
         # Conflict: text(...) AND position(...) → invalidate per spec
         if command.text and (command.x is not None or command.y is not None):
             base["invalid"] = "conflicting selectors (text + position)"
+        return base
+
+    if isinstance(command, DragCommand):
+        base.update({
+            "x1": command.x1, "y1": command.y1,
+            "x2": command.x2, "y2": command.y2,
+            "button": command.button or "left",
+            # v1.5.4 — default gesture length. Instant drags are ignored
+            # by apps with drag-threshold / spring-loading detection, so
+            # the backend interpolates moves over this window.
+            "duration": command.duration if command.duration is not None else 0.3,
+        })
         return base
 
     if isinstance(command, TypeCommand):
