@@ -1,111 +1,59 @@
 # CalFlow Handoff
 
-## Current Release Discipline
+## Current Release State
 
-The project is building toward a future public **v2.0 launch**, but active
-pre-launch development must stay on **v1.4.x** until the user says otherwise.
+- **Active branch: `main`** (dev moved off `v2.0` at the v1.5 prerelease,
+  2026-07-04; branch `v2.0` still exists at that point but is no longer
+  the trunk).
+- **Current release: v1.5.5** — first public tagged release of the v1.5
+  line. `core/version.py` has `__is_release__ = True` at the tag; flip it
+  back to False on the next dev commit.
+- **Pushes**: only on user-requested releases. Local commits otherwise.
+  The old blanket push freeze is lifted (superseded by CLAUDE.md §7).
+- `v2.0.0` remains reserved for the public launch milestone. Do not
+  recreate any `v2.0.x` tag until the user says the launch is ready.
 
-Current local version source:
+## What shipped in v1.5.x
 
-- `core/version.py` renders `1.4.1-dev`
+- **v1.5 / v1.5.1** — README overhaul (beginner-friendly), action-verb
+  documentation, prerelease prep.
+- **v1.5.2** — DSL batch: `hide active display(N)` (per-window scope),
+  `hide [active,"App"]` runtime expansion, `copy("text")` via pbcopy,
+  screenshot → clipboard default (`to(clipboard)` / `to("path")`),
+  bare parenless layout words (`full`, `left`, …) as Plus drop-sugar,
+  `new(tab)`/`new(window)` documented.
+- **v1.5.3** — Smart Mode hash-drop for function tags
+  (`zoom.us display(2)` ≡ `#display(2)`), with value-shaped arg
+  guardrails (no `#top(ic)` from prose) and quoted-arg fixes on
+  standalone modifier lines.
+- **v1.5.4** — mouse gestures: `click button(left|right|middle)`,
+  `click count(1|2|3)` (click-state ≠ repeat), `drag from(x,y) to(x,y)
+  [button()] [duration(t)]` — verb #14. Parse/validate/resolve real;
+  execution stubs until the v2.1 Quartz backend.
+- **v1.5.5** — menubar Tip Dev → buymeacoffee.com/therapydoge, markdown
+  sync for the new verb surface, `docs/examples.md` generated from the
+  examples sheet ('260707' tab).
 
-## Current v1.4 Local Work
+## Reference
 
-The current local work is the v1.4 settings/cache/recovery cleanup:
-
-- Settings UI writes user preferences to `data/user_settings.json`.
-- Alias/TARGETS edits write to `data/user_targets.json`.
-- `config/settings.py` keeps tracked defaults and imports those sidecars at
-  module load.
-- `config/settings.defaults.py` is the restore/diff snapshot for
-  `python -m cli.main migrate-settings`.
-- The menubar popover now uses `cli.main popover-feed`; successful payloads
-  are cached in `data/popover_cache.json` for up to 24 hours.
-- If the popover refresh fails but cache is usable, UI shows stale cached data
-  with an amber retry banner rather than going empty.
-- Menu bar LaunchAgent lifecycle failures now include `error` and `recovery`
-  steps with reset commands/log paths.
-
-Do not reintroduce writes to tracked `config/settings.py` from Settings UI
-or TARGETS editor. Runtime writes belong under `data/`.
-
-## Recently Completed (v1.4.1-dev)
-
-- **Q3 Settings vocabulary pass** (`d4c4594`) — rewrote ~50 user-facing strings
-  in `runtime/menubar/settings.html` to remove jargon (daemon, launchd, OAuth,
-  regex, URI scheme, TARGETS, etc.). No behaviour changes.
-- **Settings UX fixes** (`78db945`) — Aliases save/remove crash (INSDictionaryM
-  serialization), Events section cleanup (removed Default browser / Chrome profile
-  rows), Permissions section reordering and Accessibility status clarification.
-- **Dynamic popover sizing** — `resize-popover` bridge op + `resizePopover()` JS,
-  clamped to `[200, 720]px`. Tests in `tests/test_v3_menubar_resize.py`.
-
-## Pending (next sessions)
-
-- **Q1 — Multi-account calendar** (designed · tabled): true multi-account
-  (N independent Google logins, one OAuth token each). Spec written with locked
-  decisions — `_workspace/specs/v1.5.0-multi-account-calendar.md`; roadmap entry
-  under `docs/roadmap.md` "v1.5". Decisions: in-app background-thread OAuth,
-  `userinfo.email`+`openid` scope (lazy upgrade), email-named token files,
-  5-account soft cap. 2 PRs (data model+CLI, then Settings UI). Implementation
-  tabled — resume from the spec when prioritized.
-- **Q2 — .app bundle** (deferred to pre-launch): proper macOS app bundle so
-  System Settings shows "CalFlow" instead of `python3.11`. Approach: py2app
-  (Option A). When shipped, the `permissions.python_binary` row in Settings
-  can be removed. Do not start until user says public launch is approaching.
-
-## GitHub Push Freeze
-
-**Until further notice, do not push anything to GitHub.**
-
-This includes:
-
-- commits
-- branches
-- tags
-- force-pushes
-- release/tag cleanup
-
-Local commits are allowed only when the user asks for them. If a task appears
-to require GitHub, stop and ask the user first.
-
-## v2.0 Tag Cleanup
-
-The accidental public GitHub tags were removed:
-
-- `v2.0.0`
-- `v2.0.1`
-
-The matching local tags were also deleted so they are not accidentally pushed
-again.
-
-Do not recreate any `v2.0.x` tag until the user explicitly says the public
-v2.0 launch is ready.
-
-## Menubar Version Relabel
-
-Recent menubar work was relabeled from `v2.0.x-dev` to `v1.4.0-dev`:
-
-- LaunchAgent lifecycle commands
-- dynamic month/day menu bar icon
-- dynamic popover sizing
-
-The dynamic popover sizing implementation itself remains in place:
-
-- `resize-popover` bridge op in `cli/menubar.py`
-- dynamic `resizePopover()` call in `runtime/menubar/popover.html`
-- resize tests in `tests/test_v3_menubar_resize.py`
-
-The popover width intentionally remains `_POPOVER_W = 560`.
+- Examples spec-of-record: the "CalFlow Examples" Google Sheet, tab
+  `260707` (mirrored in `docs/examples.md`).
+- Multi-account calendar: designed + tabled —
+  `_workspace/specs/v1.5.0-multi-account-calendar.md` (NOTE: spec label
+  predates the v1.5 prerelease line; renumber to v1.6 when picked up).
+- `.app` bundle (py2app): deferred until near public launch. When it
+  ships, remove the `permissions.python_binary` Settings row.
+- `run script(PATH)`: approved syntax, ships with the v2.4 whitelist
+  security model. Bare `run "path"` stays rejected.
+- Queued verb-vocabulary questions: `minimize` / `#minimized`, `show` /
+  `unhide`, `restore`, native fullscreen vs `#full`. Spec before code.
 
 ## Working Notes
 
-- The current branch name is still `v2.0`; do not rename or push it without
-  explicit user instruction.
-- `docs/menubar.md`, `cli/menubar.py`, and `runtime/menubar/__init__.py`
-  use `v1.4.x` for current menubar docs/header labels.
-- Historical references to the v2.0 architecture may still exist in parser,
-  runtime, and roadmap docs. Do not bulk-rewrite them unless the user asks;
-  many are historical/architectural labels rather than release tags.
-- `_workspace/specs/v1.4.0-user-settings-json.md` is an untracked local spec
-  file. Do not add, delete, or modify it unless asked.
+- `config/settings.py` is tracked defaults only; user overrides live in
+  `data/user_settings.json` / `data/user_targets.json` (gitignored).
+  Never reintroduce runtime writes to tracked files.
+- Historical references to the v2.0 architecture in parser/runtime/
+  roadmap docs are labels, not release tags — don't bulk-rewrite.
+- `_workspace/` specs are tracked; scratchpads are gitignored handoff
+  notes between Cowork/Codex/Code sessions.

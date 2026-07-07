@@ -229,11 +229,12 @@ verbs CalFlow understands today:
 | `hide` | Hides apps without quitting them. | `hide @slack` |
 | `close` | Quits/closes apps; requires an explicit target. | `close @spotify` |
 | `wait` | Pauses the workflow briefly. | `wait 5s` |
-| `screenshot` | Captures the screen, active window, display, window title, or area. | `screenshot to("~/Desktop/meeting.png")` |
-| `click` | Clicks by visible text, selector, or position. | `click text("Submit")` |
+| `screenshot` | Captures to the clipboard by default, or to a file via `to("path")`. | `screenshot` · `screenshot to("~/Desktop/meeting.png")` |
+| `click` | Clicks by visible text, selector, or position. Supports `button(right)` and `count(2)` for double-click. | `click text("row") button(right)` |
+| `drag` | One mouse gesture from point to point. | `drag from(100,200) to(300,400)` |
 | `type` | Types text into the focused app/window. | `type("hello")` |
 | `press` | Sends a key or keyboard shortcut. | `press {cmd+k}` |
-| `copy` | Copies from the current focused context. | `copy` |
+| `copy` | Copies the current selection, or places literal text on the clipboard. | `copy` · `copy("hello")` |
 | `paste` | Pastes clipboard contents. | `paste` |
 | `save` | Saves a source, such as clipboard or run result, to a file. | `save source(clipboard) to("~/Desktop/file.txt")` |
 | `run` | Runs an external automation backend. | `run shortcut("Start Focus")` |
@@ -405,14 +406,15 @@ are treated as user-initiated local actions.
 | Dynamic dates like `{now-7d}` | Works |
 | `open` | Works |
 | `wait` | Works |
-| `screenshot` | Works for standard capture; some variants still fall back |
+| `screenshot` | Works — clipboard by default, file via `to("path")`; window/display/area variants still fall back |
+| `copy("text")` | Works — literal text straight to the clipboard |
 | `run btt(...)` | Works via BetterTouchTool URL scheme |
 | `run shortcut(...)` | Works via macOS `shortcuts run` |
 | `run alfred(...)` | Works via Alfred External Trigger URL scheme |
 | `run applescript` | Works via `osascript` |
 | Calendar invite trust gate | Works |
 | Run failure notifications | Works, best-effort macOS notifications |
-| UI actions like `click`, `type`, `press`, `copy`, `paste`, `save` | Parsed and routed; backend work continues |
+| UI actions like `click`, `drag`, `type`, `press`, bare `copy`, `paste`, `save` | Parsed and routed; backend work continues |
 
 ---
 

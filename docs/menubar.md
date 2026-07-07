@@ -1,4 +1,4 @@
-# CalFlow menubar companion (v1.4.x)
+# CalFlow menubar companion (v1.5.x)
 
 A native macOS menubar app that surfaces today's events, missed events
 in the last 12 h, lifetime stats, one-click "Run now" buttons, an
@@ -58,6 +58,8 @@ interactive Recipes editor, and an editable Settings page.
   the last good `popover-feed` snapshot with a stale-data banner.
 - **v1.4.1-dev** — LaunchAgent failure recovery: failed menu bar lifecycle
   commands return recovery steps and log paths.
+- **v1.5.5** — Tip Dev button points to the live Buy Me a Coffee page
+  (buymeacoffee.com/therapydoge).
 
 ## Install / Run
 

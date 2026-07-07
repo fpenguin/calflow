@@ -19,7 +19,7 @@ displays, hide apps, autofill passwords, capture screenshots. Two execution
 modes:
 
 - **Smart Mode** — URL-line shorthand (`zoom.us @chrome #left(50%)`)
-- **Plus Mode** — `+CalFlow+` block + 13-verb DSL with full grammar
+- **Plus Mode** — `+CalFlow+` block + 14-verb DSL with full grammar (`drag` added v1.5.4)
 
 Architecture: `parser → validator → resolver → executor → actions/backends`,
 strict layer separation enforced.
@@ -219,12 +219,14 @@ to track the remainder. Don't ship a partial migration as "done."
 ## 7. Versioning & releases
 
 - **`core/version.py` is the single source of truth.** Bump `__version__` on
-  every shipped change.
-- **Active pre-launch work stays on `v1.4.x` until further notice.**
-  `v2.0.0` is reserved for the public launch milestone.
-- **No GitHub pushes are permitted until further notice.** Do not push
-  commits, branches, or tags unless the user explicitly lifts this rule.
-  Local commits are OK when requested.
+  every shipped change. Flip `__is_release__` to True only on a tagged
+  release; flip back to False on the next dev commit.
+- **Active development lives on `main` in the `v1.5.x` line** (moved from
+  the `v2.0` branch at the v1.5 prerelease, 2026-07-04). `v2.0.0` is still
+  reserved for the public launch milestone.
+- **Pushes happen only when the user asks for a release.** Default = local
+  commits. When the user says "public release": tag `v<version>`, push
+  `main` + the tag. Never push in-between work unprompted.
 - **Commit messages are multi-paragraph.** First line: `vX.Y.Z — <one-line
   summary>`. Then a blank line, then sections (Symptom / Root cause / Fix /
   Files touched / Tests). Match the established history.

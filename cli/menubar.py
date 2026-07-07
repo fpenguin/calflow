@@ -138,11 +138,10 @@ _STATUS_ICON_REFRESH_SECONDS = 10 * 60
 # =========================================================
 #
 # `open-coffee` and `open-about` open URLs in the user's default
-# browser via `open(1)`. Replace these with your real URLs once
-# the GitHub repo and Buy-Me-a-Coffee page exist.
+# browser via `open(1)`.
 
 _OPEN_URLS: dict[str, str] = {
-    "open-coffee": "https://www.buymeacoffee.com/calflow",
+    "open-coffee": "https://buymeacoffee.com/therapydoge",
     "open-about":  "https://github.com/fpenguin/calflow",
     "open-calendar": "https://calendar.google.com/calendar/u/0/r",
 }
