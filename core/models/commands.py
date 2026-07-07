@@ -226,7 +226,14 @@ class ScreenshotCommand(BaseCommand):
 
 @dataclass(frozen=True)
 class CopyCommand(BaseCommand):
-    """COPY"""
+    """
+    COPY                 ← copy current selection (synthesized ⌘C — stub)
+    COPY("text")         ← v1.5.2: place literal text on the clipboard
+
+    `text` carries the literal when the argument form is used; None
+    means the bare selection-copy form.
+    """
+    text: Optional[str] = None
 
 
 @dataclass(frozen=True)

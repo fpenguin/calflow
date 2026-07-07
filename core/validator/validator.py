@@ -74,7 +74,7 @@ KNOWN_COMMANDS: dict = {
     "PRESS":      (1, None),
     "WAIT":       (1, 1),
     "SCREENSHOT": (0, None),
-    "COPY":       (0, 0),
+    "COPY":       (0, 1),  # v1.5.2 — copy("text") literal form
     "PASTE":      (0, 0),
     "SAVE":       (0, None),
     "RUN":        (1, None),
@@ -478,6 +478,20 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
                         f'`display(N)`, `window("…")`, or `area(…)`; got {head!r}',
                     )
                 )
+
+    elif verb == "COPY":
+        # v1.5.2 — bare `copy` (selection) or copy("text") (literal).
+        # An unquoted argument is ambiguous (identifier? app? typo?) —
+        # reject with the canonical quoted form.
+        if body and not _QUOTED_RE.match(body[0]):
+            errors.append(
+                ValidationError(
+                    line_no,
+                    f'COPY expects a quoted string, e.g. copy("hello"); '
+                    f'got {body[0]!r}. Bare `copy` copies the current '
+                    f'selection.',
+                )
+            )
 
     elif verb == "SAVE":
         # SAVE expects function-style args: source(...) to("…")

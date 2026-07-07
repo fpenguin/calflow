@@ -131,3 +131,34 @@ def take_screenshot(path: Optional[str] = None) -> Optional[str]:
     except Exception as exc:
         log(f"[ERROR] Screenshot failed: {exc}")
         return None
+
+
+def take_screenshot_to_clipboard() -> bool:
+    """
+    Capture the screen straight to the clipboard (v1.5.2 — the default
+    sink for bare `screenshot` and `screenshot to(clipboard)`).
+
+    Returns:
+        True on success, False on failure.
+    """
+    try:
+        # macOS: screencapture -c -x captures silently to the clipboard.
+        result = subprocess.run(
+            ["/usr/sbin/screencapture", "-c", "-x"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            log("[INFO] Screenshot copied to clipboard")
+            return True
+        log(f"[WARN] Screenshot-to-clipboard returned {result.returncode}")
+        return False
+
+    except FileNotFoundError:
+        log("[WARN] /usr/sbin/screencapture not available on this platform")
+        return False
+    except Exception as exc:
+        log(f"[ERROR] Screenshot-to-clipboard failed: {exc}")
+        return False

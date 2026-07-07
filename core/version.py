@@ -16,7 +16,7 @@ Format: PEP 440 (MAJOR.MINOR.PATCH).
 
 from __future__ import annotations
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 # Stable release vs. work-in-progress flag. Toggle to True only on a
 # tagged release; flip back to False on the next dev commit.

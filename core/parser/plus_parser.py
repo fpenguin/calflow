@@ -78,6 +78,17 @@ _LAYOUT_FN_NAMES = frozenset({
     "area", "grid", "profile",
 })
 
+# v1.5.2 — bare PARENLESS layout words are drop-sugar too. `open
+# "Messages" display(2) full` previously dropped `full` silently (the
+# worst outcome: user believes it worked). Promoted to the `#word`
+# tag form so resolve_layout picks them up with their defaults
+# (#full → 1.0, #left → 0.5, …). Quoted tokens are never promoted —
+# an app literally named "full" stays an app name. Runtime targets
+# (`active`, `all`) are NOT in this set and keep their meaning.
+_BARE_LAYOUT_WORDS = frozenset({
+    "full", "left", "right", "middle", "top", "bottom",
+})
+
 # v1.1.2 — dynamic blocks that wrap a runtime target / alias / filter
 # are rejected with a clear hint (data vs. runtime separation).
 _DYNAMIC_RE = re.compile(r"^\{(.+)\}$")
@@ -267,7 +278,15 @@ def _build_command(line: str, line_no: int) -> Optional[BaseCommand]:
         return _build_screenshot(line_no, raw, body_args, tags, fns)
 
     if head_upper == "COPY":
-        return CopyCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
+        # v1.5.2 — copy("text") places a literal on the clipboard.
+        # Bare `copy` (selection copy) keeps text=None.
+        copy_text: Optional[str] = None
+        if body_args and _QUOTED_RE.match(body_args[0]):
+            copy_text = _unquote(body_args[0])
+        return CopyCommand(
+            line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+            text=copy_text,
+        )
 
     if head_upper == "PASTE":
         return PasteCommand(line_no=line_no, raw=raw, tags=tags, functions=tuple(fns))
@@ -359,13 +378,32 @@ def _build_hide(
 
     # ── Runtime-target keyword (`active`, `all`) ──────────────────────
     target_keyword: Optional[str] = None
-    if body and not has_filters:
+    if body and body[0].lower() in _RUNTIME_TARGETS:
         head = body[0].lower()
-        if head in _RUNTIME_TARGETS:
-            target_keyword = head
+        if not has_filters:
             return HideCommand(
                 line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
-                target_keyword=target_keyword,
+                target_keyword=head,
+            )
+        # v1.5.2 — `hide active display(N)` is now LEGAL: miniaturize the
+        # frontmost app's windows on display N only (per-window scope,
+        # same JXA path as `hide display(N)`). `except()` still conflicts
+        # with a runtime target — fall through so the validator's shape
+        # checks see the raw pieces.
+        display_arg = fn_dict.get("display")
+        if head == "active" and display_arg is not None and "except" not in fn_dict:
+            return HideCommand(
+                line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+                target_keyword="active",
+                display_filter=_coerce_display_filter(display_arg),
+            )
+        # v1.5.2 — `hide all display(N)` ≡ `hide display(N)` (the `all`
+        # is implied by a bare display filter). Normalize to the filter
+        # form instead of treating `all` as an app named "all".
+        if head == "all" and display_arg is not None and "except" not in fn_dict:
+            return HideCommand(
+                line_no=line_no, raw=raw, tags=tags, functions=tuple(fns),
+                display_filter=_coerce_display_filter(display_arg),
             )
 
     # ── Form 1: explicit list / bare-target / "App" — ignore filters ──
@@ -865,6 +903,12 @@ def _split_args(
             # is reconstructed in the canonical `#name(args)` form.
             if name in _LAYOUT_FN_NAMES:
                 tags.append(f"#{name}({inner})".lower())
+            continue
+        # v1.5.2 — bare parenless layout words (`full`, `left`, …) are
+        # drop-sugar for their `#tag` forms. Quoted tokens never reach
+        # this branch as bare words (the token still carries quotes).
+        if token.lower() in _BARE_LAYOUT_WORDS:
+            tags.append(f"#{token.lower()}")
             continue
         body.append(token)
 

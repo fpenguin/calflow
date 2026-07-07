@@ -60,7 +60,7 @@ from runtime.actions.browser import open_target
 from runtime.actions.btt import trigger_alfred, trigger_named_btt
 from runtime.actions.notifications import notify_run_error
 from runtime.actions.run_result import RunResult, error_result, ok_result
-from runtime.actions.screenshot import take_screenshot
+from runtime.actions.screenshot import take_screenshot, take_screenshot_to_clipboard
 from runtime.actions.shortcuts import run_shortcut
 from runtime.run_policy import is_run_backend_allowed
 from state.stats_store import record_action  # v1.3.0 — lifetime stats
@@ -343,8 +343,13 @@ def _do_hide(params: Dict[str, Any]) -> None:
         hide display(N|"name")                    → display_filter set
         hide except(<arg>) display(N|"name")      → both
 
-    `display_filter` per-window scoping is still a stub (full impl in
-    a follow-up); we log the filter and proceed across all displays.
+    v1.5.2 shapes:
+        hide active display(N|"name")   → miniaturize the frontmost
+                                          app's windows on that display
+                                          only (per-window JXA path)
+        hide [active,"App"]             → `active` expands to the
+                                          frontmost app name at
+                                          execution time, deduped
     """
     from runtime.actions.app_control import (
         hide_app, hide_all, get_frontmost_app_name,
@@ -353,11 +358,20 @@ def _do_hide(params: Dict[str, Any]) -> None:
     target_keyword = params.get("target_keyword")
     if target_keyword == "active":
         name = get_frontmost_app_name()
-        if name:
-            hide_app(name)
-            record_action("hide")
-        else:
+        if not name:
             log("[WARN] HIDE active: could not determine frontmost app")
+            return
+        # v1.5.2 — `hide active display(N)`: per-window scope. App-level
+        # hide would remove the app's windows on EVERY display, which is
+        # not what the user asked for.
+        active_display = params.get("display_filter")
+        if active_display is not None:
+            from runtime.actions.window import hide_apps_on_display
+            hide_apps_on_display(active_display, only_app=name)
+            record_action("hide")
+            return
+        hide_app(name)
+        record_action("hide")
         return
     if target_keyword == "all":
         # `hide all` per spec hides EVERY visible non-bg app, including
@@ -378,8 +392,22 @@ def _do_hide(params: Dict[str, Any]) -> None:
     had_items = params.get("had_items", False)
 
     if items:
+        # v1.5.2 — `active` inside a list expands to the frontmost app
+        # name at execution time; duplicates collapse (e.g. the
+        # frontmost IS one of the listed apps).
+        expanded: List[str] = []
         for item in items:
             name = item.lstrip("@") if isinstance(item, str) else item
+            if isinstance(name, str) and name.lower() == "active":
+                front = get_frontmost_app_name()
+                if not front:
+                    log("[WARN] HIDE list: `active` skipped — could not "
+                        "determine frontmost app")
+                    continue
+                name = front
+            if name not in expanded:
+                expanded.append(name)
+        for name in expanded:
             hide_app(name)
             record_action("hide")
         return
@@ -498,7 +526,17 @@ def _do_screenshot(params: Dict[str, Any]) -> None:
             f"display={params.get('display')} window={params.get('window')!r} "
             f"area={params.get('area')} (stub — falls back to full screen)"
         )
-    saved = take_screenshot(params.get("path"))
+    # v1.5.2 — the default sink is the CLIPBOARD. A file is written only
+    # when the user asked for one via `to("path")`. `to(clipboard)` is
+    # the explicit spelling of the default.
+    path = params.get("path")
+    if path is None or path == "clipboard":
+        ok = take_screenshot_to_clipboard()
+        record_action("screenshot", success=ok)
+        if not ok:
+            log("[WARN] Screenshot-to-clipboard failed (best-effort)")
+        return
+    saved = take_screenshot(path)
     if saved is None:
         log("[WARN] Screenshot failed (best-effort)")
         record_action("screenshot", success=False)
@@ -511,7 +549,30 @@ def _do_screenshot(params: Dict[str, Any]) -> None:
 # =========================================================
 
 def _do_copy(params: Dict[str, Any]) -> None:
-    log("[INFO] COPY (stub)")
+    """
+    copy("text")  → v1.5.2: place the literal on the clipboard (real).
+    copy          → selection copy via synthesized ⌘C (still stub, v2.3).
+    """
+    text = params.get("text")
+    if text is None:
+        log("[INFO] COPY (stub)")
+        return
+    try:
+        result = subprocess.run(
+            ["pbcopy"], input=text, text=True, timeout=5, check=False,
+        )
+        if result.returncode == 0:
+            log(f"[INFO] COPY: {len(text)} chars → clipboard")
+            record_action("copy")
+        else:
+            log(f"[WARN] COPY: pbcopy returned {result.returncode}")
+            record_action("copy", success=False)
+    except FileNotFoundError:
+        log("[WARN] COPY: pbcopy not available on this platform")
+        record_action("copy", success=False)
+    except Exception as exc:
+        log(f"[ERROR] COPY failed: {exc}")
+        record_action("copy", success=False)
 
 
 def _do_paste(params: Dict[str, Any]) -> None:

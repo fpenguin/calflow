@@ -235,10 +235,10 @@ open <url> [@target] [#tags...]
 
 ---
 
-## 2.2 Global Tag Line
+## 2.2 Global Modifier Line
 
 ```ebnf
-tag_line ::= (tag | target)+
+modifier_line ::= (tag | function_tag | target)+
 ```
 
 ---
@@ -253,8 +253,10 @@ Defines **persistent context** for subsequent lines.
 
 ```text
 #display(2)
+display(2)
 @chrome
 #profile(1)
+profile(1)
 #submit
 ```
 
@@ -272,6 +274,12 @@ Defines **persistent context** for subsequent lines.
 
 - Smart Mode only  
 - ignored in Plus Mode  
+- function-shaped layout/session modifiers may drop `#`
+- v1.5.2 — bare parenless layout words (`full`, `left`, `right`,
+  `middle`, `top`, `bottom`) on a Plus verb line are drop-sugar for
+  their `#tag` forms (`open "Messages" display(2) full` ≡ `… #full`).
+  Quoted tokens are never promoted; `active` / `all` keep their
+  runtime-target meaning.
 
 ---
 
@@ -321,6 +329,7 @@ focus @chrome title("Inbox")
 click text("Export")
 type("hello") speed(0.1s)
 press {cmd+shift+tab}
+copy("hello")                            ## v1.5.2 — literal → clipboard
 save source(clipboard) to("~/file.png")
 run btt("BTT-ClaudeCoworkTryAgain")
 run shortcut("Start Focus") input("deep work")
@@ -669,6 +678,9 @@ hide except([Slack, Notion])      ## hide all except a literal list
 hide display(2)                   ## hide all on display 2
 hide display("Samsung S90D")      ## hide all on a named display
 hide except(@work) display(2)     ## combine
+hide active display(2)            ## v1.5.2 — frontmost's windows on display 2 only
+hide all display(2)               ## v1.5.2 — normalized to `hide display(2)`
+hide [active,"Spotify"]           ## v1.5.2 — `active` expands to frontmost at run time
 
 ## CLOSE
 close active                      ## quit frontmost
@@ -881,6 +893,13 @@ no tag                         primary display
 #display(ext)                  first external monitor (recommended hint)
 #display(2)                    Nth display by index (1-based; no fallback)
 #display("Samsung S90D")       case-insensitive substring match (no fallback)
+```
+
+On Smart Mode URL lines and Smart Mode global modifier lines,
+function-shaped layout/session tags may drop `#`:
+
+```text
+zoom.us @chrome display(2) grid(1@2x2) profile(3)
 ```
 
 Run `python3 -m cli.main display` to see your connected monitors and

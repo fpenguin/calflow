@@ -468,6 +468,9 @@ function run(argv) {
     // explicitly asked to hide everything on display N — frontmost
     // included. `hide except(active) display(N)` passes "1".
     var keepFrontmost = (argv[5] || "0") === "1";
+    // v1.5.2 — `hide active display(N)`: argv[6] restricts the pass to
+    // ONE app by exact name. Every other process is skipped untouched.
+    var onlyApp = argv[6] || "";
 
     var SE = Application("System Events");
     var procs = SE.processes.whose({ visible: true, backgroundOnly: false })();
@@ -492,6 +495,10 @@ function run(argv) {
         var name = "";
         try { name = p.name(); } catch (e) { continue; }
         if (!name) continue;
+
+        // v1.5.2 — only-app scope: skip everything that isn't the
+        // requested app. No diagnostics noise for skipped apps.
+        if (onlyApp && name !== onlyApp) continue;
 
         // Explicit keep list always wins. Frontmost only auto-skips
         // when the caller passed keepFrontmost=true (i.e. the DSL had
@@ -643,6 +650,7 @@ def hide_apps_on_display(
     except_apps: list[str] = (),
     *,
     keep_frontmost: bool = False,
+    only_app: str | None = None,
 ) -> bool:
     """
     Per-window hide. For every visible non-background app, miniaturize
@@ -664,6 +672,10 @@ def hide_apps_on_display(
     `keep_frontmost` (v1.1.12 — opt-in via DSL `except(active)`) —
     when True, the frontmost app's windows are skipped too. When False
     (the bare `hide display(N)` case), the frontmost is included.
+
+    `only_app` (v1.5.2 — DSL `hide active display(N)`) — when set,
+    the pass is restricted to that ONE app by exact name; every other
+    process is skipped untouched.
 
     Returns True iff the JXA call succeeded. AX permission denial,
     display-not-found, and total subprocess errors return False with
@@ -704,6 +716,7 @@ def hide_apps_on_display(
 
     label = (
         f"HIDE display({target['index']}) [{target.get('name','?')}]"
+        + (f" only {only_app}" if only_app else "")
         + (f" except {', '.join(except_apps)}" if except_apps else "")
     )
 
@@ -715,6 +728,7 @@ def hide_apps_on_display(
                 str(target["w"]), str(target["h"]),
                 keep_arg,
                 "1" if keep_frontmost else "0",
+                only_app or "",
             ],
             capture_output=True, text=True, timeout=8,
         )

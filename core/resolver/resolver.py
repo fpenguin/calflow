@@ -342,7 +342,9 @@ def resolve_command(
             base["target_keyword"] = command.target_keyword
             base["items"] = ()
             base["keep"] = ()
-            base["display_filter"] = None
+            # v1.5.2 — `hide active display(N)` scopes the frontmost
+            # app's windows to one display; the filter must survive.
+            base["display_filter"] = command.display_filter
             base["had_items"] = False
             return base
         base["had_items"] = bool(command.items)  # see CloseCommand note
@@ -396,7 +398,11 @@ def resolve_command(
         })
         return base
 
-    if isinstance(command, (CopyCommand, PasteCommand)):
+    if isinstance(command, CopyCommand):
+        base["text"] = command.text  # v1.5.2 — copy("text") literal
+        return base
+
+    if isinstance(command, PasteCommand):
         return base
 
     if isinstance(command, SaveCommand):

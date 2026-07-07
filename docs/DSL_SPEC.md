@@ -815,6 +815,8 @@ open @chrome
 open @work                          ## bundle expansion
 open https://x.com @chrome
 open "Notion"
+open zoom.us new(window)            ## force a new browser WINDOW
+open zoom.us new(tab)               ## force a tab (also: #tab / #window)
 
 ## FOCUS
 focus @chrome                       ## activate
@@ -839,11 +841,34 @@ hide except(@work)                  ## hide all except @work
 hide except(active)                 ## hide all except frontmost
 hide display(2)                     ## hide all on display 2
 hide except(@work) display(2)       ## combine
+hide active display(2)              ## v1.5.2 — frontmost's windows on display 2 only
+hide [active,"Spotify"]             ## v1.5.2 — `active` expands at run time
 ```
 
 > Bare `hide` (no args) was REMOVED in v1.1.2. Use `hide except(active)`
 > to keep the frontmost visible, `hide all` to hide everything, or
 > `hide @app` to hide a specific app.
+
+> v1.5.2 — `hide active display(N)` miniaturizes the frontmost app's
+> windows on display N ONLY (per-window; the app's windows on other
+> displays stay visible). If the frontmost has no window on that
+> display, it's a logged no-op. `hide all display(N)` is normalized to
+> `hide display(N)`. Inside a list, `active` expands to the frontmost
+> app name at execution time and is deduped against the static items.
+
+### Tab vs window (URL opens)
+
+Whether a URL opens in a new TAB or a new WINDOW is decided by
+`wants_new_window` with this precedence:
+
+1. explicit `new(window)` / `new(tab)` function call — wins
+2. explicit `#window` / `#new-window` / `#tab` / `#new-tab` tag
+3. any layout or display tag implies WINDOW (a tab can't be
+   positioned independently of the window it lives in)
+4. default: TAB
+
+`#profile(N)` does NOT imply a window — profile routing is
+window-mode-agnostic.
 
 ---
 
@@ -892,8 +917,9 @@ timeout(3s)
 ## 3.3 Screenshot
 
 ```text
-screenshot                           ## default sink (settings)
-screenshot to("~/x.png")             ## explicit path (canonical — v1.1.2)
+screenshot                           ## → clipboard (v1.5.2 default)
+screenshot to(clipboard)             ## → clipboard (explicit spelling)
+screenshot to("~/x.png")             ## → file (canonical path form — v1.1.2)
 screenshot active                    ## frontmost-window capture
 screenshot display(2)
 screenshot display("Samsung S90D")
@@ -905,10 +931,12 @@ screenshot area(0,0,1920,1080)
 
 ### Behavior
 
-- writes a PNG file to `PLUS_SCREENSHOT_DIR` (default `~/Downloads/CalFlow`)
-- filename pattern is `PLUS_SCREENSHOT_FILENAME_FORMAT`  
-  (default `CalFlow_{YYYY-MM-DD_HHMMSS}.png`)
-- if `to("…")` is supplied, writes there instead
+- v1.5.2 — the DEFAULT sink is the CLIPBOARD (`screencapture -c`).
+  Bare `screenshot` and `screenshot to(clipboard)` are equivalent.
+  (Pre-v1.5.2 the bare form wrote a file to `PLUS_SCREENSHOT_DIR`.)
+- a PNG FILE is written only when `to("path")` is supplied
+- file filename pattern is `PLUS_SCREENSHOT_FILENAME_FORMAT`  
+  (default `CalFlow_{YYYY-MM-DD_HHMMSS}.png`) when the path is a folder
 - destination directory is created automatically if it doesn't exist; falls
   back to `~/Library/Application Support/CalFlow/screenshots/` if read-only
 - both folder and filename pattern are configurable in `config/settings.py`
@@ -920,10 +948,16 @@ screenshot area(0,0,1920,1080)
 ## 3.4 Clipboard
 
 ```text
-copy
+copy                                 ## copy current selection (⌘C)
+copy("hello")                        ## v1.5.2 — place literal text on clipboard
 paste
 save source(clipboard) to("~/file.png")
 ```
+
+> v1.5.2 — `copy("text")` writes the literal straight to the clipboard
+> via `pbcopy` (no keystroke synthesis, no Accessibility permission).
+> The argument must be quoted; `copy(hello)` is rejected. Bare `copy`
+> (selection copy) remains keystroke-based.
 
 ---
 
@@ -1116,7 +1150,7 @@ TARGETS = {"@active": …} ## ❌ shadows reserved keyword — refuses to start
 
 ---
 
-## 9.1 `#` Drop Sugar (Plus Mode only)
+## 9.1 `#` Drop Sugar
 
 In Plus Mode, attached function-shaped tags MAY drop the `#` prefix:
 
@@ -1128,8 +1162,15 @@ open zoom.us @chrome grid(1@3x2)    ≡  open zoom.us @chrome #grid(1@3x2)
 open zoom.us @chrome profile(2)     ≡  open zoom.us @chrome #profile(2)
 ```
 
+Smart Mode URL lines accept the same function-shaped layout/session
+modifiers, so this also works without a `+CalFlow+` block:
+
+```text
+zoom.us @chrome display(2) grid(1@2x2) profile(3)
+```
+
 Bare-relative tags (`#left`, `#full`) keep the `#` because they're not
-function-shaped. Standalone `#tag` lines (no verb) remain Smart-Mode-only.
+function-shaped. Standalone modifier lines remain Smart-Mode-only.
 
 ---
 
