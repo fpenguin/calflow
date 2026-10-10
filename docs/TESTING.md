@@ -91,6 +91,10 @@ use a disposable source copy for those runs.
 
 ## Layered test organization
 
+The pytest configuration adds the repository root to the import path, so both
+`pytest` and `python -m pytest` can collect project modules. CI uses the latter
+to ensure the launcher matches the Python interpreter selected by its matrix.
+
 Tests are split by layer, not by feature. Each layer has its own
 `test_v2_*.py` file.
 

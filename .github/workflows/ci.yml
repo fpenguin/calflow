@@ -63,7 +63,7 @@ jobs:
         # New tests should be written in pytest style (plain `assert` +
         # @pytest.fixture). Migration of legacy unittest tests is
         # deferred — see TESTING.md.
-        run: pytest tests/ -v
+        run: python -m pytest tests/ -v
 
   lint:
     name: Lint (ruff)

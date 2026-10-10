@@ -82,6 +82,7 @@ ignore_errors = true
 # ─── Pytest (planned migration in v1.1.27) ─────────────────────
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["*Tests", "*Test", "Test*", "*Suite", "*Spec"]
 python_functions = ["test_*"]
