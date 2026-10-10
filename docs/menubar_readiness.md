@@ -1,8 +1,11 @@
 # 🍎 Menubar Companion — Architectural Readiness
 
-This document is **planning only** — no menubar app is being built yet.
-The goal is to make sure the v2.0 architecture doesn't paint us into a
-corner when the menubar app does land.
+This is a **historical design memo**, retained for context. The menu bar
+companion, Settings/Playbooks windows, JSON preferences, event feeds and
+manual-run bridge now exist. See [the current menubar guide](menubar.md) for
+shipped behavior and [the codebase audit](codebase-audit-2026-10-10.md) for
+remaining defects. Future-tense descriptions and version estimates below
+describe the original proposal, not the current release or a delivery promise.
 
 The menubar app will be a thin GUI shell. The actual logic must live in
 the existing Python packages, exposed as **library-callable APIs** that
@@ -292,9 +295,9 @@ When the menubar app is built we should:
 - Detect menu-bar-only apps via `LSUIElement` in their `Info.plist`
   and surface them differently in the picker (separate "menu-bar apps"
   section).
-- For `hide`, also try `tell application "<X>" to close every window`
-  before / instead of `set visible`. Falls back gracefully on apps
-  that don't expose `close window`.
+- Retracted proposal: never use `close every window` as a fallback for `hide`.
+  Closing windows can discard work and violates the action's meaning. The
+  current backend hides/minimizes windows and must not close them.
 - Consider an explicit `close popups` verb for power users who want
   to clear settings panes without quitting menu-bar agents.
 

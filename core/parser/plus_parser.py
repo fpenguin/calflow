@@ -44,6 +44,7 @@ from core.models import (
     WaitCommand,
 )
 from core.utils import log, strip_inline_comment
+from core.parser.modifiers import TAG_TOKEN, collapse_tags
 from core.validator.validator import (
     _split_verb_function,
     tokenize,
@@ -55,7 +56,7 @@ from core.validator.validator import (
 # 🔎 REGEX
 # =========================================================
 
-_HASHTAG_RE = re.compile(r"^#\w[\w\-=()%.,@/]*$")
+_HASHTAG_RE = TAG_TOKEN
 _AT_RE = re.compile(r"^@\w[\w\-]*$")
 _COORD_RE = re.compile(r"^(-?\d+)\s*,\s*(-?\d+)$")
 _FUNCTION_CALL_RE = re.compile(r"^([A-Za-z_][\w\-]*)\((.*)\)$")
@@ -150,8 +151,8 @@ def parse_plus(
     text: str,
 ) -> Tuple[List[BaseCommand], List[ValidationError]]:
     """Parse the body of a Plus block into a typed AST."""
-    body = _collapse_multiline_run_blocks(strip_header(text))
-    errors = validate_plus_block(body)
+    body, fence_errors = _collapse_multiline_run_blocks(strip_header(text))
+    errors = fence_errors + validate_plus_block(body)
 
     if errors and PLUS_STRICT_VALIDATION:
         log(
@@ -168,14 +169,19 @@ def parse_plus(
         if not line:
             continue
         if idx in bad_lines:
-            log(f"[INFO] skipped line: invalid syntax (line {idx}): {line}")
+            log(f"[INFO] skipped line: invalid syntax (line {idx}); check grammar")
             continue
 
-        cmd = _build_command(line, idx)
+        try:
+            cmd = _build_command(line, idx)
+        except (OverflowError, ValueError, TypeError):
+            errors.append(ValidationError(idx, "Invalid or out-of-range argument; check this line"))
+            log(f"[WARN] Invalid argument on line {idx}; command skipped")
+            continue
         if cmd is not None:
             commands.append(cmd)
 
-    return commands, errors
+    return ([] if errors and PLUS_STRICT_VALIDATION else commands), errors
 
 
 # =========================================================
@@ -381,7 +387,6 @@ def _build_hide(
     has_filters = ("except" in fn_dict) or ("display" in fn_dict)
 
     # ── Runtime-target keyword (`active`, `all`) ──────────────────────
-    target_keyword: Optional[str] = None
     if body and body[0].lower() in _RUNTIME_TARGETS:
         head = body[0].lower()
         if not has_filters:
@@ -765,7 +770,7 @@ def _build_screenshot(
 # 🛠️ HELPERS
 # =========================================================
 
-def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
+def _collapse_multiline_run_blocks(lines: List[str]) -> Tuple[List[str], List[ValidationError]]:
     """
     Collapse:
 
@@ -777,10 +782,11 @@ def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
     into one parser line with a JSON-quoted script payload.
     """
     out: List[str] = []
+    errors: List[ValidationError] = []
     i = 0
     while i < len(lines):
         raw = lines[i]
-        if (raw or "").strip().lower().startswith("run applescript"):
+        if re.match(r"^run\s+applescript(?:\s|$)", (raw or "").strip(), re.IGNORECASE):
             j = i + 1
             if j < len(lines) and (lines[j] or "").strip() == "+++":
                 script_lines = []
@@ -788,14 +794,19 @@ def _collapse_multiline_run_blocks(lines: List[str]) -> List[str]:
                 while j < len(lines) and (lines[j] or "").strip() != "+++":
                     script_lines.append(lines[j])
                     j += 1
-                if j < len(lines):
-                    j += 1  # consume closing +++
-                out.append(raw + " " + json.dumps("\n".join(script_lines)))
+                if j == len(lines) or not "\n".join(script_lines).strip():
+                    errors.append(ValidationError(i + 1, "AppleScript needs a nonempty, closed +++ block"))
+                    out.append("")
+                else:
+                    out.append(raw + " " + json.dumps("\n".join(script_lines)))
+                j = min(j + 1, len(lines))
+                out.extend([""] * (j - i - 1))
                 i = j
                 continue
+            errors.append(ValidationError(i + 1, "AppleScript needs a following +++ block"))
         out.append(raw)
         i += 1
-    return out
+    return out, errors
 
 
 def _run_backend_function(fns: List[Tuple[str, Any]]) -> Optional[Tuple[str, Any]]:
@@ -981,7 +992,7 @@ def _split_args(
             continue
         body.append(token)
 
-    return body, frozenset(tags), targets, functions
+    return body, frozenset(collapse_tags(tags)), targets, functions
 
 
 def _coerce_function_args(inner: str) -> Any:

@@ -1002,12 +1002,18 @@ save source(clipboard) to("~/file.png")
 > via `pbcopy` (no keystroke synthesis, no Accessibility permission).
 > The argument must be quoted; `copy(hello)` is rejected. Bare `copy`
 > (selection copy), `paste`, and standalone `save` are not implemented in
-> this build: they only log a stub. Use `screenshot to("path")` to save an
+> this build: they return an explicit unsupported result. Use `screenshot to("path")` to save an
 > image directly, or a run-result handler to save text from one run.
 
 ---
 
 ## 3.5 Run Backends
+
+Execution results distinguish success, handoff, failure, blocked, unsupported,
+cancelled and interrupted work. BTT/Alfred report handoff because their external
+workflows do not return a completion result. Best-effort execution continues
+after an individual command fails, but the workflow is not marked successful.
+Manual retries repeat the entire workflow. See [reliability notes](reliability-followup-2026-10-10.md).
 
 ```text
 run btt("BTT-ClaudeCoworkTryAgain")

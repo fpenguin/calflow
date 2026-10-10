@@ -90,7 +90,9 @@ _QUOTED_RE = re.compile(r'^".*"$|^\'.*\'$')
 _FUNCTION_CALL_RE = re.compile(r"^[A-Za-z_][\w\-]*\(.*\)$")
 _KEY_TOKEN_RE = re.compile(r"^\{[^{}]+\}$")
 _SEQUENCE_RE = re.compile(r"^\[.*\]$")
-_TAG_RE = re.compile(r"^#\w[\w\-=()%.,@/]*$")
+from core.parser.modifiers import TAG_TOKEN
+
+_TAG_RE = TAG_TOKEN
 _TARGET_RE = re.compile(r"^@\w[\w\-]*$")
 _URL_HINT_RE = re.compile(r"://|^[a-z0-9.\-]+\.[a-z]{2,}", re.IGNORECASE)
 _FILE_PATH_RE = re.compile(r'^"?[~/]')
@@ -314,7 +316,15 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             _FUNCTION_CALL_RE.match(fc) and fc.lower().startswith("except(")
             for fc in functions
         )
-        if not (has_positional or has_except):
+        if has_except and has_positional:
+            errors.append(ValidationError(
+                line_no, "CLOSE accepts a target/list or except(...), not both",
+            ))
+        elif has_except and not _nonempty_except_arg(_function_inner(functions, "except")):
+            errors.append(ValidationError(
+                line_no, "CLOSE except(...) requires a nonempty target or list",
+            ))
+        elif not (has_positional or has_except):
             errors.append(
                 ValidationError(
                     line_no,
@@ -605,7 +615,9 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
                         )
                     )
             elif run_backend == "applescript":
-                pass
+                errors.append(ValidationError(
+                    line_no, "Use run applescript followed by a +++ script block, not applescript(...)"
+                ))
         elif head.lower() == "applescript":
             errors.extend(_validate_run_handlers(args, line_no))
         else:

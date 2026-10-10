@@ -40,6 +40,7 @@ from config.settings import (
     TITLE_URL_OPEN_DEFAULT,
 )
 from core.utils import log, strip_inline_comment
+from core.parser.modifiers import collapse_tags
 
 # =========================================================
 # 🔎 REGEX
@@ -148,7 +149,10 @@ def normalize_url(raw_url: str) -> str | None:
     if lowered.startswith(tuple(IGNORED_PROTOCOLS)):
         return None
 
-    if url.startswith("www."):
+    if lowered.startswith(("http://", "https://")):
+        return lowered.split(":", 1)[0] + ":" + url.split(":", 1)[1]
+
+    if lowered.startswith("www."):
         return f"https://{url}"
 
     if "." in url and not url.startswith("http"):
@@ -197,9 +201,15 @@ def extract_tags(text: str) -> set[str]:
     if not text:
         return set()
     clean = _strip_comments(text)
-    tags = {t.lower() for t in _outside_url_matches(HASHTAG_PATTERN, clean)}
-    tags.update(f"#{t.lower()}" for t in _outside_url_matches(FUNCTION_TAG_PATTERN, clean))
-    return tags
+    if "\n" in clean:
+        return set().union(*(extract_tags(line) for line in clean.splitlines()))
+    spans = [match.span() for match in URL_PATTERN.finditer(clean)]
+    ordered = []
+    for pattern, prefix in ((HASHTAG_PATTERN, ""), (FUNCTION_TAG_PATTERN, "#")):
+        ordered.extend((match.start(), prefix + match.group(1).lower())
+                       for match in pattern.finditer(clean)
+                       if not any(start <= match.start() < end for start, end in spans))
+    return collapse_tags(tag for _, tag in sorted(ordered))
 
 
 def extract_targets(text: str) -> list[str]:
@@ -342,7 +352,7 @@ def extract_url_entries(text: str, title: str | None = None) -> list[dict]:
             tgts = TARGET_PATTERN.findall(line)
             if tgts:
                 global_target = tgts[-1].lower()
-            log(f"[INFO] Smart global update: {line}")
+            log("[INFO] Smart global modifiers updated")
             continue
 
         # Skip lines starting with ignored protocols (sip:, tel:, …)
@@ -380,7 +390,7 @@ def extract_url_entries(text: str, title: str | None = None) -> list[dict]:
 
             # Map filtering
             if IGNORE_MAP_LINKS and is_map_url(url) and not is_forced:
-                log(f"[INFO] Ignored map URL: {url}")
+                log("[INFO] Ignored map URL")
                 continue
 
             # Blacklist
@@ -388,11 +398,11 @@ def extract_url_entries(text: str, title: str | None = None) -> list[dict]:
             if BLACKLIST_ONLY_IF_MULTIPLE:
                 apply_blacklist = total_url_count > 1
             if apply_blacklist and is_blacklisted(url) and not is_forced:
-                log(f"[WARN] Blacklisted: {url}")
+                log("[WARN] Blacklisted URL skipped; check URL policy")
                 continue
 
             if is_forced:
-                log(f"[INFO] Forced URL: {url}")
+                log("[INFO] Forced URL accepted")
 
             entries.append({"url": url, "tags": merged_tags})
 
@@ -453,7 +463,7 @@ def extract_url_entries(text: str, title: str | None = None) -> list[dict]:
                 merged_tags.add("#tab")
             # any other value: silently fall through to global default (tab)
 
-        log(f"[INFO] Title URL → entry: {turl}")
+        log("[INFO] Title URL accepted")
         entries.append({"url": turl, "tags": merged_tags})
 
     if len(entries) > MAX_URLS:

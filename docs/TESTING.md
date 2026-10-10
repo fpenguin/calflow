@@ -76,9 +76,16 @@ For new tests use `@pytest.fixture` instead of `setUp` / `tearDown`:
 def fresh_state(tmp_path, monkeypatch):
     # Isolated state.json per test, no global cleanup needed.
     state_file = tmp_path / "state.json"
-    monkeypatch.setattr("config.config.STATE_PATH", str(state_file))
+    monkeypatch.setattr("state.state_manager.STATE_PATH", state_file)
     yield state_file
 ```
+
+Patch the name used by the consumer, not just its original config constant:
+modules import path constants by value. Migration tests must also redirect
+`core.settings_reader.DATA_DIR`, where the Python-settings backup is written.
+The pytest autouse fixture in `tests/conftest.py` now redirects that backup
+directory for the entire suite. Unittest-only runs do not load this fixture;
+use a disposable source copy for those runs.
 
 ---
 
@@ -116,7 +123,8 @@ We don't chase a coverage percentage. Aim for these signals instead:
 - **Every fixed bug** has a regression test that would have caught it.
 - **Every cross-layer integration** (parser → executor) has a smoke test.
 
-If a test would only catch the same bug as another test, delete the duplicate.
+If a test would only catch the same bug as another test, propose consolidation.
+Deleting tests requires the approval described in `CLAUDE.md`.
 
 ---
 
@@ -153,14 +161,33 @@ def test_open_routes_correctly(monkeypatch):
 `.github/workflows/ci.yml` runs on every push and PR:
 
 - Tests on Python 3.10, 3.11, 3.12 (matrix)
+- Node 22 menu JavaScript behavior tests
+- macOS lifecycle and native bridge/icon/resize tests with PyObjC
 - `ruff check` + `ruff format --check` (advisory while codebase is being cleaned up)
 
-Local pre-commit hooks run the same checks before each commit. Install once:
+Local pre-commit hooks also run Ruff fixes/formatting and mypy. These hooks can
+modify files or block a commit; CI's advisory setting does not make local
+hooks advisory. Install once:
 
 ```bash
 pip install -r requirements-dev.txt
 pre-commit install
 ```
+
+## Latest Audit
+
+The [2026-10-10 audit](codebase-audit-2026-10-10.md) ran the suite in a
+temporary source copy with no personal data or credentials. It also used
+isolated probes for import order, argument dispatch, trust, cached status and
+failed execution. The [follow-up](reliability-followup-2026-10-10.md) adds
+regressions for the repaired execution, dispatch, parser and upgrade paths.
+
+Tests now isolate state, statistics, job metadata, lifecycle preferences and
+migration backups. A suite-wide guard rejects unmocked macOS action processes.
+Worker ownership is tested across two Python processes; import-order checks use
+fresh interpreters; installer rollback tests use synthetic homes and local
+command stubs. Process-group signalling is mocked. Real descendant shutdown,
+permissions and multi-display behavior still require manual acceptance.
 
 ---
 

@@ -649,7 +649,12 @@ class _CFApp(NSObject):
             ev_id = args.get("id")
             if not ev_id:
                 return None
-            return base + ["run-event", str(ev_id)]
+            return base + ["submit-event", str(ev_id)]
+        if op in ("job-status", "job-cancel"):
+            job_id = args.get("id")
+            return base + [op, str(job_id)] if job_id else None
+        if op == "jobs":
+            return base + ["jobs"]
         if op == "pause":
             return base + ["pause"]
         if op == "resume":
@@ -665,7 +670,7 @@ class _CFApp(NSObject):
                 return None
             return base + ["delete-recipe", str(rid)]
         if op == "run-script":
-            return base + ["run-script"]
+            return base + ["submit-script"]
         if op == "settings":
             return base + ["settings"]
         if op == "edit-settings-file":
@@ -690,11 +695,8 @@ class _CFApp(NSObject):
     @objc.python_method
     def _run_subprocess(self, msg_id: str, cmd, stdin_payload: bytes | None = None,
                         src_wv: Any = None) -> None:
-        # run-script may legitimately take many seconds (it executes a
-        # full Smart/Plus pipeline). Give it a longer budget; everything
-        # else stays on the original 20 s clock.
-        operation = cmd[3] if cmd and len(cmd) > 3 else ""
-        timeout = 60 if operation in ("run-script", "run-event") else 20
+        # Workflows run in detached workers; this request only queues or polls.
+        timeout = 20
         try:
             proc = subprocess.run(
                 cmd,

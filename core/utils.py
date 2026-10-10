@@ -49,13 +49,6 @@ import time
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
-from config.settings import (
-    IGNORE_MAP_LINKS,
-    IGNORED_PROTOCOLS,
-    LOG_MODE,
-    MAP_DOMAINS,
-)
-
 
 # =========================================================
 # 📝 LOGGING (canonical)
@@ -77,7 +70,10 @@ def log(message: str) -> None:
     if not message:
         return
 
-    target = sys.stdout if LOG_MODE in ("stdout", "both") else sys.stderr
+    # Settings import their sidecar readers, which may themselves log errors.
+    # Do not re-enter the partially initialized settings module here.
+    mode = getattr(sys.modules.get("config.settings"), "LOG_MODE", "stderr")
+    target = sys.stdout if mode in ("stdout", "both") else sys.stderr
     try:
         print(message, file=target, flush=True)
     except Exception:
@@ -102,9 +98,8 @@ def normalize_url(url: str) -> Optional[str]:
         return None
 
     url = url.strip().strip("<>.,)\"'")
-    lower = url.lower()
 
-    if lower.startswith(tuple(IGNORED_PROTOCOLS)):
+    if is_ignored_protocol(url):
         return None
 
     if "://" in url:
@@ -138,11 +133,13 @@ def is_valid_url(url: str) -> bool:
 
 def is_ignored_protocol(url: str) -> bool:
     """Check if URL uses an ignored protocol."""
+    from config.settings import IGNORED_PROTOCOLS
     return url.lower().startswith(tuple(IGNORED_PROTOCOLS))
 
 
 def is_map_url(url: str) -> bool:
     """Detect map/navigation URLs."""
+    from config.settings import IGNORE_MAP_LINKS, MAP_DOMAINS
     if not IGNORE_MAP_LINKS:
         return False
     lower = url.lower()

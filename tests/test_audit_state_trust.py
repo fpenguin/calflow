@@ -16,6 +16,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from core.execution_result import ExecutionReport, success
+
 
 @pytest.fixture
 def isolated(tmp_path, monkeypatch):
@@ -67,8 +69,9 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(result.calendar, "build_service", forbidden)
     monkeypatch.setattr(result.main, "_google_account_label", forbidden)
     monkeypatch.setattr(result.main, "get_selected_calendars", lambda: ["primary"])
-    monkeypatch.setattr(result.main, "execute_entries", Mock())
-    monkeypatch.setattr(result.main, "execute_commands", Mock())
+    # v1.5.6: executors now return verified outcomes, not implicit success.
+    monkeypatch.setattr(result.main, "execute_entries", Mock(return_value=ExecutionReport([success()])))
+    monkeypatch.setattr(result.main, "execute_commands", Mock(return_value=ExecutionReport([success()])))
     monkeypatch.setattr(result.trust, "ALLOW_SELF_AUTHORED_EVENTS", True)
     monkeypatch.setattr(result.trust, "TRUSTED_INVITE_EMAILS", set())
     monkeypatch.setattr(result.trust, "TRUSTED_INVITE_DOMAINS", set())
@@ -388,9 +391,10 @@ def test_run_now_completion_survives_daemon_snapshot(isolated, monkeypatch, caps
 
     def interleave(**kwargs):
         with patch.object(isolated.main, "get_upcoming_events", return_value=[event]), \
-                patch.object(isolated.main, "execute_entries", Mock()):
+                patch.object(isolated.main, "execute_entries", Mock(return_value=ExecutionReport([success()]))):
             isolated.main.run_event_by_id("manual")
         assert json.loads(capsys.readouterr().out)["success"]
+        return ExecutionReport([success()])
 
     monkeypatch.setattr(isolated.main, "build_service", lambda: service)
     monkeypatch.setattr(isolated.main, "get_upcoming_events", Mock(return_value=[daemon_event]))

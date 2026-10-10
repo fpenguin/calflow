@@ -3,9 +3,43 @@
 Release line: v1.5.x. Historical v2.x headings below identify architecture
 milestones, not a claim that those future backends have shipped.
 
+## Release Gate: Reliability Before More Features
+
+The [2026-10-10 audit](codebase-audit-2026-10-10.md) reviewed v1.5.6-dev
+(`f1d876c`). Passing automated tests do not cover all of the reproduced
+failures below. Concurrent reliability work is in progress; these remain
+open until its fixes and regression tests are verified.
+
+1. **Execution safety:** reject ambiguous CLOSE scopes, apply the same path
+   permissions to all equivalent spellings, preserve calendar trust in the
+   interactive test runner, and make help/unknown CLI input non-executing.
+2. **Honest results and job ownership:** propagate action failures and
+   unsupported operations, mark events done only according to an explicit
+   success policy, serialize duplicate jobs across entry points, and support
+   long workflows with observable cancellation of child processes.
+3. **Data preservation:** replace destructive reinstall with a staged,
+   recoverable upgrade; make settings/alias transactions safe under concurrent
+   writers and remove the import-order dependency when loading preferences.
+4. **Desktop recovery:** keep live status separate from cached events, inspect
+   bridge error results, prove managed launchd ownership, and finish the
+   confirmation, draft-preservation and folder-picker fixes.
+5. **Parser contracts:** preserve source order and layout arguments, contain
+   numeric/date overflows, reject incomplete scripts, and redact event payloads
+   from normal logs. Test parsing through actual mocked action arguments.
+6. **Acceptance:** isolate all test storage, run Python and Node suites in a
+   clean source copy, then perform separately approved macOS permission,
+   reboot, multi-display and upgrade/rollback checks. Record evidence against
+   the exact release commit.
+
 ## Implemented Foundation
 
-- **Smart Mode** — every documented Smart Mode behavior is real:
+The [2026-10-10 implementation follow-up](reliability-followup-2026-10-10.md)
+supersedes the corresponding baseline findings above: shared job ownership,
+honest outcomes, long menu runs, persistent login/pause controls, staged upgrades,
+CLI/trust guards and the documented parser regressions now have tests. Remaining
+data-store concurrency, cached controls and native recovery UX work stays open.
+
+- **Smart Mode** — the core implementation includes:
   URL extraction (now including URLs with embedded `{…}` blocks),
   normalization, tag merging, global tag/target state with
   same-category-last-wins / cross-category-merge resolution, `##`
@@ -23,7 +57,8 @@ milestones, not a claim that those future backends have shipped.
   verbs parse and route. `#grid(D@NxM)` and `#area(x,y,w,h)` parse
   to typed dicts.
 - **Calendar layer** — multi-calendar polling, OAuth flow, event
-  dedup, idempotent state, lock file, launchd install.
+  completion records and launchd install. Shared occurrence claims, a desktop
+  execution lock and per-step results are implemented; native acceptance remains.
 - **Onboarding** — `python3 -m cli.main setup` (5 steps: Google credentials, calendar selection, daemon install, password manager, Accessibility).
 - **Autofill keystrokes** — `#fill` and `#submit` send the configured keystroke via osascript + `System Events`. Provider chosen during onboarding (Apple Passwords / 1Password / Bitwarden / None).
 - **Trusted run backends** — `run btt(...)`, `run shortcut(...)`,
@@ -48,12 +83,13 @@ Many deferred verbs already parse and route, but their side-effect backends
 are stubs. Scoped screenshots are refused without capture. Arbitrary script
 files remain unsupported; parsing alone is not evidence an action runs.
 
-> **No Smart Mode feature is deferred. No dynamic-expression base
-> feature is deferred.**
+The base Smart Mode and dynamic-expression features exist, but layout conflict
+ordering, argument preservation and overflow handling have known defects.
+Feature presence is not a claim that every documented edge case works.
 
 ---
 
-# v1.5 — Multi-account Google Calendar (designed · tabled)
+# Multi-account Google Calendar (designed · tabled)
 
 > **Status:** spec written, decisions locked, **implementation tabled.**
 > Full design: `_workspace/specs/v1.5.0-multi-account-calendar.md`.
@@ -69,8 +105,8 @@ if they're *shared into* that one login.
 - Unit of work shifts from a bare `calendar_id` to an **(account, calendar_id)**
   pair — the same shared calendar can appear under two logins.
 - Storage: `secrets/token.json` → `secrets/tokens/<email>.json` (one per account)
-  + a `data/accounts.json` registry. Reuses the [[v1.4.0-user-settings-json]]
-  sidecar pattern.
+  + a `data/accounts.json` registry. Reuses the
+  [user-settings sidecar pattern](menubar.md#settings-and-files).
 - `build_service()` (one service) → `build_services()` (one per account); 8
   fetch sites in `cli/main.py` rewrite to nest account → calendar.
 - Dedup merged streams by `(calendar_id, event_id)`.
@@ -150,11 +186,14 @@ move and resize windows using the existing action backend.
 - `#area(x,y,w,h)` — absolute pixel/% positioning
 - `#display(N)` — move to display N before applying layout
 
-## Why deferred
-- Needs Quartz `CGWindowListCreate` + AXUIElement to query/move windows.
+## Remaining Verification
+- The current backend uses osascript/JXA; it is not waiting on a new Quartz
+  implementation. Test the existing path with real supported applications.
 - Multi-monitor coordinate space is fiddly (origin at primary, negative
   coordinates for displays to the left, fractional scaling on Retina).
 - Accessibility permissions required.
+- Fix the parser's lost layout arguments and last-wins ordering before
+  treating every syntax variant as equivalent.
 
 ## Deliverables
 - `runtime/actions/window.py` — `move_window(app, layout, display)`
@@ -252,9 +291,9 @@ Currently `screenshot` always writes to a file under `PLUS_SCREENSHOT_DIR`.
 
 ---
 
-# v2.6 — Dynamic Expression Polish (the BASE feature shipped in v2.0)
+# v2.6 — Dynamic Expression Polish (base feature already implemented)
 
-> ⚠️ **The dynamic-expression base feature shipped in v2.0.**
+> **The dynamic-expression base feature is already implemented.**
 > `{now}`, `{now-7d}`, `{now > end_of_month > YYYY-MM-DD}`, multi-block
 > URLs, default format, whitespace tolerance — all real today, in
 > both Smart Mode and Plus Mode.
@@ -309,13 +348,16 @@ These are **out of scope** for any near-term release:
 
 ---
 
-# Status table (at v2.0)
+# Status Table (reviewed v1.5.6-dev baseline)
+
+These rows describe implementation presence, not release acceptance. See the
+audit for edge cases and missing integration coverage.
 
 | Component | Parses | Validates | Resolves | Executes |
 |-----------|:------:|:---------:|:--------:|:--------:|
 | **Smart Mode — full pipeline** | ✅ | ✅ | ✅ | ✅ (real) |
 | Smart Mode global tag state | ✅ | n/a | ✅ | ✅ (real) |
-| Smart Mode tag conflict (last wins) | ✅ | ✅ | ✅ | ✅ (real) |
+| Smart Mode tag conflict (last wins) | ✅ | ✅ | ⚠ source order can be lost | ⚠ regression fix needed |
 | Smart Mode `##` comments | ✅ | ✅ | n/a | ✅ (real) |
 | Smart Mode dynamic in URLs | ✅ | ✅ | ✅ | ✅ (real) |
 | OPEN (URL) | ✅ | ✅ | ✅ | ✅ (real, with `#profile(N)` for Chrome) |
@@ -354,7 +396,8 @@ These are **out of scope** for any near-term release:
 | RUN arbitrary script/path | unsupported | unsupported | unsupported | refused |
 
 ⏳ = doc-locked, code lands next pass.
-🚧 = stub or unimplemented; safe to invoke (logs only).
+🚧 = stub or unimplemented; the requested action is not performed. The
+reliability follow-up reports these steps as unsupported instead of successful.
 
 ---
 

@@ -435,7 +435,8 @@ function toast(msg, kind) {
 const SECTIONS = [
   { id:"general", label:"General", group:"General", title:"General", lead:"App basics. Apply & restart at the bottom also restarts CalFlow in the background, so your changes take effect right away.",
     rows: [
-      { lbl:"Auto-start at login", desc:"CalFlow runs in the background after you log in. Toggling this turns CalFlow's background process on or off right away.", key:"general.auto_start_at_login", control:"toggle", editable:true },
+      { lbl:"Automation at login", desc:"Start background automation after login. Does not resume paused automation or stop a current run.", key:"general.auto_start_at_login", control:"toggle", editable:true },
+      { lbl:"Menu bar at login", desc:"Show the CalFlow menu bar icon after login, independently of background automation.", key:"general.menubar_at_login", control:"toggle", editable:true },
     ] },
   { id:"calendar", label:"Calendar", group:"General", title:"Calendar", lead:"Which Google account and calendars CalFlow watches. Set when you first installed CalFlow. To change accounts or calendars, open Terminal and run `python3 -m cli.main setup`.",
     rows: [

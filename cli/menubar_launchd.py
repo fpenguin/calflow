@@ -149,6 +149,15 @@ def _attach_failure_recovery(status: dict[str, Any], reason: str) -> dict[str, A
     return status
 
 
+def _preserve_login_preference(status: dict[str, Any]) -> dict[str, Any]:
+    from state.lifecycle import load
+    if not load()["menubar_login"]:
+        result = _run_launchctl(["disable", _service_target()])
+        if result.returncode:
+            return _attach_failure_recovery(status, "Could not restore menu bar login preference")
+    return status
+
+
 def install_menubar(load: bool = True) -> dict[str, Any]:
     MENUBAR_PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MENUBAR_PLIST_PATH.write_text(generate_menubar_plist(), encoding="utf-8")
@@ -176,7 +185,7 @@ def install_menubar(load: bool = True) -> dict[str, Any]:
     if not ok:
         reason = (load_result.stderr or "LaunchAgent loaded, but the menu bar process did not become ready").strip() if load_result else "install failed"
         _attach_failure_recovery(status, reason)
-    return status
+    return _preserve_login_preference(status) if load else status
 
 
 def start_menubar() -> dict[str, Any]:
@@ -209,7 +218,7 @@ def start_menubar() -> dict[str, Any]:
         else:
             reason = "menu bar start failed"
         _attach_failure_recovery(status, reason)
-    return status
+    return _preserve_login_preference(status)
 
 
 def stop_menubar() -> dict[str, Any]:

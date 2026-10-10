@@ -186,6 +186,7 @@ button:disabled { opacity: 0.5; }
         <button id="btn-copy">Copy</button>
         <button id="btn-save">Save as mine</button>
         <button id="btn-delete" style="display:none">Delete</button>
+        <button id="btn-cancel" hidden onclick="cancelRun()">Cancel</button>
         <button class="primary" id="btn-run">Try it</button>
       </div>
     </div>
@@ -226,7 +227,7 @@ function bridge(op, args) {
     catch (e) { _pending.delete(id); reject(new Error("bridge unavailable")); }
     setTimeout(() => {
       if (_pending.has(id)) { _pending.delete(id); reject(new Error("bridge timeout: " + op)); }
-    }, op === "run-script" ? 65000 : 25000);
+    }, 25000);
   });
 }
 window.cf_resolve = (id, payload) => { const p = _pending.get(id); if (p) { _pending.delete(id); p.resolve(payload); } };
@@ -505,25 +506,58 @@ async function onDelete() {
   }
 }
 
+let activeJob = null;
+let submittingRun = false;
+async function cancelRun() {
+  if (!activeJob) return;
+  try {
+    const response = await bridge("job-cancel", {id: activeJob});
+    if (!response.ok) toast(response.error || "Could not cancel run", true);
+  } catch (e) { toast(e.message, true); }
+}
+
 async function onRun() {
+  if (submittingRun || activeJob) return;
   const body = document.getElementById("editor").value;
   if (!body.trim()) { toast("Empty script", true); return; }
   const cons = document.getElementById("console");
   cons.innerHTML = '<span class="info">Running…</span>';
   document.getElementById("btn-run").disabled = true;
+  submittingRun = true;
   try {
-    const result = await bridge("run-script", { body });
+    const submitted = await bridge("run-script", { body });
+    if (!submitted || !submitted.job_id) throw new Error(submitted && submitted.error || "Could not start run");
+    activeJob = submitted.job_id;
+    document.getElementById("btn-cancel").hidden = false;
+    let job;
+    do {
+      job = await bridge("job-status", {id: activeJob});
+      if (!job || !job.status) throw new Error(job && job.error || "Could not read run status");
+      cons.innerHTML = '<span class="info">' + esc(job.status.replace(/_/g, " ")) + '</span>';
+      if (["queued", "running", "cancelling"].includes(job.status)) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } while (["queued", "running", "cancelling"].includes(job.status));
+    const result = job.result;
     let html = "";
     if (result && result.success) {
-      html = '<span class="ok">[OK]</span> Script completed (mode: '+esc(result.mode||"?")+')';
+      html = '<span class="ok">[OK]</span> ' + (result.status === "handed_off" ? "Handed off" : "Completed");
     } else {
       html = '<span class="err">[ERROR]</span> '+esc(result && result.error || "unknown");
       if (result && result.mode) html += '\n  parsed mode: '+esc(result.mode);
+    }
+    for (const step of (result && result.steps || [])) {
+      if (!['succeeded', 'handed_off', 'skipped'].includes(step.status)) {
+        html += '\nLine ' + esc(step.line) + ': ' + esc(step.message || step.status);
+      }
     }
     cons.innerHTML = html;
   } catch (e) {
     cons.innerHTML = '<span class="err">[ERROR]</span> '+esc(e.message);
   } finally {
+    activeJob = null;
+    submittingRun = false;
+    document.getElementById("btn-cancel").hidden = true;
     document.getElementById("btn-run").disabled = false;
   }
 }

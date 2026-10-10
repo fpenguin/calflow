@@ -85,14 +85,16 @@ You MUST include:
 Without it:
 
 - runs in Smart Mode  
-- commands like `click`, `type`, `press` will NOT run  
+- Plus commands are not interpreted as a workflow. `click`, `type` and
+  `press` are still unimplemented even with the header; see
+  [current action support](../docs/QA.md#actual-backend-support).
 
 ---
 
 # ⏱ When does it run?
 
-- typically ~5 minutes before event start  
-- configurable in `config/settings.py`  
+- three minutes before event start by default
+- configurable in Settings; saved in `data/user_settings.json`
 
 ---
 
@@ -185,11 +187,14 @@ These are shortcuts.
 
 ## Where they live
 
-```python
-# config/settings.py
-TARGETS = {
+Defaults live in `config/settings.py`. Change personal aliases in
+**Settings > Aliases**; the editor saves them in `data/user_targets.json`.
+Example alias-to-app mapping:
+
+```json
+{
     "@work": ["Google Chrome", "Notion", "Figma"],
-    "@chrome": "Google Chrome",
+    "@chrome": "Google Chrome"
 }
 ```
 

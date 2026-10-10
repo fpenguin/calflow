@@ -27,7 +27,6 @@ __all__ = [
 ]
 
 import json
-import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -55,13 +54,13 @@ def _read_user_provider() -> Optional[str]:
         if isinstance(data, dict):
             return data.get("autofill_provider")
     except Exception as exc:
-        log(f"[WARN] Could not read {_USER_CONFIG_PATH.name}: {exc}")
+        log(f"[WARN] Could not read autofill configuration ({type(exc).__name__}); check config")
     return None
 
 
 def _is_provider_available(provider: str) -> bool:
     """Heuristic: provider is usable iff it has shortcuts defined."""
-    return provider in AUTOFILL_SHORTCUTS
+    return isinstance(provider, str) and provider in AUTOFILL_SHORTCUTS
 
 
 def resolve_autofill_provider() -> str:
@@ -81,8 +80,7 @@ def resolve_autofill_provider() -> str:
     if _is_provider_available(AUTOFILL_PROVIDER):
         return AUTOFILL_PROVIDER
     log(
-        f"[WARN] Autofill provider {AUTOFILL_PROVIDER!r} not available "
-        f"→ falling back to 'default'"
+        "[WARN] Configured autofill provider unavailable; falling back to 'default'"
     )
     return "default"
 
@@ -91,26 +89,26 @@ def resolve_autofill_provider() -> str:
 # ⌨️ EXECUTION
 # =========================================================
 
-def trigger_autofill(mode: str = "fill") -> None:
+def trigger_autofill(mode: str = "fill") -> bool:
     """
-    Send the configured keystroke for `mode` ("fill" or "submit").
+    Send the configured keystroke; True only when a keystroke was sent.
     """
     provider = resolve_autofill_provider()
     if provider == "none":
         log("[INFO] Autofill skipped (provider set to 'none')")
-        return
+        return False
 
     config = AUTOFILL_SHORTCUTS.get(provider)
-    if not config:
-        log(f"[WARN] No shortcut config for provider {provider!r}")
-        return
+    if not isinstance(config, dict) or not config:
+        log("[WARN] Autofill shortcut configuration missing; check provider settings")
+        return False
 
     action = config.get(mode)
     if not action:
-        log(f"[WARN] No {mode!r} action defined for provider {provider!r}")
-        return
+        log("[WARN] Autofill action not configured; check provider settings")
+        return False
 
-    _execute_shortcut(action, provider=provider, mode=mode)
+    return _execute_shortcut(action, provider=provider, mode=mode)
 
 
 # =========================================================
@@ -171,16 +169,28 @@ def _build_applescript(action: dict) -> Optional[str]:
     return None
 
 
-def _execute_shortcut(action: dict, *, provider: str = "?", mode: str = "?") -> None:
+def _execute_shortcut(action: dict, *, provider: str = "?", mode: str = "?") -> bool:
     """
-    Send the keystroke. Best-effort; any failure is logged.
+    Send the keystroke. Invalid configuration or subprocess failure returns False.
     """
-    script = _build_applescript(action)
+    # Do not silently remove a modifier and send a different keystroke.
+    script = None
+    try:
+        if isinstance(action, dict):
+            modifiers = action.get("modifiers") or []
+            valid_modifiers = isinstance(modifiers, (list, tuple)) and all(
+                isinstance(m, str) and m.lower() in _MODIFIER_MAP for m in modifiers
+            )
+            if "key_code" in action and modifiers:
+                valid_modifiers = False
+            if valid_modifiers and ("key_code" in action or action.get("key")):
+                script = _build_applescript(action)
+    except (TypeError, ValueError, OverflowError):
+        pass
     if script is None:
-        log(f"[WARN] Unrecognized shortcut shape for {provider}/{mode}: {action!r}")
-        return
+        log("[WARN] Invalid autofill shortcut; check key and modifier settings")
+        return False
 
-    desc = _shortcut_description(action)
     try:
         result = subprocess.run(
             ["osascript", "-e", script],
@@ -188,26 +198,27 @@ def _execute_shortcut(action: dict, *, provider: str = "?", mode: str = "?") -> 
         )
     except FileNotFoundError:
         log("[WARN] osascript not available — autofill skipped")
-        return
+        return False
     except Exception as exc:
-        log(f"[ERROR] Autofill subprocess failed: {exc}")
-        return
+        log(f"[ERROR] Autofill subprocess failed ({type(exc).__name__}); check permissions")
+        return False
 
     if result.returncode == 0:
-        log(f"[INFO] Autofill keystroke sent ({provider}/{mode}: {desc})")
-        return
+        log("[INFO] Autofill keystroke sent")
+        return True
 
     stderr = (result.stderr or "").strip()
-    log(f"[WARN] Autofill osascript failed ({provider}/{mode}): {stderr or '(no stderr)'}")
+    log(f"[WARN] Autofill failed (exit {result.returncode}); check shortcut and permissions")
     if "not allowed" in stderr.lower() or "1002" in stderr:
         log(
             "[WARN] Grant Accessibility permission: "
             "System Settings → Privacy & Security → Accessibility"
         )
+    return False
 
 
 def _shortcut_description(action: dict) -> str:
-    """Render an action as a short human-readable string for logs."""
+    """Render a shortcut for direct user-facing detail, never ordinary logs."""
     if "key_code" in action:
         return f"key code {action['key_code']}"
     if "key" in action:

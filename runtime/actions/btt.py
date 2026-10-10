@@ -59,11 +59,11 @@ def trigger_named_btt(trigger_name: str) -> RunResult:
             log(f"[WARN] BTT {msg}")
             notify_run_error("CalFlow BTT failed", msg)
             return error_result("btt", msg, returncode=int(result.returncode))
-        log(f"[INFO] BTT trigger: {name}")
+        log("[INFO] BTT trigger handed off")
         return ok_result("btt", f"BTT trigger launched: {name}")
     except Exception as exc:
         msg = f"trigger failed for {name!r}: {exc}"
-        log(f"[ERROR] BTT {msg}")
+        log(f"[ERROR] BTT launch failed ({type(exc).__name__}); check URL handler installation")
         notify_run_error("CalFlow BTT failed", msg)
         return error_result("btt", msg)
 
@@ -89,10 +89,10 @@ def trigger_alfred(bundle_id: str, trigger_id: str, argument: str = "") -> RunRe
             log(f"[WARN] Alfred {msg}")
             notify_run_error("CalFlow Alfred failed", msg)
             return error_result("alfred", msg, returncode=int(result.returncode))
-        log(f"[INFO] Alfred trigger: {bid}/{tid}")
+        log("[INFO] Alfred trigger handed off")
         return ok_result("alfred", f"Alfred trigger launched: {bid}/{tid}")
     except Exception as exc:
         msg = f"trigger failed for {bid}/{tid}: {exc}"
-        log(f"[ERROR] Alfred {msg}")
+        log(f"[ERROR] Alfred launch failed ({type(exc).__name__}); check URL handler installation")
         notify_run_error("CalFlow Alfred failed", msg)
         return error_result("alfred", msg)

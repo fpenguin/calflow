@@ -29,17 +29,20 @@ Design:
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from core.execution_result import ExecutionReport, StepResult, failure
 
 # Keep dependency-free commands usable before the project environment is
 # installed. Heavy imports below may require dateutil/google/pyobjc.
 if __name__ == "__main__":
-    _early_args = sys.argv[1:]
+    from cli.arguments import validate_arguments
+    _early_args = validate_arguments(sys.argv[1:])
+    sys.argv[1:] = _early_args
     _early_cmd = next((a for a in _early_args if not a.startswith("-")), None)
     if any(flag in _early_args for flag in ("--version", "-V")) or _early_cmd == "version":
         from core.version import version_string
@@ -118,7 +121,6 @@ CONFIG_PATH = Path(DATA_DIR) / "config.json"
 LEGACY_CALENDARS_PATH = Path(DATA_DIR) / "calendars.json"
 
 LOCK_FILE = "/tmp/calflow.lock"
-MAX_RUNTIME = 180  # seconds — stale-lock threshold
 
 
 # =========================================================
@@ -133,48 +135,33 @@ def _is_process_running(pid: int) -> bool:
         return False
 
 
-def _is_stale_lock(pid: int, ts: int) -> bool:
-    if not _is_process_running(pid):
-        return True
-    if time.time() - ts > MAX_RUNTIME:
-        return True
-    return False
+_daemon_lock_handle = None
 
 
 def acquire_lock() -> bool:
-    """Acquire a single-instance lock. Returns False if another run is active."""
-    if os.path.exists(LOCK_FILE):
-        try:
-            with open(LOCK_FILE, "r", encoding="utf-8") as f:
-                pid_str, ts_str = f.read().strip().split("|")
-                pid = int(pid_str)
-                ts = int(ts_str)
-            if not _is_stale_lock(pid, ts):
-                log(f"[WARN] Already running (PID {pid}). Skipping.")
-                return False
-            log("[WARN] Stale lock detected. Removing.")
-            os.remove(LOCK_FILE)
-        except Exception:
-            try:
-                os.remove(LOCK_FILE)
-            except OSError:
-                pass
-
-    try:
-        with open(LOCK_FILE, "w", encoding="utf-8") as f:
-            f.write(f"{os.getpid()}|{int(time.time())}")
-    except OSError as exc:
-        log(f"[WARN] Could not write lock file: {exc}")
+    """Hold an atomic OS lock until the daemon exits, regardless of run duration."""
+    global _daemon_lock_handle
+    if _daemon_lock_handle is not None:
         return False
-    return True
+    handle = None
+    try:
+        fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        handle = os.fdopen(fd, "a+")
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _daemon_lock_handle = handle
+        return True
+    except OSError:
+        if handle is not None:
+            handle.close()
+        log("[WARN] Daemon lock unavailable; another cycle may be running")
+        return False
 
 
 def release_lock() -> None:
-    if os.path.exists(LOCK_FILE):
-        try:
-            os.remove(LOCK_FILE)
-        except OSError:
-            pass
+    global _daemon_lock_handle
+    if _daemon_lock_handle is not None:
+        _daemon_lock_handle.close()
+        _daemon_lock_handle = None
 
 
 # =========================================================
@@ -303,6 +290,8 @@ def collect_status() -> Dict:
     from core.version import version_string
 
     daemon = _daemon_state()
+    from state.lifecycle import load as load_lifecycle
+    daemon["paused"] = load_lifecycle()["paused"] or not daemon["loaded"]
     calendars = get_selected_calendars()
 
     out: Dict = {
@@ -612,38 +601,46 @@ def collect_popover_feed(upcoming_hours: int = 30, missed_hours: int = 12) -> Di
 
 
 def print_popover_feed_json(upcoming_hours: int = 30, missed_hours: int = 12) -> None:
-    print(json.dumps(
-        collect_popover_feed(upcoming_hours=upcoming_hours, missed_hours=missed_hours),
-        indent=2,
-        default=str,
-    ))
+    from state.jobs import recent
+    payload = collect_popover_feed(upcoming_hours=upcoming_hours, missed_hours=missed_hours)
+    payload["jobs"] = recent()
+    print(json.dumps(payload, indent=2, default=str))
 
 
-def run_event_by_id(event_id: str) -> None:
+def run_event_by_id(event_id: str, *, job_id: str | None = None, emit: bool = True) -> dict:
     """
     `cli.main run-event <id> --json` — locate a calendar event by id
-    in the upcoming OR missed window, parse it, execute it, mark done,
-    print result JSON.
+    in the upcoming OR missed window and return its execution report.
 
-    Used by the menubar play-icon buttons. Does NOT consult the daemon
-    lock — manual run-now is intentional and overrides idempotency
-    checks (the user just clicked Run).
+    Manual retries share occurrence claims and the desktop lock with the
+    scheduler. Only successful execution or handoff marks the event done.
     """
-    out: Dict = {"id": event_id, "success": False, "mode": None, "error": None}
+    try:
+        out = _find_and_run_event(event_id, job_id=job_id)
+    except Exception as exc:
+        out = {"success": False, "status": "failed", "error": f"Calendar run failed ({type(exc).__name__})"}
+    out["id"] = event_id
+    if emit:
+        print(json.dumps(out))
+    return out
+
+
+def _find_and_run_event(event_id: str, *, job_id: str | None) -> dict:
+    out = {"id": event_id, "success": False, "status": "failed", "mode": None, "error": None}
     if not event_id:
         out["error"] = "missing event id"
-        print(json.dumps(out)); return
+        return out
 
     try:
         service = build_service()
     except Exception as exc:
-        out["error"] = f"calendar: {type(exc).__name__}: {exc}"
-        print(json.dumps(out)); return
+        out["error"] = f"calendar: {type(exc).__name__}"
+        return out
 
     target: Optional[Dict] = None
     try:
         for cal_id in get_selected_calendars():
-            for ev in get_upcoming_events(service, cal_id, hours=24):
+            for ev in get_upcoming_events(service, cal_id, hours=30):
                 if ev.get("id") == event_id:
                     target = ev; break
             if target: break
@@ -653,58 +650,54 @@ def run_event_by_id(event_id: str) -> None:
             if target: break
     except Exception as exc:
         out["error"] = f"calendar query failed: {type(exc).__name__}"
-        print(json.dumps(out))
-        return
+        return out
 
     if target is None:
         out["error"] = "event not found in upcoming/missed window"
-        print(json.dumps(out)); return
+        return out
 
     trust_level = _event_trust_or_log(target, owner_email=_owner_email_hint(service))
     if trust_level is None:
         out["error"] = "untrusted event source"
-        print(json.dumps(out)); return
+        out["status"] = "blocked"
+        return out
+    return _run_event_payload(target, trust_level, manual=True, job_id=job_id)
 
-    text = target.get("text") or ""
-    title = target.get("title") or ""
-    parsed = parse(text, title=title)
-    out["mode"] = parsed.mode
 
-    if parsed.is_empty:
-        out["error"] = "no executable content"
-        print(json.dumps(out)); return
+def _execution_report(parsed, tags, trust_level="self") -> ExecutionReport:
+    if parsed.is_smart:
+        result = execute_entries(entries=parsed.entries, global_tags=tags, debug=DEBUG,
+                                 trust_level=trust_level)
+    elif parsed.is_plus:
+        result = execute_commands(parsed.commands, global_tags=tags, debug=DEBUG, trust_level=trust_level)
+    else:
+        result = ExecutionReport([failure("No executable content")])
+    if not isinstance(result, ExecutionReport):
+        result = ExecutionReport([failure("Executor returned no result")])
+    for error in parsed.errors:
+        result.steps.append(StepResult("failed", "Invalid syntax; check the documented grammar",
+                                       "PARSE", error.line_no))
+    return result
 
-    try:
-        if parsed.is_smart:
-            execute_entries(
-                entries=parsed.entries,
-                global_tags=extract_tags(text),
-                debug=DEBUG,
-                trust_level=trust_level,
-            )
-        elif parsed.is_plus:
-            execute_commands(
-                commands=parsed.commands,
-                global_tags=extract_tags(text),
-                debug=DEBUG,
-                trust_level=trust_level,
-            )
-    except Exception as exc:
-        out["error"] = f"{type(exc).__name__}: {exc}"
-        print(json.dumps(out)); return
 
-    # Mark done so the daemon won't re-fire it.
-    start = target.get("start")
-    if start is not None and start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    if start is not None:
-        state = load_state()
-        run_key = f"{event_id}_{start.isoformat()}"
-        mark_done(state, run_key)
-        save_state(state)
+def _run_event_payload(event: dict, trust_level: str, *, manual: bool, job_id: str | None = None) -> dict:
+    from runtime.jobs import event_key, run_inline
 
-    out["success"] = True
-    print(json.dumps(out))
+    start = _normalize_event_time(event["start"])
+    run_key = f"{event['id']}_{start.isoformat()}"
+    text = event.get("text") or ""
+
+    def execute():
+        parsed = parse(text, title=event.get("title") or "")
+        result = _execution_report(parsed, extract_tags(text), trust_level).to_dict()
+        if result["success"]:
+            state = load_state()
+            mark_done(state, run_key)
+            save_state(state)
+        return {**result, "mode": parsed.mode, "id": event["id"]}
+
+    return run_inline(execute, kind="event", key=event_key(event["id"], start.isoformat()),
+                      retry=manual, job_id=job_id)
 
 
 def _daemon_loaded() -> bool:
@@ -794,43 +787,17 @@ def run_script_from_stdin() -> None:
     surface as a calendar event; no new permissions. The script body
     is NEVER logged (PII discipline) — only an entry marker is emitted.
     """
-    out: Dict = {"success": False, "mode": None, "error": None}
-    try:
-        body = sys.stdin.read()
-    except Exception as exc:
-        out["error"] = f"could not read stdin: {exc}"
-        print(json.dumps(out)); sys.exit(1)
-    if not body or not body.strip():
-        out["error"] = "empty script body"
-        print(json.dumps(out)); return
+    from runtime.jobs import run_inline
 
-    log("[INFO] Sandbox run from menubar Recipes window")
-    parsed = parse(body, title="Recipes sandbox")
-    out["mode"] = parsed.mode
+    body = sys.stdin.read(128_001)
+    print(json.dumps(run_inline(lambda: run_script_body(body), kind="script")))
 
-    if parsed.is_empty:
-        out["error"] = "no executable content"
-        print(json.dumps(out)); return
 
-    try:
-        if parsed.is_smart:
-            execute_entries(
-                entries=parsed.entries,
-                global_tags=extract_tags(body),
-                debug=DEBUG,
-            )
-        elif parsed.is_plus:
-            execute_commands(
-                commands=parsed.commands,
-                global_tags=extract_tags(body),
-                debug=DEBUG,
-            )
-    except Exception as exc:
-        out["error"] = f"{type(exc).__name__}: {exc}"
-        print(json.dumps(out)); return
-
-    out["success"] = True
-    print(json.dumps(out))
+def run_script_body(body: str) -> dict:
+    if not body.strip() or len(body.encode()) > 128_000:
+        return {"success": False, "status": "failed", "error": "Empty or oversized script"}
+    parsed = parse(body)
+    return {**_execution_report(parsed, extract_tags(body)).to_dict(), "mode": parsed.mode}
 
 
 # =========================================================
@@ -853,6 +820,10 @@ def print_settings_json() -> None:
     real probes for accessibility, apple events, google account.
     """
     from config import settings as S
+    from state.lifecycle import load as load_lifecycle
+    from cli.onboarding import PLIST_PATH
+    from cli.menubar_launchd import MENUBAR_PLIST_PATH
+    lifecycle = load_lifecycle()
 
     def _count_or_none(seq):
         try:
@@ -863,7 +834,8 @@ def print_settings_json() -> None:
     payload = {
         "schema_version": 2,
         "general": {
-            "auto_start_at_login": _launchd_loaded(),
+            "auto_start_at_login": lifecycle["daemon_login"] and Path(PLIST_PATH).exists(),
+            "menubar_at_login": lifecycle["menubar_login"] and MENUBAR_PLIST_PATH.exists(),
         },
         "calendar": {
             "google_account":     _google_account_label(),
@@ -1275,8 +1247,14 @@ def _step2b_execute_loop(test_event: Dict, parsed) -> None:
             print("       Pick a different event or paste a custom script.")
         else:
             try:
-                _execute_parsed(parsed)
-                _mark_test_event_done(test_event)
+                level = _event_trust_or_log(test_event, owner_email=test_event.get("_owner_email"))
+                if level is None:
+                    print("[WARN] Event blocked by invitation trust policy.")
+                else:
+                    result = _run_event_payload(test_event, level, manual=True)
+                    print(f"[INFO] Run status: {result['status']}")
+                    if result.get("error"):
+                        print(result["error"])
             except Exception as exc:
                 print(f"\n[ERROR] Test execution failed: {exc}")
 
@@ -1379,9 +1357,9 @@ def _print_parsed_summary(parsed) -> None:
             return
         print("Parsed entries:")
         for entry in parsed.entries:
-            url = getattr(entry, "url", None) or "(no url)"
-            target = getattr(entry, "target", None)
-            tags = sorted(getattr(entry, "tags", set()) or set())
+            url = entry.get("url") or "(no url)"
+            tags = sorted(entry.get("tags") or set())
+            target = next((tag for tag in tags if tag.startswith("@")), None)
             line = f"- URL: {url}"
             if target:
                 line += f"   Target: {target}"
@@ -1406,29 +1384,14 @@ def _print_parsed_summary(parsed) -> None:
         print("(empty / unrecognised)")
 
 
-def _execute_parsed(parsed) -> None:
+def _execute_parsed(parsed) -> dict:
     """Dispatch a ParseResult to the right executor."""
-    if parsed.is_empty:
-        print("[WARN] No executable content.")
-        return
-    print(f"[INFO] Mode: {parsed.mode.upper()}")
-    if parsed.is_smart:
-        execute_entries(
-            entries=parsed.entries,
-            global_tags=set(),
-            debug=DEBUG,
-        )
-    elif parsed.is_plus:
-        if parsed.has_errors:
-            for err in parsed.errors:
-                print(f"[WARN] Plus validation: {err}")
-        execute_commands(
-            commands=parsed.commands,
-            global_tags=set(),
-            debug=DEBUG,
-        )
-    else:
-        print(f"[WARN] Unrecognized mode: {parsed.mode}")
+    from runtime.jobs import run_inline
+    result = run_inline(lambda: _execution_report(parsed, set()).to_dict(), kind="script")
+    print(f"[INFO] Run status: {result['status']}")
+    if result.get("error"):
+        print(result["error"])
+    return result
 
 
 def _prompt_for_script() -> Optional[str]:
@@ -1536,6 +1499,7 @@ def _list_test_candidates(hours: int = 2) -> List[Dict]:
         return []
 
     out: List[Dict] = []
+    owner_email = _owner_email_hint(service)
     for cal_id in get_selected_calendars():
         try:
             events = get_upcoming_events(service, cal_id, hours=hours)
@@ -1543,6 +1507,7 @@ def _list_test_candidates(hours: int = 2) -> List[Dict]:
             print(f"[WARN] Calendar query skipped ({type(exc).__name__})")
             continue
         for ev in events:
+            ev["_owner_email"] = owner_email
             text = (ev.get("text") or "").strip()
             title_raw = (ev.get("title") or "").strip()
             title = title_raw.lower()
@@ -1840,11 +1805,11 @@ def print_display_inventory() -> None:
         print("   #display                    → no external monitor connected")
     elif len(externals) == 1:
         print(f"   #display                    → {externals[0]['name']}")
-        print(f"   #display(ext)               → same — recommended for readability")
+        print("   #display(ext)               → same — recommended for readability")
     else:
         first = externals[0]
         print(f"   #display                    → first external (currently: {first['name']})")
-        print(f"   #display(ext)               → same — recommended for readability")
+        print("   #display(ext)               → same — recommended for readability")
         print('   #display("Samsung")         → matches by name (case-insensitive substring)')
         for d in externals:
             short = (d['name'].split() or ['?'])[0]
@@ -1860,6 +1825,10 @@ def print_display_inventory() -> None:
 
 def main() -> None:
     from core.version import version_string
+    from state.lifecycle import load as load_lifecycle
+    if load_lifecycle()["paused"]:
+        log("[INFO] CalFlow paused; resume explicitly to run scheduled automations")
+        return
     log(f"[INFO] CalFlow {version_string()} started")
 
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -1868,7 +1837,7 @@ def main() -> None:
     calendars = get_selected_calendars()
 
     if DEBUG:
-        log(f"[DEBUG] calendars: {calendars}")
+        log(f"[DEBUG] Calendars selected: {len(calendars)}")
 
     service = build_service()
 
@@ -1882,7 +1851,7 @@ def main() -> None:
             log(f"[WARN] Calendar query skipped ({type(exc).__name__})")
             continue
         if DEBUG:
-            log(f"[DEBUG] {cal_id} → {len(cal_events)} event(s)")
+            log(f"[DEBUG] Calendar fetched: {len(cal_events)} event(s)")
         events.extend(cal_events)
 
     # --- Deduplicate by (id, start) -----------------------
@@ -1914,7 +1883,7 @@ def main() -> None:
 
         if is_done(state, run_key):
             if DEBUG:
-                log(f"[DEBUG] Skipped (already executed): {run_key}")
+                log("[DEBUG] Skipped previously completed occurrence")
             continue
 
         text = event.get("text") or ""
@@ -1956,32 +1925,8 @@ def main() -> None:
         # =================================================
         # 🚀 ROUTE → EXECUTION
         # =================================================
-        try:
-            if parsed.is_smart:
-                # v1.0 contract preserved:
-                execute_entries(
-                    entries=parsed.entries,
-                    global_tags=global_tags,
-                    debug=DEBUG,
-                    trust_level=trust_level,
-                )
-            elif parsed.is_plus:
-                if parsed.has_errors and DEBUG:
-                    for err in parsed.errors:
-                        log(f"[DEBUG] Plus validation: {err}")
-                execute_commands(
-                    commands=parsed.commands,
-                    global_tags=global_tags,
-                    debug=DEBUG,
-                    trust_level=trust_level,
-                )
-            else:
-                log(f"[WARN] Unrecognized parse mode: {parsed.mode!r}")
-        except Exception as exc:
-            log(f"[ERROR] Event execution failed: {exc}")
-
-        mark_done(state, run_key)
-        log("[INFO] Event completed")
+        result = _run_event_payload(event, trust_level, manual=False)
+        log(f"[INFO] Event attempt: {result['status']}")
 
     save_state(state)
     log("[INFO] CalFlow finished")
@@ -2002,6 +1947,27 @@ if __name__ == "__main__":
     if any(flag in args for flag in ("--version", "-V")):
         from core.version import version_string
         print(f"CalFlow {version_string()}")
+        sys.exit(0)
+
+    if cmd in {"submit-event", "submit-script", "job-worker", "job-status", "job-cancel", "jobs"}:
+        from runtime import jobs as job_runner
+        from state import jobs as job_store
+        try:
+            if cmd == "job-worker":
+                job_runner.worker(args[1], run_event_by_id, run_script_body)
+            elif cmd == "submit-event":
+                print(json.dumps(job_runner.submit("event", args[1])))
+            elif cmd == "submit-script":
+                print(json.dumps(job_runner.submit("script", sys.stdin.read(128_001))))
+            elif cmd == "job-status":
+                print(json.dumps(job_store.get(args[1])))
+            elif cmd == "job-cancel":
+                print(json.dumps(job_runner.cancel(args[1])))
+            else:
+                print(json.dumps({"jobs": job_store.recent()}))
+        except (ValueError, OSError, IndexError) as exc:
+            print(json.dumps({"ok": False, "error": f"Job request failed ({type(exc).__name__})"}))
+            sys.exit(1)
         sys.exit(0)
 
     if cmd in ("setup", "--setup"):
@@ -2140,6 +2106,9 @@ if __name__ == "__main__":
         print(f"CalFlow {version_string()}")
         sys.exit(0)
 
+    if args:
+        print("Unknown command. Run calflow --help.", file=sys.stderr)
+        sys.exit(2)
     if not acquire_lock():
         sys.exit(0)
     try:

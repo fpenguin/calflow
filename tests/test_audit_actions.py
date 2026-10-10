@@ -179,6 +179,10 @@ class AuditActionsTests(unittest.TestCase):
             with self.subTest(primary=primary, app=app, options=options):
                 self.run.reset_mock()
                 browser.open_target(primary, app, **options)
+                if app == "Other Browser":
+                    # Unsupported window creation must fail before a generic open.
+                    self.run.assert_not_called()
+                    continue
                 self.run.assert_called_once()
                 self.assertGreater(self.run.call_args.kwargs.get("timeout", 0), 0)
                 self.assertLessEqual(self.run.call_args.kwargs["timeout"], 30)
@@ -207,7 +211,7 @@ class AuditActionsTests(unittest.TestCase):
             layout.assert_not_called()
 
     def test_successful_launch_still_arranges(self) -> None:
-        with patch.object(browser, "_apply_layout") as layout:
+        with patch.object(browser, "_apply_layout", return_value=True) as layout:
             browser.open_target("https://example.com", "Safari", {"type": "full"}, new_window=True)
             layout.assert_called_once_with("Safari", {"type": "full"}, None)
 
@@ -235,7 +239,7 @@ class AuditActionsTests(unittest.TestCase):
 
     def test_macos_default_browser_nonzero_is_failure_without_retry(self) -> None:
         self.run.return_value = subprocess.CompletedProcess([], 1, "", "no handler")
-        with patch("sys.platform", "darwin"), patch.object(browser, "_apply_layout") as layout:
+        with patch("sys.platform", "darwin"), patch.object(browser, "_resolve_default_browser", return_value="Safari"), patch.object(browser, "_apply_layout") as layout:
             self.assertIs(browser.open_target("https://example.com", layout={"type": "full"}), False)
             layout.assert_not_called()
         self.run.assert_called_once()
@@ -243,7 +247,7 @@ class AuditActionsTests(unittest.TestCase):
 
     def test_macos_default_browser_timeout_is_failure_without_retry(self) -> None:
         self.run.side_effect = subprocess.TimeoutExpired("mock", 10)
-        with patch("sys.platform", "darwin"), patch.object(browser, "_apply_layout") as layout:
+        with patch("sys.platform", "darwin"), patch.object(browser, "_resolve_default_browser", return_value="Safari"), patch.object(browser, "_apply_layout") as layout:
             self.assertIs(browser.open_target("https://example.com", layout={"type": "full"}), False)
             layout.assert_not_called()
         self.run.assert_called_once()

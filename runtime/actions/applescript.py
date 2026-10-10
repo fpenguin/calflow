@@ -31,7 +31,7 @@ def run_applescript(script: str, timeout: float | None = None) -> RunResult:
         )
     except Exception as exc:
         msg = f"failed to launch: {exc}"
-        log(f"[ERROR] AppleScript {msg}")
+        log(f"[ERROR] AppleScript launch failed ({type(exc).__name__}); check runtime permissions")
         notify_run_error("CalFlow AppleScript failed", msg)
         return error_result("applescript", msg)
 
@@ -47,7 +47,7 @@ def run_applescript(script: str, timeout: float | None = None) -> RunResult:
         if len(stderr) > 300:
             stderr = stderr[:300] + "..."
         msg = f"exited {result.returncode}: {stderr}"
-        log(f"[WARN] AppleScript {msg}")
+        log(f"[WARN] AppleScript failed (exit {result.returncode}); inspect direct run details")
         notify_run_error("CalFlow AppleScript failed", msg)
         return error_result(
             "applescript",

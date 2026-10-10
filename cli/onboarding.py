@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 import json
+import plistlib
 import webbrowser
 import subprocess
 import sys
+
+from state import lifecycle
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,6 +28,7 @@ def uninstall_launchd(full=False):
             ["launchctl", "unload", PLIST_PATH],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            timeout=10,
         )
         os.remove(PLIST_PATH)
         print("🗑 Background automation removed.\n")
@@ -76,27 +80,62 @@ def save_json(path, data):
         json.dump(data, f, indent=2)
 
 
-def start_launchd():
+def _loaded() -> bool:
+    result = subprocess.run(["launchctl", "list"], capture_output=True,
+                            text=True, timeout=10, check=True)
+    return any(line.split() and line.split()[-1] == "com.calflow"
+               for line in result.stdout.splitlines())
+
+
+def set_login_preference(service: str, enabled: bool) -> None:
+    if service not in {"daemon", "menubar"} or type(enabled) is not bool:
+        raise ValueError("Invalid login preference")
+    if service == "menubar":
+        from cli.menubar_launchd import MENUBAR_PLIST_PATH, install_menubar
+        if not MENUBAR_PLIST_PATH.exists() and enabled:
+            install_menubar(load=False)
+        label = "com.calflow.menubar"
+    else:
+        if not os.path.exists(PLIST_PATH):
+            raise FileNotFoundError("Run calflow setup before enabling background login")
+        label = "com.calflow"
+    key = service + "_login"
+    previous = lifecycle.load()[key]
+    target = f"gui/{os.getuid()}/{label}"
+    subprocess.run(["launchctl", "enable" if enabled else "disable", target],
+                   capture_output=True, timeout=10, check=True)
+    try:
+        lifecycle.update(**{key: enabled})
+    except Exception:
+        subprocess.run(["launchctl", "enable" if previous else "disable", target],
+                       capture_output=True, timeout=10, check=True)
+        raise
+
+
+def start_launchd(*, persist: bool = True) -> None:
     if not os.path.exists(PLIST_PATH):
         raise FileNotFoundError(PLIST_PATH)
-    result = subprocess.run(
-        ["launchctl", "list"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=True,
-    )
-
-    if any(line.split() and line.split()[-1] == "com.calflow" for line in result.stdout.splitlines()):
+    if _loaded():
+        if persist:
+            lifecycle.update(paused=False)
         print("⚠️ Already running\n")
         return
-
-    subprocess.run(["launchctl", "load", PLIST_PATH], timeout=10, check=True)
+    target = f"gui/{os.getuid()}/com.calflow"
+    subprocess.run(["launchctl", "enable", target], timeout=10, check=True)
+    try:
+        subprocess.run(["launchctl", "load", PLIST_PATH], timeout=10, check=True)
+    finally:
+        if not lifecycle.load()["daemon_login"]:
+            subprocess.run(["launchctl", "disable", target], timeout=10, check=True)
+    if persist:
+        lifecycle.update(paused=False)
     print("▶️ CalFlow started\n")
 
 
-def stop_launchd():
+def stop_launchd(*, persist: bool = True) -> None:
     if not os.path.exists(PLIST_PATH):
+        if persist:
+            lifecycle.update(paused=True)
         print("⚠️ Nothing to stop (not installed)\n")
         return
 
@@ -104,6 +143,8 @@ def stop_launchd():
         ["launchctl", "list"], capture_output=True, text=True, timeout=10, check=True,
     )
     if not any(line.split() and line.split()[-1] == "com.calflow" for line in result.stdout.splitlines()):
+        if persist:
+            lifecycle.update(paused=True)
         print("CalFlow is already stopped\n")
         return
 
@@ -114,12 +155,17 @@ def stop_launchd():
         timeout=10,
         check=True,
     )
+    if persist:
+        lifecycle.update(paused=True)
     print("⏹ CalFlow stopped\n")
 
 
 def restart_launchd():
-    stop_launchd()
-    start_launchd()
+    if lifecycle.load()["paused"] or not _loaded():
+        print("CalFlow remains paused/stopped; use Start to resume\n")
+        return
+    stop_launchd(persist=False)
+    start_launchd(persist=False)
     print("🔄 CalFlow restarted\n")
 
 
@@ -322,42 +368,16 @@ def generate_plist(interval):
     stdout_log = os.path.join(log_dir, "launchd.out.log")
     stderr_log = os.path.join(log_dir, "launchd.err.log")
 
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.calflow</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>{python_path}</string>
-        <string>-m</string>
-        <string>cli.main</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>{BASE_DIR}</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PYTHONPATH</key>
-        <string>{BASE_DIR}</string>
-    </dict>
-
-    <key>StartInterval</key>
-    <integer>{interval}</integer>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>{stdout_log}</string>
-
-    <key>StandardErrorPath</key>
-    <string>{stderr_log}</string>
-</dict>
-</plist>
-"""
+    return plistlib.dumps({
+        "Label": "com.calflow",
+        "ProgramArguments": [python_path, "-m", "cli.main"],
+        "WorkingDirectory": BASE_DIR,
+        "EnvironmentVariables": {"PYTHONPATH": BASE_DIR},
+        "StartInterval": int(interval),
+        "RunAtLoad": True,
+        "StandardOutPath": stdout_log,
+        "StandardErrorPath": stderr_log,
+    }).decode("utf-8")
 
 
 def install_launchd(interval):
@@ -368,8 +388,10 @@ def install_launchd(interval):
     with open(PLIST_PATH, "w") as f:
         f.write(plist)
 
-    subprocess.run(["launchctl", "unload", PLIST_PATH], stderr=subprocess.DEVNULL)
-    subprocess.run(["launchctl", "load", PLIST_PATH])
+    set_login_preference("daemon", True)
+    subprocess.run(["launchctl", "unload", PLIST_PATH], stderr=subprocess.DEVNULL, timeout=10)
+    subprocess.run(["launchctl", "load", PLIST_PATH], timeout=10, check=True)
+    lifecycle.update(paused=False)
 
     print("✅ Background automation enabled\n")
 

@@ -168,9 +168,12 @@ def resolve_dynamic_expr(expr: str, *, _now: Optional[datetime] = None) -> str:
     pipeline = parts[1:]
 
     # ---- base -------------------------------------------------------
-    base_dt = _eval_base(base_str, now=_now)
+    try:
+        base_dt = _eval_base(base_str, now=_now)
+    except (OverflowError, ValueError):
+        base_dt = None
     if base_dt is None:
-        log(f"[WARN] dynamic: unknown base {base_str!r}")
+        log("[WARN] dynamic: invalid or out-of-range date; keeping literal expression")
         return f"{{{expr}}}"
 
     # ---- pipeline (transforms + optional final format) -------------
@@ -180,7 +183,7 @@ def resolve_dynamic_expr(expr: str, *, _now: Optional[datetime] = None) -> str:
 
     for stage in pipeline:
         if seen_format:
-            log(f"[WARN] dynamic: stage after format ignored: {stage!r}")
+            log("[WARN] dynamic: stage after format ignored; put format last")
             break
         if _is_format_stage(stage):
             fmt = _normalize_format_stage(stage)
@@ -188,9 +191,13 @@ def resolve_dynamic_expr(expr: str, *, _now: Optional[datetime] = None) -> str:
             continue
         fn = TRANSFORMS.get(stage.lower())
         if fn is None:
-            log(f"[WARN] dynamic: unknown transform {stage!r}; skipping")
+            log("[WARN] dynamic: unknown transform; check expression")
             continue
-        dt = fn(dt)
+        try:
+            dt = fn(dt)
+        except (OverflowError, ValueError):
+            log("[WARN] dynamic: transform out of range; keeping literal expression")
+            return f"{{{expr}}}"
 
     return _apply_format(dt, fmt)
 
@@ -254,6 +261,6 @@ def _apply_format(dt: datetime, fmt: str) -> str:
     py_fmt = _TOKEN_RE.sub(repl, fmt)
     try:
         return dt.strftime(py_fmt)
-    except Exception as exc:
-        log(f"[WARN] dynamic: format failed for {fmt!r}: {exc}")
+    except Exception:
+        log("[WARN] dynamic: format failed; using default date format")
         return dt.strftime("%Y-%m-%d")

@@ -6,8 +6,8 @@
   2026-07-04; branch `v2.0` still exists at that point but is no longer
   the trunk).
 - **Current release: v1.5.5** — first public tagged release of the v1.5
-  line. `core/version.py` has `__is_release__ = True` at the tag; flip it
-  back to False on the next dev commit.
+  line. **Development version: v1.5.6-dev**, with `__is_release__ = False`.
+  Audit checkpoint: `f1d876c`; reliability implementation follows that commit.
 - **Pushes**: only on user-requested releases. Local commits otherwise.
   The old blanket push freeze is lifted (superseded by CLAUDE.md §7).
 - `v2.0.0` remains reserved for the public launch milestone. Do not
@@ -49,6 +49,31 @@
   `unhide`, `restore`, native fullscreen vs `#full`. Spec before code.
 
 ## Working Notes
+
+- **Implementation follow-up:** see `docs/reliability-followup-2026-10-10.md`.
+  Structured results, durable attempts, detached menu workers, persistent login/
+  pause state, parser repairs and staged installer rollback are implemented.
+  CLI dispatch and interactive invitation trust are also repaired. Preserve the
+  audit below as baseline evidence; its remaining P2 items are not all closed.
+  No release tag was requested for this development push.
+  Final local checks: 1,010 Python tests, 6 Node UI tests, targeted Ruff,
+  installer shell syntax and dependency checks passed. Pytest now isolates
+  migration backups and rejects unmocked native-action processes.
+
+- **Historical audit handoff (before implementation):** reviewed the changes subsequently committed
+  by another session as v1.5.6-dev (`f1d876c`), with inherited-model specialist
+  audits at ultra reasoning. See
+  `docs/codebase-audit-2026-10-10.md` for verified open bugs, reproductions and
+  the repair order. Concurrent execution-result, job and action changes are
+  outside the verified baseline and must be re-tested before closing findings.
+  Other sessions' working changes were preserved.
+- That audit handoff changed documentation only; no runtime repair, version bump,
+  commit, tag or push. Passing tests are not launch clearance. Prioritize CLI
+  dispatch/trust, execution ownership/results, and data-preserving installation.
+- At audit time, the full Python suite passed in a disposable source copy with external IO
+  guarded; the existing migration test otherwise writes `data/settings.py.bak`
+  in the real checkout. The implementation's pytest fixture now redirects it.
+  Native reboot/permissions and live Calendar behavior were not run.
 
 - `config/settings.py` is tracked defaults only; user overrides live in
   `data/user_settings.json` / `data/user_targets.json` (gitignored).

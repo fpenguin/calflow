@@ -33,8 +33,8 @@ def run_shortcut(name: str, input_text: str = "") -> RunResult:
                 prefix="calflow-shortcut-",
                 suffix=".txt",
             ) as tmp:
-                tmp.write(input_text)
                 input_path = tmp.name
+                tmp.write(input_text)
             args.extend(["--input-path", input_path])
 
         result = subprocess.run(
@@ -46,7 +46,7 @@ def run_shortcut(name: str, input_text: str = "") -> RunResult:
         )
     except Exception as exc:
         msg = f"failed to launch for {shortcut!r}: {exc}"
-        log(f"[ERROR] Shortcut {msg}")
+        log(f"[ERROR] Shortcut launch failed ({type(exc).__name__}); check Shortcuts configuration")
         notify_run_error("CalFlow Shortcut failed", msg)
         return error_result("shortcut", msg)
     finally:
@@ -57,7 +57,7 @@ def run_shortcut(name: str, input_text: str = "") -> RunResult:
                 pass
 
     if result.returncode == 0:
-        log(f"[INFO] Shortcut completed: {shortcut}")
+        log("[INFO] Shortcut completed")
         return ok_result(
             "shortcut",
             f"Shortcut completed: {shortcut}",
@@ -68,7 +68,7 @@ def run_shortcut(name: str, input_text: str = "") -> RunResult:
         if len(stderr) > 300:
             stderr = stderr[:300] + "..."
         msg = f"exited {result.returncode}: {stderr}"
-        log(f"[WARN] Shortcut {msg}")
+        log(f"[WARN] Shortcut failed (exit {result.returncode}); inspect direct run details")
         notify_run_error("CalFlow Shortcut failed", msg)
         return error_result(
             "shortcut",

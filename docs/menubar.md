@@ -13,8 +13,9 @@ From the CalFlow folder:
 .venv/bin/python -m cli.main menubar-status
 ```
 
-Installation enables the companion now and at future logins. It upgrades an
-older registration to the current recovery policy.
+Installation enables the companion now and, by default, at future logins. A
+saved Menu bar at login preference is retained. It upgrades an older registration
+to the current recovery policy.
 
 The companion and calendar automation are separate:
 
@@ -76,10 +77,13 @@ because it has been running longer than seven days.
   event and tomorrow's events inside the lookahead.
 - **View Event:** opens the source event URL in the default browser. With no
   URL, opens Google Calendar. CalFlow never edits the calendar event.
-- **Run Now:** executes that occurrence and records completion, preventing
-  automatic replay. Explicit manual reruns are still possible. Individual
-  action failures are not yet aggregated: a handled backend failure can still
-  mark the event complete. Inspect the activity log when an action did not occur.
+- **Run Now:** queues a background worker. Its occurrence is claimed before
+  execution; failures are not marked complete or automatically replayed.
+  Explicit retry runs the whole workflow again, including previously successful
+  steps. BTT/Alfred success means handed off, not confirmed workflow completion.
+- **Recent Runs:** shows worker state and failure details. Cancel stops a
+  detached worker's process group. Foreground/scheduled work is not offered a
+  misleading Cancel button. External-app handoffs cannot be undone.
 - **Missed Automations:** recent runnable events not recorded as completed.
   View more currently opens the activity log; it is not a full missed-event browser.
 - **Pause/Resume:** controls background automation, not the companion.
@@ -92,16 +96,26 @@ The page refreshes on show and every 30 seconds, including while the companion
 is running with its popover closed. A usable cached feed can be shown when
 calendar refresh fails, with a visible stale-data banner.
 
+The fallback currently reuses the whole snapshot, including daemon status
+and relative event times. During an outage, the displayed paused/active state
+can therefore be outdated. Use `status` to inspect the current registration;
+keeping live controls independent of cached calendar data is an open fix.
+
 Run Now remains disabled for an in-flight event across menu rerenders. Native
-workers allow 60 seconds for manual runs and 20 seconds for other subprocess
-operations; JavaScript waits slightly longer so it can receive their errors.
-Longer workflows still need a persistent execution/job design.
+bridge requests have a 20-second budget to queue or inspect jobs; JavaScript
+allows 25 seconds. These are not workflow deadlines. Workers can complete the
+bundled 25-minute Pomodoro, survive popup/app closure, and remain observable
+after reopening. A worker that disappears is marked interrupted, not replayed.
 
 ## Settings And Files
 
 Settings edits are validated and saved in `data/user_settings.json`; aliases
 use `data/user_targets.json`. Tracked `config/settings.py` contains defaults
 and advanced settings that are not all exposed in the GUI.
+
+Login and pause preferences are separate in `data/lifecycle.json`. Restart
+preserves paused/stopped state. Automation and menu-bar login toggles use
+launchd's persistent enable/disable controls without stopping a current run.
 
 Apply & restart may restart automation after a change. The current
 **Auto-start at login** setting controls daemon loading; its persistent

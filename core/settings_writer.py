@@ -14,10 +14,10 @@ Design principles:
   `data/user_settings.json.bak` on every successful write batch.
 - DEFAULTS STAY TRACKED. Runtime imports merge defaults from
   `config/settings.py` with this gitignored JSON sidecar.
-- LAUNCHD-FREE. Toggles that depend on launchctl (e.g.
-  `auto_start_at_login`) are NOT auto-applied — per CLAUDE.md, CalFlow
-  never modifies launchd state autonomously. They return
-  `requires_terminal` with the literal command for the user to run.
+- EXPLICIT LOGIN PREFERENCES. User-initiated login toggles update launchd
+  enablement and persist lifecycle preferences, without starting or stopping
+  the current service. Tests mock that helper; agents must not invoke it
+  against the real user session without approval.
 
 Public API:
     apply_settings(payload: dict) → dict
@@ -31,9 +31,8 @@ Public API:
 
     EDITABLE_SETTINGS — the whitelist (also exposed for the UI).
 
-Why this lives in core/ and not runtime/: it's pure logic with one
-file IO at the very end. Tests mock the file path; no daemon side
-effects.
+This is a legacy core-layer IO module. Validation stays local; login
+changes delegate to the lifecycle helper. Tests isolate both paths.
 """
 
 from __future__ import annotations
@@ -72,8 +71,8 @@ BACKUP_PATH = USER_SETTINGS_BACKUP_PATH
 # autonomously — that's about MY behaviour, not the app's.
 
 _LAUNCHD_KEYS: Dict[str, str] = {
-    # ui_key → daemon action ("start" | "stop")
-    "general.auto_start_at_login": "toggle",
+    "general.auto_start_at_login": "daemon",
+    "general.menubar_at_login": "menubar",
 }
 
 
@@ -104,7 +103,10 @@ def apply_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
     for ui_key, raw_value in payload.items():
         # launchd-controlled?
         if ui_key in _LAUNCHD_KEYS:
-            action = "start" if raw_value else "stop"
+            if type(raw_value) is not bool:
+                rejected.append({"key": ui_key, "reason": "must be true or false"})
+                continue
+            action = _LAUNCHD_KEYS[ui_key] + ("-login-on" if raw_value else "-login-off")
             ok, err = _run_launchctl(action)
             if ok:
                 applied.append(ui_key)
@@ -174,9 +176,11 @@ def _run_launchctl(action: str):
     """
     try:
         from cli.onboarding import (
-            start_launchd, stop_launchd, restart_launchd,
+            start_launchd, stop_launchd, restart_launchd, set_login_preference,
         )
-        if action == "start":
+        if action.endswith(("-login-on", "-login-off")):
+            set_login_preference(action.split("-", 1)[0], action.endswith("-on"))
+        elif action == "start":
             start_launchd()
         elif action == "stop":
             stop_launchd()

@@ -191,26 +191,25 @@ class Launchd(SettingsWriterBase):
     """v1.3.6 — launchd ops now execute natively. Mock the helpers so the
     test suite doesn't actually touch the real launchctl."""
 
-    def test_auto_start_on_runs_start_launchd(self):
-        with patch("cli.onboarding.start_launchd") as mock_start, \
-             patch("cli.onboarding.stop_launchd"):
+    def test_auto_start_on_updates_login_not_current_run(self):
+        # v1.5.6: login preferences no longer start/stop the current daemon.
+        with patch("cli.onboarding.set_login_preference") as login:
             result = apply_settings({"general.auto_start_at_login": True})
-            mock_start.assert_called_once()
+            login.assert_called_once_with("daemon", True)
         self.assertIn("general.auto_start_at_login", result["applied"])
         self.assertEqual(result["rejected"], [])
         self.assertEqual(result["requires_terminal"], [])
-        self.assertEqual(result["daemon_actions"][0]["action"], "start")
+        self.assertEqual(result["daemon_actions"][0]["action"], "daemon-login-on")
 
-    def test_auto_start_off_runs_stop_launchd(self):
-        with patch("cli.onboarding.start_launchd"), \
-             patch("cli.onboarding.stop_launchd") as mock_stop:
+    def test_auto_start_off_updates_login_not_current_run(self):
+        with patch("cli.onboarding.set_login_preference") as login:
             result = apply_settings({"general.auto_start_at_login": False})
-            mock_stop.assert_called_once()
+            login.assert_called_once_with("daemon", False)
         self.assertIn("general.auto_start_at_login", result["applied"])
-        self.assertEqual(result["daemon_actions"][0]["action"], "stop")
+        self.assertEqual(result["daemon_actions"][0]["action"], "daemon-login-off")
 
     def test_launchd_failure_is_rejected(self):
-        with patch("cli.onboarding.start_launchd",
+        with patch("cli.onboarding.set_login_preference",
                    side_effect=FileNotFoundError("plist missing")):
             result = apply_settings({"general.auto_start_at_login": True})
         self.assertEqual(result["applied"], [])
@@ -219,7 +218,7 @@ class Launchd(SettingsWriterBase):
 
     def test_no_file_write_for_launchd_only_payload(self):
         original_exists = self._settings.exists()
-        with patch("cli.onboarding.start_launchd"):
+        with patch("cli.onboarding.set_login_preference"):
             apply_settings({"general.auto_start_at_login": True})
         self.assertEqual(self._settings.exists(), original_exists,
                          "launchd ops must not touch user_settings.json")
@@ -245,7 +244,7 @@ class Backup(SettingsWriterBase):
         self.assertFalse(self._backup.exists())
 
     def test_no_backup_for_pure_terminal_payload(self):
-        with patch("cli.onboarding.start_launchd"):
+        with patch("cli.onboarding.set_login_preference"):
             apply_settings({"general.auto_start_at_login": True})
         self.assertFalse(self._backup.exists())
 

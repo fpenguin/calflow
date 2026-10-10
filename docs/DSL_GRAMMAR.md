@@ -305,7 +305,8 @@ Ignored.
 # 3. Plus Mode Grammar
 
 Grammar acceptance does not imply an implemented backend. In the current
-build, click/drag/type/press, bare copy, paste and standalone save are stubs.
+build, click/drag/type/press, bare copy, paste and standalone save return
+`unsupported`, not success.
 Scoped screenshots are refused without capturing. See the current support
 table in [QA](QA.md#actual-backend-support).
 
@@ -400,6 +401,9 @@ run_handler_action ::= "notify" "(" ("result" | string)? ")"
 
 Run handlers are scoped only to the preceding `run` command. They are
 not a general conditional syntax.
+
+AppleScript requires a nonempty, closed `+++` block. `applescript(...)` is
+not an inline payload form. Unterminated fences are rejected without execution.
 
 `timeout(...)` currently applies to `run applescript`; the other run
 backends use their settings-level timeouts.

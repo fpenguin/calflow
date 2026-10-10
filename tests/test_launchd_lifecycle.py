@@ -16,10 +16,10 @@ def test_start_daemon_when_only_menubar_is_loaded():
     loaded = SimpleNamespace(returncode=0, stdout="", stderr="")
     with (
         patch.object(onboarding.os.path, "exists", return_value=True),
-        patch.object(onboarding.subprocess, "run", side_effect=[listed, loaded]) as run,
+        patch.object(onboarding.subprocess, "run", side_effect=[listed, loaded, loaded]) as run,
     ):
         onboarding.start_launchd()
-    assert run.call_count == 2
+    assert run.call_count == 3
     assert run.call_args.args[0] == ["launchctl", "load", onboarding.PLIST_PATH]
 
 
@@ -28,7 +28,7 @@ def test_start_daemon_reports_load_failure():
     with (
         patch.object(onboarding.os.path, "exists", return_value=True),
         patch.object(onboarding.subprocess, "run", side_effect=[
-            listed, subprocess.CalledProcessError(5, "launchctl", stderr="bad plist")
+            listed, listed, subprocess.CalledProcessError(5, "launchctl", stderr="bad plist")
         ]),
         pytest.raises(subprocess.CalledProcessError),
     ):

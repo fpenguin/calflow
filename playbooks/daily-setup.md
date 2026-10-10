@@ -112,12 +112,14 @@ open dashboard4.com #grid(4@2x2)
 
 ### Change your apps
 
-Edit `@work` in `config/settings.py`:
+Edit `@work` in **Settings > Aliases**. Personal aliases are stored in
+`data/user_targets.json`; `config/settings.py` supplies the defaults.
+For example, use this alias-to-app mapping:
 
-```python
-TARGETS = {
+```json
+{
     "@work": ["Google Chrome", "Notion", "Figma"],
-    "@chrome": "Google Chrome",
+    "@chrome": "Google Chrome"
 }
 ```
 

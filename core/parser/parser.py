@@ -98,7 +98,7 @@ def parse(text: str, title: Optional[str] = None) -> ParseResult:
         )
 
     except Exception as exc:  # pragma: no cover
-        log(f"[ERROR] Parser failed: {exc}")
+        log(f"[ERROR] Parser failed ({type(exc).__name__}); check input syntax")
         return ParseResult(mode=MODE_NONE)
 
 

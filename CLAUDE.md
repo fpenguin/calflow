@@ -7,7 +7,8 @@ in this repo. Read it first. Specialised behaviours (DSL changes, macOS quirks,
 release management) live in `.claude/agents/` and `.claude/skills/` — but the
 rules below apply unconditionally.
 
-Last reviewed against repo state: **v1.1.29**.
+Last reviewed: **2026-10-10**, v1.5.6-dev baseline `f1d876c`.
+Current findings: `docs/codebase-audit-2026-10-10.md`.
 
 ---
 
@@ -91,9 +92,11 @@ accept the discrepancy.
 
 ### File organisation
 
-- **Layered:** `core/` is pure (no IO), `runtime/` does side effects, `infra/`
-  talks to external services (Google Calendar), `cli/` is entry points,
-  `state/` is file-backed state, `config/` is settings.
+- **Layered:** parser/validator/resolver logic in `core/` is pure. Existing
+  settings/targets/recipe modules in `core/` contain file IO and are legacy
+  exceptions; do not assume imports are side-effect free. `runtime/` does
+  actions, `infra/` talks to external services, `cli/` contains entry points,
+  `state/` handles persistence, and `config/` holds defaults.
 - **New IO goes in `runtime/actions/` or `infra/`**, never in `core/`.
 - **`__all__` per public module.** Anything not in `__all__` is private.
 - **One commit per logical change.** Don't bundle unrelated edits.
@@ -131,8 +134,11 @@ accept the discrepancy.
 
 ## 4. Testing expectations
 
-- **Tests must pass before every commit.** Run `python -m unittest discover
-  tests/` (or `pytest tests/`) and verify "OK" before staging.
+- **Tests must pass before every commit.** Run `.venv/bin/python -m pytest
+  tests/` plus `node --test tests/menubar_ui.test.cjs`. Unittest discovery alone
+  misses newer pytest functions and the storage/native-action guards in
+  `tests/conftest.py`. Use a disposable source copy for unittest-only runs;
+  see `docs/TESTING.md`.
 - **New code path → at least one test.** No exceptions for "trivial" changes.
 - **Bug fix workflow:** write the failing regression test FIRST, in the same
   commit or an immediately-prior commit. Tag it with `# v1.1.X — regression
@@ -282,7 +288,9 @@ If forced to choose only one tool: use Code. Cowork is the sketchpad.
 - `docs/DSL_SPEC.md` — DSL reference
 - `docs/DSL_GRAMMAR.md` — formal grammar
 - `docs/TESTING.md` — testing guide
-- `docs/menubar_readiness.md` — future GUI architecture
+- `docs/menubar.md` — current companion behavior and recovery
+- `docs/menubar_readiness.md` — historical GUI design memo
+- `docs/codebase-audit-2026-10-10.md` — current verified risks and repair order
 - `docs/roadmap.md` — what's deferred and why
 - `_workspace/specs/` — accepted feature specs (committed)
 - `_workspace/scratchpads/` — agent thinking notes (gitignored)

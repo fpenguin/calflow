@@ -101,6 +101,13 @@ class NsToPythonHelper(unittest.TestCase):
         self.assertEqual(error.exception.code, 0)
         write.assert_not_called()
 
+    def test_run_operations_submit_detached_jobs(self):
+        build = self.menubar._CFApp._build_cmd
+        self.assertEqual(build(None, "run-event", {"id": "example"})[-2:], ["submit-event", "example"])
+        self.assertEqual(build(None, "run-script", {})[-1], "submit-script")
+        self.assertEqual(build(None, "job-status", {"id": "job"})[-2:], ["job-status", "job"])
+        self.assertEqual(build(None, "job-cancel", {"id": "job"})[-2:], ["job-cancel", "job"])
+
 
 class JsonDumpsWithDefault(unittest.TestCase):
     """End-to-end regression for the Aliases save / remove crash."""

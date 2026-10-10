@@ -81,15 +81,22 @@ AppleScript.
 
 ## Install
 
-CalFlow requires macOS and Python. It also requires Google Calendar API
+CalFlow requires macOS and Python 3.10 or newer. It also requires Google Calendar API
 credentials because Google asks each local calendar app to authenticate
 with OAuth.
 
-Install from GitHub:
+For a **fresh installation**, install from GitHub:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fpenguin/calflow/main/scripts/install.sh | bash
 ```
+
+This installs into `~/.calflow` and creates a `calflow` command. For an existing
+installation, stop automation and the companion first (`calflow stop`, then
+`calflow menubar-stop`). The installer preserves `data/` and `secrets/`, retains
+a complete backup, and restores the previous installation if setup fails.
+Uncommitted tracked changes must be resolved before upgrading. Reopen the
+companion with `calflow menubar-start`; use `calflow start` to resume automation.
 
 Or install manually:
 
@@ -99,7 +106,8 @@ cd ~/calflow
 ./scripts/setup.sh
 ```
 
-Then connect Google Calendar:
+Then connect Google Calendar from your installation folder: `~/.calflow` for
+the installer, or `~/calflow` for the manual commands above.
 
 1. In Google Cloud Console, create an OAuth Client ID for a Desktop App.
 2. Download the file as `credentials.json`.
@@ -134,12 +142,14 @@ python3 -m cli.repl
 ```
 
 Use the REPL to test a CalFlow block without waiting for a real calendar
-event:
+event. Enter `:plus` to begin multi-line input, then `EOF` to execute it:
 
-```text
+```console
+:plus
 +CalFlow+
 
 open https://github.com/fpenguin/calflow @chrome #left(60%)
+EOF
 ```
 
 If that opens and positions a browser window, your local automation path
@@ -409,9 +419,9 @@ TRUSTED_INVITE_DOMAINS = {"company.com"}
 ALLOW_RUN_BACKENDS_TRUSTED_DOMAIN = {"shortcut"}
 ```
 
-The trust gate applies to daemon auto-runs and manual `run-event`
-execution from the menu bar or CLI. Local REPL and recipe sandbox runs
-are treated as user-initiated local actions.
+The same invitation trust gate applies to scheduled runs, Run Now, and calendar
+events selected in the interactive `test` command. Pasted local scripts and
+playbook runs are separate, user-initiated local actions.
 
 ---
 
@@ -490,7 +500,26 @@ More detail:
 
 CalFlow polls your selected calendars and evaluates upcoming events.
 When an event enters the configured trigger window, CalFlow parses the
-event text and executes it once.
+event text and records the attempt. Scheduled and manual runs share occurrence
+claims and a desktop lock. Only successful runs or accepted BTT/Alfred handoffs
+are marked complete. Failed, blocked, unsupported, cancelled or interrupted
+attempts are not automatically replayed.
+
+**Run Now** before an event suppresses its later automatic run. Clicking it
+again explicitly retries the entire workflow, including any steps that already
+succeeded. External apps may continue work after a handoff; CalFlow cannot
+confirm or undo that work.
+
+Menu and Playbooks runs continue in background workers when their window closes.
+**Recent Runs** shows status, error details and Cancel for these workers.
+Cancellation stops the worker and its process group, not actions already handed
+to another app. Private job details live in `data/jobs/`; raw input requests are
+removed when consumed. Detailed results are pruned after seven days when a new
+job starts. Error details can contain script output, so review before sharing.
+
+Settings has independent **Automation at login** and **Menu bar at login**
+toggles. Pause survives restart/login until you explicitly resume. Changing a
+login toggle does not start or stop the current process.
 
 The shipped default is three minutes before the event starts; your saved
 settings can override it. Use Settings for timing and supported preferences,
@@ -504,8 +533,18 @@ Useful commands:
 python3 -m cli.main status
 python3 -m cli.main display
 python3 -m cli.main menubar-status
+python3 -m cli.main jobs
+python3 -m cli.main job-status JOB_ID
+python3 -m cli.main job-cancel JOB_ID
 python3 -m cli.repl
 ```
+
+Use `calflow --help` for commands. Unknown arguments are rejected without
+executing a calendar cycle. From a source checkout, use `.venv/bin/python`
+unless you have already activated its environment.
+
+See the [reliability follow-up](docs/reliability-followup-2026-10-10.md) for fixes,
+verification and the [audit](docs/codebase-audit-2026-10-10.md) for remaining work.
 
 ---
 

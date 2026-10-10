@@ -2,6 +2,18 @@
 
 This document defines how CalFlow parses and executes calendar event content.
 
+Reliability clarifications (v1.5.6-dev): legacy `#display("Desk Panel")` and
+`#area(0, 0, 100, 100)` retain their complete arguments. Conflicting modifiers
+on one line resolve by source order before conversion to a tag set; the last
+layout wins. Different lines retain independent layouts. Malformed numeric
+arguments reject one command without discarding valid neighbors. Date overflow
+leaves its `{expression}` literal in place.
+
+`run applescript` requires a nonempty, closed `+++` fence. Inline
+`applescript(...)` is rejected. CLOSE accepts a target/list or a nonempty
+`except(...)`, never a combination that could broaden the requested scope.
+Unavailable backends return `unsupported`; accepting syntax is not completion.
+
 It serves as the bridge between:
 
 - **DSL_SPEC** — how users write CalFlow  

@@ -42,17 +42,17 @@ def _osascript(script: str, *, action_label: str) -> bool:
             capture_output=True, text=True, timeout=5,
         )
     except FileNotFoundError:
-        log(f"[WARN] {action_label}: osascript not available")
+        log("[WARN] App control: osascript unavailable; run on macOS")
         return False
     except Exception as exc:
-        log(f"[ERROR] {action_label} subprocess failed: {exc}")
+        log(f"[ERROR] App control failed ({type(exc).__name__}); check Automation permissions")
         return False
 
     if result.returncode == 0:
         return True
 
     stderr = (result.stderr or "").strip()
-    log(f"[WARN] {action_label} failed: {stderr or '(no stderr)'}")
+    log(f"[WARN] App control failed (exit {result.returncode}); check Automation permissions")
     if "not allowed" in stderr.lower() or "1002" in stderr or "errAEAccessor" in stderr:
         log(
             "[WARN] Grant Accessibility permission: "
@@ -78,17 +78,17 @@ def _osascript_capture(script: str, *, action_label: str) -> Optional[str]:
             capture_output=True, text=True, timeout=10,
         )
     except FileNotFoundError:
-        log(f"[WARN] {action_label}: osascript not available")
+        log("[WARN] App control: osascript unavailable; run on macOS")
         return None
     except Exception as exc:
-        log(f"[ERROR] {action_label} subprocess failed: {exc}")
+        log(f"[ERROR] App control failed ({type(exc).__name__}); check Automation permissions")
         return None
 
     if result.returncode == 0:
         return result.stdout
 
     stderr = (result.stderr or "").strip()
-    log(f"[WARN] {action_label} failed: {stderr or '(no stderr)'}")
+    log(f"[WARN] App control failed (exit {result.returncode}); check Automation permissions")
     if "not allowed" in stderr.lower() or "1002" in stderr or "errAEAccessor" in stderr:
         log(
             "[WARN] Grant Accessibility permission: "
@@ -130,9 +130,9 @@ def focus_app(app_name: str) -> bool:
         return False
     safe = _escape(app_name)
     script = f'tell application "{safe}" to activate'
-    ok = _osascript(script, action_label=f"FOCUS {app_name!r}")
+    ok = _osascript(script, action_label="FOCUS")
     if ok:
-        log(f"[INFO] FOCUS {app_name!r}")
+        log("[INFO] FOCUS completed")
     return ok
 
 
@@ -161,15 +161,17 @@ tell application "System Events"
         set candidates to (every window whose title contains "{safe_title}")
         if (count of candidates) > 0 then
             perform action "AXRaise" of (item 1 of candidates)
+        else
+            error "No matching window" number -1728
         end if
     end tell
 end tell
 '''
     ok = _osascript(
-        script, action_label=f"FOCUS {app_name!r} title {title_substring!r}"
+        script, action_label="FOCUS window"
     )
     if ok:
-        log(f"[INFO] FOCUS {app_name!r} title contains {title_substring!r}")
+        log("[INFO] FOCUS matching window completed")
     return ok
 
 
@@ -191,9 +193,9 @@ tell application "System Events"
     end if
 end tell
 '''
-    ok = _osascript(script, action_label=f"CLOSE {app_name!r}")
+    ok = _osascript(script, action_label="CLOSE")
     if ok:
-        log(f"[INFO] CLOSE {app_name!r}")
+        log("[INFO] CLOSE completed")
     return ok
 
 
@@ -214,9 +216,9 @@ tell application "System Events"
     end if
 end tell
 '''
-    ok = _osascript(script, action_label=f"HIDE {app_name!r}")
+    ok = _osascript(script, action_label="HIDE")
     if ok:
-        log(f"[INFO] HIDE {app_name!r}")
+        log("[INFO] HIDE completed")
     return ok
 
 
@@ -226,9 +228,8 @@ def close_all(except_apps: Iterable[str] = ()) -> bool:
     in `except_apps`. Frontmost is also kept (avoids closing the user's
     active app).
 
-    Returns True iff osascript exited 0. The script returns a TSV
-    summary on stdout — `kept | closed | errored` — which we log so
-    you can see exactly what the call did.
+    Returns True iff osascript exited 0 and its TSV summary reports no
+    failed targets. Summary content never enters ordinary logs.
     """
     keep_names = [a.strip() for a in except_apps if a and a.strip()]
     keep_literal = "{" + ", ".join(
@@ -248,6 +249,8 @@ def close_all(except_apps: Iterable[str] = ()) -> bool:
         '            set procName to ""\n'
         '            try\n'
         '                set procName to (name of p as string)\n'
+        '            on error\n'
+        '                set end of errored to "process lookup failed"\n'
         '            end try\n'
         '            if procName is "" then\n'
         '                -- skip\n'
@@ -272,17 +275,10 @@ def close_all(except_apps: Iterable[str] = ()) -> bool:
         '    return out\n'
         'end run\n'
     )
-    label = "CLOSE all" + (
-        " except " + ", ".join(keep_names) if keep_names else ""
-    )
-    summary = _osascript_capture(script, action_label=label)
+    summary = _osascript_capture(script, action_label="CLOSE all")
     if summary is None:
         return False
-    for line in summary.strip().splitlines():
-        if "\t" in line:
-            tag, _, names = line.partition("\t")
-            log(f"[INFO] {label}: {tag.lower()} = [{names.strip() or '∅'}]")
-    return True
+    return _batch_succeeded(summary, changed_tag="CLOSED")
 
 
 def hide_all(except_apps: Iterable[str] = ()) -> bool:
@@ -295,9 +291,8 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
     leave macOS focus on whatever Finder picks next, surprising the
     user. (`cmd+option+H` works the same way.)
 
-    Returns True iff osascript exited 0. The script returns a TSV
-    summary on stdout — `kept | hidden | errored` — which we log so
-    you can see exactly what the call did.
+    Returns True iff osascript exited 0 and its TSV summary reports no
+    failed targets. Summary content never enters ordinary logs.
     """
     keep_names = [a.strip() for a in except_apps if a and a.strip()]
 
@@ -315,7 +310,7 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
     #     KEPT\t<comma-sep-list>
     #     HIDDEN\t<comma-sep-list>
     #     ERRORED\t<comma-sep-list>
-    # so we can log a precise summary instead of guessing.
+    # so partial failures can be distinguished from complete success.
     #
     # NOTE: We CANNOT name the 'hidden apps' list `hidden` — that's a
     # reserved property of System Events processes, and AppleScript
@@ -335,6 +330,8 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
         '            set procName to ""\n'
         '            try\n'
         '                set procName to (name of p as string)\n'
+        '            on error\n'
+        '                set end of errored to "process lookup failed"\n'
         '            end try\n'
         '            if procName is "" then\n'
         '                -- skip\n'
@@ -360,16 +357,27 @@ def hide_all(except_apps: Iterable[str] = ()) -> bool:
         'end run\n'
     )
 
-    label = "HIDE all" + (
-        " except " + ", ".join(keep_names) if keep_names else ""
-    )
-    summary = _osascript_capture(script, action_label=label)
+    summary = _osascript_capture(script, action_label="HIDE all")
     if summary is None:
         return False
 
-    # Parse the TSV summary and log it
-    for line in summary.strip().splitlines():
-        if "\t" in line:
-            tag, _, names = line.partition("\t")
-            log(f"[INFO] {label}: {tag.lower()} = [{names.strip() or '∅'}]")
+    return _batch_succeeded(summary, changed_tag="HIDDEN")
+
+
+def _batch_succeeded(summary: str, *, changed_tag: str) -> bool:
+    """Validate native batch output without logging names or error content."""
+    fields = {}
+    for line in summary.splitlines():
+        tag, separator, value = line.partition("\t")
+        if not separator or tag in fields or tag not in {"KEPT", changed_tag, "ERRORED", "DIAG"}:
+            log("[WARN] Batch action returned invalid status; check native automation support")
+            return False
+        fields[tag] = value.strip()
+    if not {"KEPT", changed_tag, "ERRORED"}.issubset(fields):
+        log("[WARN] Batch action returned incomplete status; check native automation support")
+        return False
+    if fields["ERRORED"]:
+        log("[WARN] Batch action has failed targets; check Automation and Accessibility permissions")
+        return False
+    log("[INFO] Batch action completed without target failures")
     return True

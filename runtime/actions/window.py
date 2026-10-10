@@ -15,7 +15,7 @@ Public API:
     enumerate_displays()                              → List[Display]
     resolve_display_target(spec, displays)            → Optional[Display]
     compute_rect(layout, display)                     → (x, y, w, h)
-    apply_layout(app_name, layout, display_spec=None) → None
+    apply_layout(app_name, layout, display_spec=None) → bool
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from typing import Any
 
 from core.utils import log
 from runtime.actions._applescript import escape_applescript_string
+from runtime.actions.app_control import _batch_succeeded
 
 _LAYOUT_RETRY_ATTEMPTS = 5
 _LAYOUT_RETRY_DELAY_SECONDS = 0.35
@@ -150,20 +151,26 @@ def enumerate_displays(*, force_refresh: bool = False) -> list[dict]:
         _DISPLAY_CACHE = (now, [])
         return []
     except Exception as exc:
-        log(f"[WARN] enumerate_displays subprocess failed: {exc}")
+        log(f"[WARN] Display enumeration failed ({type(exc).__name__}); check macOS support")
         _DISPLAY_CACHE = (now, [])
         return []
 
     if result.returncode != 0 or not result.stdout.strip():
-        log(f"[WARN] enumerate_displays JXA error: "
-            f"rc={result.returncode} stderr={result.stderr.strip()!r}")
+        log(f"[WARN] Display enumeration failed (exit {result.returncode}); check macOS support")
         _DISPLAY_CACHE = (now, [])
         return []
 
     try:
         raw = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        log(f"[WARN] enumerate_displays JSON parse failed: {exc}")
+        if not isinstance(raw, list) or any(
+            not isinstance(d, dict)
+            or any(not isinstance(d.get(k), int) for k in ("index", "x", "y", "w", "h"))
+            or d["w"] <= 0 or d["h"] <= 0
+            for d in raw
+        ):
+            raise ValueError("Invalid display geometry")
+    except (TypeError, ValueError) as exc:
+        log(f"[WARN] Invalid display response ({type(exc).__name__}); check macOS support")
         _DISPLAY_CACHE = (now, [])
         return []
 
@@ -219,11 +226,9 @@ def resolve_display_target(
             log("[WARN] #display: no external monitor connected; using primary")
             return primary
         if len(externals) > 1:
-            names = ", ".join(d["name"] for d in externals)
             log(
-                f"[WARN] #display: multiple externals ({names}); "
-                f"picked {externals[0]['name']!r}; "
-                f"use #display(\"name\") to disambiguate"
+                "[WARN] #display: multiple externals; using the first; "
+                "use #display(\"name\") to disambiguate"
             )
         return externals[0]
 
@@ -243,12 +248,11 @@ def resolve_display_target(
             if needle in (d.get("name") or "").lower():
                 return d
         log(
-            f"[WARN] #display({val!r}): no display matches; "
-            f"layout skipped"
+            "[WARN] Requested display name did not match; check connected displays"
         )
         return None
 
-    log(f"[WARN] resolve_display_target: unknown spec {spec!r}")
+    log("[WARN] Invalid display specification; use an index, name or external selector")
     return None
 
 
@@ -308,7 +312,7 @@ def compute_rect(layout: dict, display: dict) -> tuple[int, int, int, int]:
         h_v = _resolve_unit(layout.get("h"), dh, base=0)
         return (x_v, y_v, max(1, w_v), max(1, h_v))
 
-    log(f"[WARN] compute_rect: unsupported layout type {t!r}")
+    log("[WARN] Unsupported layout type; use a supported layout")
     return (dx, dy, dw, dh)
 
 
@@ -360,20 +364,18 @@ def set_window_bounds(app_name: str, rect: tuple[int, int, int, int]) -> bool:
         log("[WARN] osascript not available — cannot apply window layout")
         return False
     except Exception as exc:
-        log(f"[WARN] set_window_bounds subprocess failed: {exc}")
+        log(f"[WARN] Window bounds failed ({type(exc).__name__}); check Automation permissions")
         return False
 
     stdout = (result.stdout or "").strip()
     if result.returncode != 0:
         log(
-            f"[WARN] set_window_bounds({app_name!r}, {rect}) failed: "
-            f"{result.stderr.strip() or '(no stderr)'}"
+            f"[WARN] Window bounds failed (exit {result.returncode}); check Automation permissions"
         )
         return False
     if stdout != "ok":
         log(
-            f"[WARN] set_window_bounds({app_name!r}, {rect}) did not move a window: "
-            f"{stdout or '(no stdout)'}"
+            "[WARN] Window bounds not confirmed; check that the target app has a window"
         )
         return False
     return True
@@ -387,7 +389,7 @@ def apply_layout(
     app_name: str | None,
     layout: dict | None,
     display_spec: DisplaySpec = None,
-) -> None:
+) -> bool:
     """
     Apply `layout` (and optionally a #display target) to the
     frontmost window of `app_name`.
@@ -406,37 +408,44 @@ def apply_layout(
         layout=set,  display=None  → apply layout on primary display
         layout=set,  display=set   → apply layout on resolved display
 
-    Best-effort: any failure logs `[WARN]` and returns silently.
+    Returns True for successful placement or no requested work; False on failure.
     """
-    if app_name is None:
-        if layout or display_spec:
-            log("[WARN] apply_layout called without an app name; skipping")
-        return
-
     if layout is None and display_spec is None:
-        return
+        return True
+    if not app_name:
+        log("[WARN] Layout requires an app name; specify a target app")
+        return False
 
-    displays = enumerate_displays()
-    if not displays:
-        return
+    try:
+        displays = enumerate_displays()
+        if not displays:
+            log("[WARN] Layout has no available displays; check display connections")
+            return False
 
-    target = resolve_display_target(display_spec, displays)
-    if target is None:
-        # The user asked for a specific display that doesn't exist.
-        # Per spec: skip the layout entirely (no fallback).
-        return
+        target = resolve_display_target(display_spec, displays)
+        if target is None:
+            return False
 
-    if layout is None:
-        # Just move the window to the chosen display, no resize.
-        rect = (target["x"], target["y"], target["w"], target["h"])
-    else:
-        rect = compute_rect(layout, target)
+        if layout is None:
+            rect = (target["x"], target["y"], target["w"], target["h"])
+        elif layout.get("type") in {
+            "full", "left", "right", "middle", "top", "bottom", "grid", "area",
+        }:
+            rect = compute_rect(layout, target)
+        else:
+            log("[WARN] Layout unsupported; choose a supported layout")
+            return False
 
-    for attempt in range(_LAYOUT_RETRY_ATTEMPTS):
-        if set_window_bounds(app_name, rect):
-            return
-        if attempt < _LAYOUT_RETRY_ATTEMPTS - 1:
-            time.sleep(_LAYOUT_RETRY_DELAY_SECONDS)
+        for attempt in range(_LAYOUT_RETRY_ATTEMPTS):
+            if set_window_bounds(app_name, rect):
+                return True
+            if attempt < _LAYOUT_RETRY_ATTEMPTS - 1:
+                time.sleep(_LAYOUT_RETRY_DELAY_SECONDS)
+    except Exception as exc:
+        log(f"[WARN] Layout failed ({type(exc).__name__}); check layout and display settings")
+        return False
+    log("[WARN] Layout retries exhausted; check target window and Automation permissions")
+    return False
 
 
 # =========================================================
@@ -479,7 +488,9 @@ function run(argv) {
     try {
         var fronts = SE.processes.whose({ frontmost: true })();
         if (fronts.length > 0) frontmost = fronts[0].name();
-    } catch (e) {}
+    } catch (e) {
+        if (keepFrontmost) return "LOOKUP_FAILED";
+    }
 
     var hid = [], kept = [], errored = [], diag = [];
 
@@ -494,7 +505,10 @@ function run(argv) {
 
         var p = procs[i];
         var name = "";
-        try { name = p.name(); } catch (e) { continue; }
+        try { name = p.name(); } catch (e) {
+            errored.push("process lookup failed");
+            continue;
+        }
         if (!name) continue;
 
         // v1.5.2 — only-app scope: skip everything that isn't the
@@ -554,9 +568,14 @@ function run(argv) {
                         break;
                     }
                     uiInfo.push(ui[u].kind + ":?");
+                    errored.push("window geometry unavailable");
                     continue;
                 }
-                if (!pos || !sz) { uiInfo.push(ui[u].kind + ":?"); continue; }
+                if (!pos || !sz) {
+                    uiInfo.push(ui[u].kind + ":?");
+                    errored.push("window geometry unavailable");
+                    continue;
+                }
                 var cx = pos[0] + sz[0] / 2;
                 var cy = pos[1] + sz[1] / 2;
                 var hit = (cx >= dx && cx < dx + dw && cy >= dy && cy < dy + dh);
@@ -660,9 +679,8 @@ def hide_apps_on_display(
     the pass is restricted to that ONE app by exact name; every other
     process is skipped untouched.
 
-    Returns True iff the JXA call succeeded. AX permission denial,
-    display-not-found, and total subprocess errors return False with
-    actionable log lines.
+    Returns True iff the JXA call succeeded without per-target errors.
+    AX permission denial, display-not-found, and subprocess errors return False.
     """
     if display_target is None:
         log("[WARN] hide display(): missing target")
@@ -681,7 +699,7 @@ def hide_apps_on_display(
         else:
             spec = ("name", display_target)
     else:
-        log(f"[WARN] hide display(): bad target {display_target!r}")
+        log("[WARN] HIDE display: invalid target; use a display index or name")
         return False
 
     displays = enumerate_displays()
@@ -697,11 +715,7 @@ def hide_apps_on_display(
     # because spaces / commas / hyphens can appear in macOS app names.
     keep_arg = "".join(a for a in except_apps if a)
 
-    label = (
-        f"HIDE display({target['index']}) [{target.get('name','?')}]"
-        + (f" only {only_app}" if only_app else "")
-        + (f" except {', '.join(except_apps)}" if except_apps else "")
-    )
+    label = "HIDE display"
 
     try:
         result = subprocess.run(
@@ -719,40 +733,26 @@ def hide_apps_on_display(
         log("[WARN] osascript not available — hide-on-display disabled")
         return False
     except Exception as exc:
-        log(f"[WARN] {label} subprocess failed: {exc}")
+        log(f"[WARN] {label} failed ({type(exc).__name__}); check Accessibility permissions")
         return False
 
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
-        log(f"[WARN] {label} failed: {stderr or '(no stderr)'}")
+        log(f"[WARN] {label} failed (exit {result.returncode}); check Accessibility permissions")
         if "not allowed" in stderr.lower() or "1002" in stderr or "-10003" in stderr:
             _log_accessibility_hint()
         return False
 
-    stdout = (result.stdout or "").strip()
+    stdout = result.stdout or ""
 
     # v1.1.8 — JXA short-circuited on Accessibility denial. Surface ONE
     # clear, actionable message instead of 30 'not allowed' lines.
-    if stdout == "AX_DENIED" or stdout.startswith("AX_DENIED"):
+    if stdout.strip().startswith("AX_DENIED"):
         log(f"[ERROR] {label}: Accessibility permission denied for osascript.")
         _log_accessibility_hint()
         return False
 
-    for line in stdout.splitlines():
-        if "\t" not in line:
-            continue
-        tag, _, names = line.partition("\t")
-        names = names.strip() or "∅"
-        if tag == "DIAG":
-            # Per-window detail for KEPT apps — useful when an app you
-            # expected to hide doesn't get hidden (typical: a panel
-            # whose AX-reported position is off-screen, or an app
-            # whose windows are actually on a different display).
-            if names != "∅":
-                log(f"[INFO] {label}: per-window detail → {names}")
-        else:
-            log(f"[INFO] {label}: {tag.lower()} = [{names}]")
-    return True
+    return _batch_succeeded(stdout, changed_tag="HIDDEN")
 
 
 def _log_accessibility_hint() -> None:
@@ -822,7 +822,7 @@ def move_app_to_display(
         else:
             spec = ("name", display_target)
     else:
-        log(f"[WARN] move_app_to_display: bad target {display_target!r}")
+        log("[WARN] MOVE display: invalid target; use a display index or name")
         return False
 
     displays = enumerate_displays()
@@ -835,8 +835,5 @@ def move_app_to_display(
         return False  # resolver already logged
 
     rect = (target["x"], target["y"], target["w"], target["h"])
-    log(
-        f"[INFO] move {app_name!r} → display {target['index']} "
-        f"({target.get('name','?')}) @ {rect}"
-    )
+    log("[INFO] Moving app to requested display")
     return set_window_bounds(app_name, rect)

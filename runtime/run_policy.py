@@ -5,6 +5,7 @@ from __future__ import annotations
 __all__ = ["is_run_backend_allowed", "is_open_target_allowed"]
 
 from urllib.parse import urlsplit
+import re
 
 from config.settings import (
     ALLOW_RUN_BACKENDS_SELF,
@@ -52,4 +53,9 @@ def is_open_target_allowed(target: str, trust_level: str) -> bool:
     if scheme:
         return scheme in ("http", "https")
     # Local paths may launch executables via LaunchServices.
-    return not value.startswith(("/", "~", "./", "../"))
+    if value.startswith(("/", "~", "./", "../")):
+        return False
+    if "/" in value:
+        # Bare web domains with paths are URLs; directory/app paths are not.
+        return bool(re.match(r"^[a-z0-9.\-]+\.[a-z]{2,}(?:[/?#]|$)", value, re.IGNORECASE))
+    return True

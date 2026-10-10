@@ -529,6 +529,11 @@ button:disabled { opacity: 0.56; cursor: not-allowed; }
   background: transparent;
 }
 
+.job-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.job-row > div { min-width: 0; }
+.job-detail { grid-column: 1 / -1; color: var(--text-2); }
+.job-detail summary { cursor: pointer; }
+.job-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 12px; }
 .flash-ok   { animation: flashOk   0.8s ease; }
 .flash-fail { animation: flashFail 0.8s ease; }
 @keyframes pulse { 0%{background-position:0% 0%;} 100%{background-position:-200% 0%;} }
@@ -580,7 +585,7 @@ const _pending = new Map();
 let _nextId = 1;
 
 function bridge(op, args) {
-  const timeout = op === "run-event" ? 65000 : 25000;
+  const timeout = 25000;
   return new Promise((resolve, reject) => {
     const id = String(_nextId++);
     _pending.set(id, { resolve, reject, ts: Date.now() });
@@ -907,6 +912,43 @@ function renderQuit() {
   return '<div class="quit-wrap"><button class="quit" onclick="cfQuit()">Quit</button></div>';
 }
 
+function renderJobs() {
+  const jobs = (state.jobs || []).slice(0, 5);
+  if (!jobs.length) return "";
+  let html = '<div class="section"><div class="section-head">RECENT RUNS</div>';
+  for (const job of jobs) {
+    const active = ["queued", "running", "cancelling"].includes(job.status);
+    const label = job.kind === "script" ? "Playbook" : "Calendar automation";
+    const error = job.result && job.result.error;
+    html += '<div class="job-row"><div><strong>' + esc(label) + '</strong>'
+      + '<div class="status">' + esc(job.status.replace(/_/g, " ")) + '</div></div>'
+      + (active && job.cancellable ? '<button class="view-btn" data-job-id="' + esc(job.id)
+        + '" onclick="cfCancelJob(this.dataset.jobId)"' + (job.status === "cancelling" ? ' disabled' : '')
+        + '>Cancel</button>' : '')
+      + (error ? '<details class="job-detail"><summary>Details</summary><pre>'
+        + esc(error) + '</pre></details>' : '') + '</div>';
+  }
+  return html + '</div>';
+}
+
+async function cfLoadJobs() {
+  try {
+    const response = await bridge("jobs");
+    if (Array.isArray(response.jobs)) { state.jobs = response.jobs; render(); }
+  } catch (e) { /* The next poll can recover a transient bridge failure. */ }
+}
+
+async function cfCancelJob(id) {
+  try {
+    const response = await bridge("job-cancel", {id});
+    if (!response.ok) throw new Error(response.error || "Could not cancel run");
+  } catch (e) {
+    state.refreshMessage = e.message;
+    state.refreshError = true;
+  }
+  await cfLoadJobs();
+}
+
 // v1.4.0-dev — dynamic popover sizing. Called at the tail of every
 // render() with a 100 ms debounce. Width is canonical server-side
 // (cli/menubar.py _POPOVER_W) so the bridge call sends only height.
@@ -932,6 +974,7 @@ function render() {
     + renderCacheBanner()
     + renderTimeline()
     + renderMissed()
+    + renderJobs()
     + renderQuickActions()
     + renderStats()
     + renderQuit();
@@ -958,9 +1001,10 @@ async function cfRefresh(force) {
     const feed = await bridge("popover-feed", { hours: 30 });
     state.status = feed.status || {};
     if (!feed.stale && !state.changingPause && state.status.daemon && typeof state.status.daemon.loaded === "boolean") {
-      state.paused = !state.status.daemon.loaded;
+      state.paused = state.status.daemon.paused === true || !state.status.daemon.loaded;
     }
     state.stats = feed.stats || {};
+    state.jobs = feed.jobs || state.jobs || [];
     state.upcoming = feed.upcoming || {};
     state.missed = feed.missed || {};
     state.lastRefresh = new Date().toISOString();
@@ -986,6 +1030,7 @@ async function cfRefresh(force) {
 
 window.addEventListener("DOMContentLoaded", () => cfRefresh(true));
 setInterval(() => cfRefresh(false), 30000);
+setInterval(() => cfLoadJobs(), 3000);
 setInterval(() => { if (state.cacheStale) render(); }, 30000);
 window.cf_onShow = function() { cfRefresh(true); };
 
@@ -994,13 +1039,27 @@ async function cfRunEvent(id, btn) {
   state.runningEvents.add(id);
   if (btn) btn.disabled = true;
   try {
-    const result = await bridge("run-event", { id });
+    const submitted = await bridge("run-event", { id });
+    if (!submitted || !submitted.job_id) throw new Error(submitted && submitted.error || "Could not start run");
+    let job;
+    do {
+      job = await bridge("job-status", {id: submitted.job_id});
+      if (!job || !job.status) throw new Error(job && job.error || "Could not read run status");
+      state.jobs = [job, ...(state.jobs || []).filter(item => item.id !== job.id)];
+      render();
+      if (["queued", "running", "cancelling"].includes(job.status)) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } while (["queued", "running", "cancelling"].includes(job.status));
+    const result = job.result;
     const row = btn && btn.closest(".timeline-row, .missed-row");
     if (row) {
       row.classList.add(result && result.success ? "flash-ok" : "flash-fail");
       setTimeout(() => row.classList.remove("flash-ok", "flash-fail"), 900);
     }
   } catch (e) {
+    state.refreshMessage = e.message;
+    state.refreshError = true;
     const row = btn && btn.closest(".timeline-row, .missed-row");
     if (row) {
       row.classList.add("flash-fail");

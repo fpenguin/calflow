@@ -35,6 +35,7 @@ __all__ = [
 
 import subprocess
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
@@ -45,6 +46,8 @@ from config.settings import (
     PLUS_MAX_COMMANDS,
 )
 from core.event_trust import TRUST_SELF
+from core.execution_result import ExecutionReport, StepResult, failure, success
+from runtime.actions.execution_lock import desktop_session
 from core.dynamic import resolve_dynamic
 from core.models import BaseCommand
 from core.resolver import (
@@ -59,7 +62,7 @@ from runtime.actions.applescript import run_applescript
 from runtime.actions.browser import open_target
 from runtime.actions.btt import trigger_alfred, trigger_named_btt
 from runtime.actions.notifications import notify_run_error
-from runtime.actions.run_result import RunResult, error_result, ok_result
+from runtime.actions.run_result import RunResult, error_result
 from runtime.actions.screenshot import take_screenshot, take_screenshot_to_clipboard
 from runtime.actions.shortcuts import run_shortcut
 from runtime.run_policy import is_open_target_allowed, is_run_backend_allowed
@@ -74,12 +77,13 @@ _DYNAMIC_FIELDS = ("url", "text", "path", "to", "title", "selector")
 # 🚀 PUBLIC API
 # =========================================================
 
+@desktop_session()
 def execute_commands(
     commands: List[BaseCommand],
     global_tags: Optional[Union[Set[str], FrozenSet[str]]] = None,
     debug: bool = False,
     trust_level: str = TRUST_SELF,
-) -> None:
+) -> ExecutionReport:
     """
     Run a list of typed Plus Mode commands sequentially.
 
@@ -87,21 +91,22 @@ def execute_commands(
         - one failed command never aborts the rest
         - PLUS_INTER_COMMAND_DELAY is applied between commands
     """
+    report = ExecutionReport()
     if not commands:
         log("[INFO] Plus Mode: nothing to execute")
-        return
+        return report
 
     block_tags: FrozenSet[str] = frozenset(global_tags or frozenset())
 
     if len(commands) > PLUS_MAX_COMMANDS:
         log(f"[WARN] Plus Mode command limit reached ({PLUS_MAX_COMMANDS}); extra commands skipped")
+        report.steps.append(failure("Command limit exceeded; extra commands were not executed"))
     for command in commands[:PLUS_MAX_COMMANDS]:
         try:
             params = resolve_command(command, block_tags)
             if "invalid" in params:
-                log(
-                    f"[WARN] skipped line {command.line_no}: {params['invalid']}"
-                )
+                log(f"[WARN] Invalid command on line {command.line_no}; check the grammar")
+                report.steps.append(StepResult("failed", "Invalid command", line=command.line_no))
                 continue
 
             # Substitute {…} dynamic expressions in any string fields
@@ -115,26 +120,33 @@ def execute_commands(
             if debug:
                 log(
                     f"[DEBUG] Plus[{command.line_no}] {params.get('verb')} "
-                    f"params={_short(params)}"
+                    "resolved"
                 )
-            _dispatch(params, trust_level=trust_level)
+            outcome = _dispatch(params, trust_level=trust_level)
+            report.steps.append(replace(outcome, line=command.line_no, action=params.get("verb", "")))
 
         except Exception as exc:
             log(
                 f"[ERROR] Plus command failed at line {command.line_no}: {type(exc).__name__}"
             )
+            report.steps.append(StepResult("failed", f"Action failed ({type(exc).__name__})",
+                                           line=command.line_no))
 
         finally:
             time.sleep(max(0.0, PLUS_INTER_COMMAND_DELAY))
+    return report
 
 
 # =========================================================
 # 🔁 DISPATCH
 # =========================================================
 
-def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
+def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> StepResult:
     """Route a resolved param dict to the correct action."""
     verb = params.get("verb")
+    if verb in {"CLICK", "DRAG", "TYPE", "PRESS", "PASTE", "SAVE"}:
+        log(f"[WARN] {verb} is not implemented; use a supported action")
+        return failure(f"{verb.lower()} is not implemented in this version", "unsupported")
 
     handler = {
         "OPEN":       _do_open,
@@ -155,23 +167,23 @@ def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
 
     if handler is None:
         log(f"[WARN] Plus executor: unknown verb {verb!r}")
-        return
+        return failure("Unknown action", "unsupported")
 
     if verb in ("RUN", "OPEN"):
-        handler(params, trust_level=trust_level)
-    else:
-        handler(params)
+        return handler(params, trust_level=trust_level)
+    outcome = handler(params)
+    return success() if verb == "WAIT" else outcome
 
 
 # =========================================================
 # 🌐 OPEN / FOCUS / CLOSE / HIDE
 # =========================================================
 
-def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
+def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> StepResult:
     url: Optional[str] = params.get("url")
     if not url:
         log("[WARN] OPEN missing url")
-        return
+        return failure("OPEN has no target")
 
     tags = set(params.get("tags") or frozenset())
     functions = params.get("functions") or {}
@@ -193,10 +205,12 @@ def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     primary_is_bundle = url.startswith("@") and bool(apps)
 
     if primary_is_bundle:
+        outcomes = []
         # `open @work` → expand to N opens, one per item.
         for item in apps:
             if not is_open_target_allowed(item, trust_level):
                 log("[WARN] OPEN alias item blocked by event trust policy")
+                outcomes.append(failure("An alias target was blocked", "blocked"))
                 continue
             # Each `item` is a string from settings.TARGETS — could be
             # an app name ("Slack"), URL ("https://x.com"), or file path.
@@ -209,17 +223,19 @@ def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
                 new_window=new_win,
             )
             record_action("open_profile" if chrome_profile else "open_url", success=opened is not False)
-        return
+            outcomes.append(failure("An alias target failed to open") if opened is False else success())
+        return next((outcome for outcome in outcomes if not outcome.ok), success())
 
     if not is_open_target_allowed(url, trust_level):
         log("[WARN] OPEN blocked by event trust policy")
-        return
+        return failure("OPEN blocked by event trust policy", "blocked")
 
     # Normal case: one open. `apps` contains the routing browser (or None).
     if not apps:
         apps = [params.get("app") or None]  # type: ignore[list-item]
 
     any_opened = False
+    failed = False
     for app in apps:
         opened = open_target(
             url=url,
@@ -230,6 +246,7 @@ def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
             new_window=new_win,
         )
         if opened is False:
+            failed = True
             record_action("open_profile" if chrome_profile else "open_url", success=False)
             continue
         any_opened = True
@@ -238,21 +255,23 @@ def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
         if params.get("layout") is not None:
             record_action("arrange")
 
-    if not any_opened:
-        return
+    if not any_opened or failed:
+        return failure("Could not open or arrange the target; check application permissions")
     time.sleep(max(0.0, AUTOFILL_BUFFER))
 
     tags = set(params.get("tags") or frozenset())
     if tags:
         should_fill, should_submit = resolve_autofill(tags)
         if should_fill:
-            trigger_autofill(mode="fill")
-            if should_submit:
-                trigger_autofill(mode="submit")
-            record_action("autofill")
+            filled = trigger_autofill(mode="fill")
+            if should_submit and filled is not False:
+                filled = trigger_autofill(mode="submit")
+            record_action("autofill", success=filled is not False)
+            failed = failed or filled is False
+    return failure("One or more OPEN actions failed") if failed else success()
 
 
-def _do_focus(params: Dict[str, Any]) -> None:
+def _do_focus(params: Dict[str, Any]) -> StepResult:
     """
     v1.1.2 forms:
         focus @app                  → activate app
@@ -266,7 +285,7 @@ def _do_focus(params: Dict[str, Any]) -> None:
     # Runtime target — `focus active` is a no-op.
     if params.get("target_keyword") == "active":
         log("[INFO] FOCUS active (no-op — frontmost is already focused)")
-        return
+        return StepResult("skipped", "Already focused")
 
     title = params.get("title")
     display_target = params.get("display_target")
@@ -275,24 +294,27 @@ def _do_focus(params: Dict[str, Any]) -> None:
 
     if not apps:
         log("[WARN] FOCUS missing target")
-        return
+        return failure("FOCUS has no resolved target")
 
+    failed = False
     for app in apps:
         # Strip @ prefix if it leaked through
         app_name = app.lstrip("@") if isinstance(app, str) else app
         if title:
-            focus_window_by_title(app_name, title)
+            focused = focus_window_by_title(app_name, title)
         else:
-            focus_app(app_name)
-        if display_target is not None:
-            move_app_to_display(app_name, display_target)
+            focused = focus_app(app_name)
+        if display_target is not None and focused is not False:
+            focused = move_app_to_display(app_name, display_target)
         # v1.3.0 — focus is a 1-second-saved manual action.
-        record_action("focus")
+        record_action("focus", success=focused is not False)
+        failed = failed or focused is False
         if display_target is not None:
             record_action("arrange")
+    return failure("Could not focus or move a target window") if failed else success()
 
 
-def _do_close(params: Dict[str, Any]) -> None:
+def _do_close(params: Dict[str, Any]) -> StepResult:
     """
     v1.1.2 shapes:
         close active                              → quit frontmost app
@@ -308,27 +330,29 @@ def _do_close(params: Dict[str, Any]) -> None:
     if target_keyword == "active":
         name = get_frontmost_app_name()
         if name:
-            close_app(name)
+            closed = close_app(name)
             record_action("hide")  # v1.3.0 — close == hide for time-saving purposes
+            return _control_result(closed, "CLOSE")
         else:
             log("[WARN] CLOSE active: could not determine frontmost app")
-        return
+        return failure("Could not determine the frontmost application")
     if target_keyword == "all":
         # Note: `close_all` keeps frontmost for safety, even with `all`.
-        close_all(except_apps=())
+        closed = close_all(except_apps=())
         record_action("hide")
-        return
+        return _control_result(closed, "CLOSE")
 
     items = params.get("items") or ()
     keep = params.get("keep") or ()
     had_items = params.get("had_items", False)
 
     if items:
+        failed = False
         for item in items:
             name = item.lstrip("@") if isinstance(item, str) else item
-            close_app(name)
+            failed = (close_app(name) is False) or failed
             record_action("hide")
-        return
+        return _control_result(not failed, "CLOSE")
 
     # v1.1.14 — refuse to fall through to close_all when the user
     # explicitly listed items (even if they all failed to resolve).
@@ -338,18 +362,19 @@ def _do_close(params: Dict[str, Any]) -> None:
             "[WARN] CLOSE: items list resolved to empty (all unknown). "
             "Refusing to fall through to `close all`-style behaviour."
         )
-        return
+        return failure("CLOSE has no resolved targets")
 
-    if keep is not None:  # except(<arg>) form — even empty keep is valid here
+    if keep:  # An empty or missing scope must never widen to close-all.
         # close everything visible except the keep set + frontmost
-        close_all(except_apps=keep)
+        closed = close_all(except_apps=keep)
         record_action("hide")
-        return
+        return _control_result(closed, "CLOSE")
 
     log("[WARN] CLOSE missing arguments (validator should have caught)")
+    return failure("CLOSE has no arguments")
 
 
-def _do_hide(params: Dict[str, Any]) -> None:
+def _do_hide(params: Dict[str, Any]) -> StepResult:
     """
     v1.1.2 shapes:
         hide active                               → hide frontmost app
@@ -376,31 +401,31 @@ def _do_hide(params: Dict[str, Any]) -> None:
         name = get_frontmost_app_name()
         if not name:
             log("[WARN] HIDE active: could not determine frontmost app")
-            return
+            return failure("Could not determine the frontmost application")
         # v1.5.2 — `hide active display(N)`: per-window scope. App-level
         # hide would remove the app's windows on EVERY display, which is
         # not what the user asked for.
         active_display = params.get("display_filter")
         if active_display is not None:
             from runtime.actions.window import hide_apps_on_display
-            hide_apps_on_display(active_display, only_app=name)
+            hidden = hide_apps_on_display(active_display, only_app=name)
             record_action("hide")
-            return
-        hide_app(name)
+            return _control_result(hidden, "HIDE")
+        hidden = hide_app(name)
         record_action("hide")
-        return
+        return _control_result(hidden, "HIDE")
     if target_keyword == "all":
         # `hide all` per spec hides EVERY visible non-bg app, including
         # the frontmost. `hide_all(except_apps=())` keeps frontmost for
         # safety; for `all` we explicitly bypass that by hiding frontmost
         # individually first.
-        hide_all(except_apps=())
+        hidden = hide_all(except_apps=())
         # hide_all keeps the frontmost; finish the job.
         front = get_frontmost_app_name()
         if front:
-            hide_app(front)
+            hidden = (hide_app(front) is not False) and hidden is not False
         record_action("hide")
-        return
+        return _control_result(hidden, "HIDE")
 
     items = params.get("items") or ()
     keep = params.get("keep") or ()
@@ -408,6 +433,7 @@ def _do_hide(params: Dict[str, Any]) -> None:
     had_items = params.get("had_items", False)
 
     if items:
+        failed = False
         # v1.5.2 — `active` inside a list expands to the frontmost app
         # name at execution time; duplicates collapse (e.g. the
         # frontmost IS one of the listed apps).
@@ -417,6 +443,7 @@ def _do_hide(params: Dict[str, Any]) -> None:
             if isinstance(name, str) and name.lower() == "active":
                 front = get_frontmost_app_name()
                 if not front:
+                    failed = True
                     log("[WARN] HIDE list: `active` skipped — could not "
                         "determine frontmost app")
                     continue
@@ -424,9 +451,9 @@ def _do_hide(params: Dict[str, Any]) -> None:
             if name not in expanded:
                 expanded.append(name)
         for name in expanded:
-            hide_app(name)
+            failed = (hide_app(name) is False) or failed
             record_action("hide")
-        return
+        return _control_result(not failed, "HIDE")
 
     # v1.1.14 — refuse to fall through to hide_all when the user
     # explicitly listed items (even if they all failed to resolve).
@@ -436,7 +463,7 @@ def _do_hide(params: Dict[str, Any]) -> None:
             "[WARN] HIDE: items list resolved to empty (all unknown). "
             "Refusing to fall through to `hide all`-style behaviour."
         )
-        return
+        return failure("HIDE has no resolved targets")
 
     # v1.1.7+ — real per-window display filter via JXA + System Events.
     # On failure (typically Accessibility not granted to osascript),
@@ -454,16 +481,21 @@ def _do_hide(params: Dict[str, Any]) -> None:
     if display_filter is not None:
         from runtime.actions.window import hide_apps_on_display
         keep_active = "active" in (keep or ())
-        hide_apps_on_display(
+        hidden = hide_apps_on_display(
             display_filter,
             except_apps=tuple(keep),
             keep_frontmost=keep_active,
         )
         record_action("hide")
-        return
+        return _control_result(hidden, "HIDE")
 
-    hide_all(except_apps=keep)
+    hidden = hide_all(except_apps=keep)
     record_action("hide")
+    return _control_result(hidden, "HIDE")
+
+
+def _control_result(ok: bool, action: str) -> StepResult:
+    return failure(f"{action} failed; check Automation and Accessibility permissions") if ok is False else success()
 
 
 # =========================================================
@@ -548,7 +580,7 @@ def _do_wait(params: Dict[str, Any]) -> None:
 # 📸 SCREENSHOT
 # =========================================================
 
-def _do_screenshot(params: Dict[str, Any]) -> None:
+def _do_screenshot(params: Dict[str, Any]) -> StepResult:
     """
     v1.1.2 forms:
         screenshot                          → default sink
@@ -564,7 +596,7 @@ def _do_screenshot(params: Dict[str, Any]) -> None:
             or any(key in functions for key in ("display", "window", "area"))):
         log("[WARN] Scoped screenshots are not implemented; no capture taken")
         record_action("screenshot", success=False)
-        return
+        return failure("Scoped screenshots are not implemented", "unsupported")
     # v1.5.2 — the default sink is the CLIPBOARD. A file is written only
     # when the user asked for one via `to("path")`. `to(clipboard)` is
     # the explicit spelling of the default.
@@ -574,28 +606,29 @@ def _do_screenshot(params: Dict[str, Any]) -> None:
         record_action("screenshot", success=ok)
         if not ok:
             log("[WARN] Screenshot-to-clipboard failed (best-effort)")
-        return
+        return success() if ok else failure("Screenshot failed; check Screen Recording permission")
     saved = take_screenshot(path)
     if saved is None:
         log("[WARN] Screenshot failed (best-effort)")
         record_action("screenshot", success=False)
     else:
         record_action("screenshot")
+    return success() if saved is not None else failure("Screenshot could not be saved")
 
 
 # =========================================================
 # 📋 CLIPBOARD / SAVE
 # =========================================================
 
-def _do_copy(params: Dict[str, Any]) -> None:
+def _do_copy(params: Dict[str, Any]) -> StepResult:
     """
     copy("text")  → v1.5.2: place the literal on the clipboard (real).
     copy          → selection copy via synthesized ⌘C (still stub, v2.3).
     """
     text = params.get("text")
     if text is None:
-        log("[INFO] COPY (stub)")
-        return
+        log("[WARN] Selection copy is not implemented; use copy(\"text\")")
+        return failure("Selection copy is not implemented", "unsupported")
     try:
         result = subprocess.run(
             ["pbcopy"], input=text, text=True, timeout=5, check=False,
@@ -603,6 +636,7 @@ def _do_copy(params: Dict[str, Any]) -> None:
         if result.returncode == 0:
             log(f"[INFO] COPY: {len(text)} chars → clipboard")
             record_action("copy")
+            return success()
         else:
             log(f"[WARN] COPY: pbcopy returned {result.returncode}")
             record_action("copy", success=False)
@@ -610,8 +644,9 @@ def _do_copy(params: Dict[str, Any]) -> None:
         log("[WARN] COPY: pbcopy not available on this platform")
         record_action("copy", success=False)
     except Exception as exc:
-        log(f"[ERROR] COPY failed: {exc}")
+        log(f"[ERROR] COPY failed ({type(exc).__name__})")
         record_action("copy", success=False)
+    return failure("Could not write to the clipboard")
 
 
 def _do_paste(params: Dict[str, Any]) -> None:
@@ -628,7 +663,7 @@ def _do_save(params: Dict[str, Any]) -> None:
 # 🛠️ RUN
 # =========================================================
 
-def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
+def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> StepResult:
     backend = params.get("backend") or "script"
     handlers = tuple(params.get("run_handlers") or ())
     if not is_run_backend_allowed(backend, trust_level):
@@ -636,7 +671,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
         log(f"[WARN] {msg}")
         notify_run_error("CalFlow run blocked", msg)
         # Authorization failure must not execute user-controlled handlers.
-        return
+        return failure(msg, "blocked")
 
     result: Optional[RunResult] = None
     if backend == "btt":
@@ -646,12 +681,9 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
             log(f"[WARN] {msg}")
             notify_run_error("CalFlow BTT failed", msg)
             _apply_run_handlers(handlers, error_result("btt", msg), trust_level=trust_level)
-            return
+            return failure(msg)
         result = trigger_named_btt(str(trigger_name))
-        _apply_run_handlers(handlers, result or ok_result("btt"), trust_level=trust_level)
-        return
-
-    if backend == "applescript":
+    elif backend == "applescript":
         if params.get("timeout") is None:
             result = run_applescript(str(params.get("script") or ""))
         else:
@@ -659,33 +691,29 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
                 str(params.get("script") or ""),
                 timeout=params.get("timeout"),
             )
-        _apply_run_handlers(handlers, result or ok_result("applescript"), trust_level=trust_level)
-        return
-
-    if backend == "shortcut":
+    elif backend == "shortcut":
         result = run_shortcut(
             str(params.get("shortcut_name") or ""),
             str(params.get("shortcut_input") or ""),
         )
-        _apply_run_handlers(handlers, result or ok_result("shortcut"), trust_level=trust_level)
-        return
-
-    if backend == "alfred":
+    elif backend == "alfred":
         result = trigger_alfred(
             str(params.get("alfred_bundle_id") or ""),
             str(params.get("alfred_trigger") or ""),
             str(params.get("alfred_argument") or ""),
         )
-        _apply_run_handlers(handlers, result or ok_result("alfred"), trust_level=trust_level)
-        return
-
-    path = params.get("path")
-    log(f"[INFO] RUN {path!r} (stub — refusing to exec arbitrary scripts)")
-    _apply_run_handlers(
-        handlers,
-        error_result("script", "arbitrary scripts are disabled in this build"),
-        trust_level=trust_level,
-    )
+    else:
+        return failure("Arbitrary script files are not supported", "unsupported")
+    if not isinstance(result, RunResult):
+        return failure("Backend did not return an execution result")
+    handlers_ok = _apply_run_handlers(handlers, result, trust_level=trust_level)
+    if not result.ok:
+        return failure(result.result_text[:4000])
+    if not handlers_ok:
+        return failure("The action ran, but a result handler failed or was blocked")
+    if backend in {"btt", "alfred"}:
+        return StepResult("handed_off", f"Sent to {backend}; workflow completion is not observable")
+    return success()
 
 
 # =========================================================
@@ -705,14 +733,16 @@ def _apply_run_handlers(
     result: RunResult,
     *,
     trust_level: str = TRUST_SELF,
-) -> None:
+) -> bool:
     if not handlers:
-        return
+        return True
+    ok = True
     for condition, action, value in handlers:
+        if not _run_condition_matches(condition, result):
+            continue
         if action in ("save", "append") and trust_level != TRUST_SELF:
             log("[WARN] RUN file handlers require a self-authored event")
-            continue
-        if not _run_condition_matches(condition, result):
+            ok = False
             continue
         try:
             if action == "notify":
@@ -728,7 +758,9 @@ def _apply_run_handlers(
                 text = result.result_text
                 _write_text(value, text, append=True)
         except Exception as exc:
-            log(f"[WARN] RUN handler {action!r} failed: {exc}")
+            log(f"[WARN] RUN handler {action!r} failed ({type(exc).__name__})")
+            ok = False
+    return ok
 
 
 def _run_condition_matches(condition: str, result: RunResult) -> bool:

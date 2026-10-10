@@ -40,7 +40,8 @@ _LAUNCH_TIMEOUT_SECONDS = 10
 # =========================================================
 
 try:
-    from AppKit import NSWorkspace  # noqa: F401
+    from AppKit import NSWorkspace
+    from Foundation import NSBundle, NSURL
     MAC_AVAILABLE = True
 except ImportError:
     MAC_AVAILABLE = False
@@ -89,7 +90,7 @@ def wants_new_window(tags=None, functions=None) -> bool:
                 if s == "tab":
                     return False
                 log(
-                    f"[WARN] new({value!r}) — expected new(window) or "
+                    "[WARN] Invalid new mode; expected new(window) or "
                     "new(tab); ignoring and using default"
                 )
 
@@ -123,8 +124,8 @@ def open_target(
     """
     Open one target (URL, app, or file) and optionally apply layout.
 
-    Returns True after a successful launch, False on launch failure.
-    Layout remains best-effort and does not change the launch result.
+    Returns True only when launch and any requested layout succeed.
+    Unresolvable window-control requests fail before launching.
 
     The `url` parameter holds the **primary** of an OPEN command, which
     can be any of:
@@ -154,6 +155,17 @@ def open_target(
     try:
         # Decide what `url` actually is.
         kind = _classify_primary(url) if url else None
+        needs_layout = layout is not None or display_spec is not None
+        if kind == "url" and not app and (needs_layout or new_window or chrome_profile):
+            app = _resolve_default_browser(url)
+            if app is None:
+                return False
+        target_app = app if kind == "url" else (
+            _strip_quotes(url) if kind == "app" else (app if kind is None else None)
+        )
+        if needs_layout and not target_app:
+            log("[WARN] OPEN layout target unavailable; specify a supported app or browser")
+            return False
 
         if kind == "url":
             opened = _open_url(url, app, chrome_profile=chrome_profile,
@@ -175,15 +187,8 @@ def open_target(
         # Allow OS time to spawn window
         time.sleep(0.8)
 
-        if layout or display_spec:
-            # The window we'll be moving belongs to whichever app handled
-            # the primary. For URLs that's the resolved browser; for app
-            # primaries it's the app itself; for files it's the default
-            # opener (best-effort — may not be scriptable).
-            target_app = app if kind == "url" else (
-                _strip_quotes(url) if kind == "app" else app
-            )
-            _apply_layout(target_app, layout, display_spec)
+        if needs_layout:
+            return _apply_layout(target_app, layout, display_spec)
         return True
 
     except Exception as e:
@@ -236,6 +241,37 @@ def _strip_quotes(text: str) -> str:
 _CHROMIUM_BROWSERS = ("Google Chrome", "Brave Browser", "Microsoft Edge", "Arc")
 
 
+def _resolve_default_browser(url: str) -> Optional[str]:
+    """Resolve a supported URL handler without opening any app or window."""
+    if not MAC_AVAILABLE:
+        log("[WARN] Default browser cannot be resolved; specify a supported browser")
+        return None
+    try:
+        lookup_url = _strip_quotes(url)
+        if not _URL_HAS_SCHEME.match(lookup_url):
+            lookup_url = "https://" + lookup_url
+        app_url = NSWorkspace.sharedWorkspace().URLForApplicationToOpenURL_(
+            NSURL.URLWithString_(lookup_url)
+        )
+        bundle = NSBundle.bundleWithURL_(app_url) if app_url is not None else None
+        identifier = bundle.bundleIdentifier() if bundle is not None else None
+        app = {
+            "com.apple.Safari": "Safari",
+            "com.google.Chrome": "Google Chrome",
+            "com.brave.Browser": "Brave Browser",
+            "com.microsoft.edgemac": "Microsoft Edge",
+            "company.thebrowser.Browser": "Arc",
+            "org.mozilla.firefox": "Firefox",
+        }.get(identifier)
+        if app:
+            return app
+    except Exception as exc:
+        log(f"[WARN] Default browser lookup failed ({type(exc).__name__}); specify a browser")
+        return None
+    log("[WARN] Default browser does not support window control; specify a supported browser")
+    return None
+
+
 def _run_launch(args: list[str]) -> bool:
     result = subprocess.run(
         args, check=False, capture_output=True, text=True,
@@ -267,9 +303,16 @@ def _open_url(
                   (with `--profile-directory=…` appended for Chrome+profile)
         Safari   — AppleScript: `tell app "Safari" to make new document with properties {URL:…}`
         Firefox  — `-a Firefox --args --new-window <url>`
-        anything else / unknown → fall back to `-na <app> <url>` (best-effort
-                  new instance) and log [INFO] that we couldn't guarantee window mode.
+        anything else / unknown -> fail before launching; no window guarantee.
     """
+    if not app and (new_window or chrome_profile):
+        app = _resolve_default_browser(url)
+        if app is None:
+            return False
+    if chrome_profile and app != "Google Chrome":
+        log("[WARN] Requested profile requires Google Chrome; specify that browser")
+        return False
+
     # ── new_window=True path ─────────────────────────────────────────
     if new_window and app:
         try:
@@ -280,11 +323,7 @@ def _open_url(
                 args.append(url)
                 if not _run_launch(args):
                     return False
-                log(
-                    f"[INFO] Opened URL in {app} (new window"
-                    f"{', ' + chrome_profile if app == 'Google Chrome' and chrome_profile else ''}"
-                    ")"
-                )
+                log("[INFO] Opened URL in requested browser (new window)")
                 return True
             if app == "Safari":
                 escaped = escape_applescript_string(url)
@@ -303,16 +342,10 @@ def _open_url(
                     return False
                 log("[INFO] Opened URL in Firefox (new window)")
                 return True
-            # Unknown browser — best-effort: -na (new instance)
-            if not _run_launch(["open", "-na", app, url]):
-                return False
-            log(
-                f"[INFO] Opened URL in {app} (-na fallback; "
-                "new-window not guaranteed)"
-            )
-            return True
+            log("[WARN] New-window guarantee unsupported; specify a supported browser")
+            return False
         except Exception as e:
-            log(f"[WARN] new-window launch for {app} failed: {type(e).__name__}")
+            log(f"[WARN] New-window launch failed ({type(e).__name__}); check browser installation")
             return False
 
     # ── new_window=False (or no app) path ────────────────────────────
@@ -323,7 +356,7 @@ def _open_url(
                  f"--profile-directory={chrome_profile}", url],
             ):
                 return False
-            log(f"[INFO] Opened URL in Chrome ({chrome_profile})")
+            log("[INFO] Opened URL in requested Chrome profile")
             return True
         except Exception as e:
             log(f"[WARN] Chrome profile launch failed: {type(e).__name__}")
@@ -333,10 +366,10 @@ def _open_url(
         try:
             if not _run_launch(["open", "-a", app, url]):
                 return False
-            log(f"[INFO] Opened URL in {app}")
+            log("[INFO] Opened URL in requested browser")
             return True
         except Exception as e:
-            log(f"[WARN] Failed to open in {app}: {type(e).__name__}")
+            log(f"[WARN] Browser launch failed ({type(e).__name__}); check browser installation")
             return False
 
     if sys.platform == "darwin":
@@ -376,10 +409,10 @@ def _open_app(app: str) -> bool:
     try:
         if not _run_launch(["open", "-a", app]):
             return False
-        log(f"[INFO] Opened app: {app}")
+        log("[INFO] Opened app")
         return True
     except Exception as e:
-        log(f"[ERROR] Failed to open app {app!r}: {type(e).__name__}")
+        log(f"[ERROR] App launch failed ({type(e).__name__}); check app installation")
         return False
 
 
@@ -391,7 +424,7 @@ def _apply_layout(
     app_name: Optional[str],
     layout: Optional[Dict],
     display_spec=None,
-) -> None:
+) -> bool:
     """
     Apply window layout for `app_name` via runtime.actions.window.
 
@@ -404,9 +437,10 @@ def _apply_layout(
         # importing window.py at module load would mean it's imported
         # by every Smart Mode dispatch even when no layout is requested.
         from runtime.actions.window import apply_layout as _impl
-        _impl(app_name, layout, display_spec)
+        return _impl(app_name, layout, display_spec)
     except Exception as e:
-        log(f"[WARN] Layout failed: {e}")
+        log(f"[WARN] Layout failed ({type(e).__name__}); check target window and display")
+        return False
 
 
 # =========================================================
@@ -470,9 +504,7 @@ def parse_layout_tag(tag: str) -> Optional[Dict]:
         m = _GRID_RE_LEGACY.match(tag_lower)
         if m:
             log(
-                f"[WARN] {tag!r} uses the legacy grid order — canonical is "
-                f"`#grid(<cell>@<cols>x<rows>)` (v1.1.19+). Interpreting as "
-                f"#grid({m.group(3)}@{m.group(1)}x{m.group(2)})."
+                "[WARN] Legacy grid order; prefer #grid(<cell>@<cols>x<rows>)"
             )
             return {
                 "type": "grid",
@@ -493,7 +525,7 @@ def parse_layout_tag(tag: str) -> Optional[Dict]:
                 return None
             coords = [_parse_area_value(p) for p in parts]
             if any(c is None for c in coords):
-                log(f"[WARN] #area: bad coordinate(s) in {tag!r}")
+                log("[WARN] #area: invalid coordinates; use numeric pixel or percent values")
                 return None
             return {
                 "type": "area",
@@ -526,10 +558,10 @@ def parse_layout_tag(tag: str) -> Optional[Dict]:
                 hint = " — expected `#grid(<cell>@<cols>x<rows>)`, e.g. #grid(1@3x2)"
             elif tag_lower.startswith("#area("):
                 hint = " — expected `#area(x,y,w,h)` (4 comma-separated values)"
-            log(f"[WARN] Unrecognised layout tag {tag!r}{hint}")
+            log(f"[WARN] Unrecognised layout tag{hint}")
 
     except Exception as e:
-        log(f"[WARN] Failed to parse layout tag '{tag}': {e}")
+        log(f"[WARN] Layout parsing failed ({type(e).__name__}); check layout syntax")
 
     return None
 

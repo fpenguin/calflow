@@ -21,11 +21,14 @@ __all__ = [
 ]
 
 import time
+from dataclasses import replace
 from typing import Dict, List, Set
 
 # Dynamic substitution (v2.0)
 from core.dynamic import resolve_dynamic
 from core.event_trust import TRUST_SELF
+from core.execution_result import ExecutionReport, StepResult, failure, success
+from runtime.actions.execution_lock import desktop_session
 
 # Resolver
 from core.resolver import (
@@ -59,12 +62,13 @@ from core.utils import log
 # 🚀 PUBLIC API
 # =========================================================
 
+@desktop_session()
 def execute_entries(
     entries: List[Dict],
     global_tags: Set[str],
     debug: bool = False,
     trust_level: str = TRUST_SELF,
-) -> None:
+) -> ExecutionReport:
     """
     Execute parsed Smart Mode entries.
 
@@ -78,13 +82,17 @@ def execute_entries(
             resolve → open → autofill → delay
     """
 
-    for entry in entries:
+    report = ExecutionReport()
+    for index, entry in enumerate(entries, 1):
         try:
-            _execute_single(entry, global_tags, debug, trust_level=trust_level)
+            outcome = _execute_single(entry, global_tags, debug, trust_level=trust_level)
+            report.steps.append(replace(outcome, action="OPEN", line=index))
 
         except Exception as e:
             # Never break execution pipeline
-            log(f"[ERROR] Entry execution failed: {e}")
+            log(f"[ERROR] Entry execution failed ({type(e).__name__})")
+            report.steps.append(StepResult("failed", f"OPEN failed ({type(e).__name__})", "OPEN", index))
+    return report
 
 
 # =========================================================
@@ -97,7 +105,7 @@ def _execute_single(
     debug: bool,
     *,
     trust_level: str = TRUST_SELF,
-) -> None:
+) -> StepResult:
     """
     Execute a single Smart Mode entry.
 
@@ -119,7 +127,7 @@ def _execute_single(
         url = resolve_dynamic(url)
         if not is_open_target_allowed(url, trust_level):
             log("[WARN] Smart Mode URL blocked by event trust policy")
-            return
+            return failure("OPEN blocked by event trust policy", "blocked")
 
     # IMPORTANT: do NOT merge `global_tags` here. In v2.0 the Smart
     # parser already merges true Smart Mode global state (standalone
@@ -132,8 +140,7 @@ def _execute_single(
     tags = set(entry_tags)
 
     if debug:
-        log(f"[DEBUG] URL: {url}")
-        log(f"[DEBUG] Tags: {sorted(tags)}")
+        log("[INFO] Resolving Smart Mode action")
 
     # =====================================================
     # 🔧 RESOLVE
@@ -163,7 +170,7 @@ def _execute_single(
     )
     if opened is False:
         record_action("open_profile" if chrome_profile else "open_url", success=False)
-        return
+        return failure("Could not open or arrange the target; check application permissions")
 
     # v1.3.0 — lifetime stats. Counted only when open_target returned
     # without raising (the outer try/except in execute_entries catches
@@ -183,14 +190,16 @@ def _execute_single(
     # =====================================================
 
     if should_fill:
-        trigger_autofill(mode="fill")
+        filled = trigger_autofill(mode="fill")
 
-        if should_submit:
-            trigger_autofill(mode="submit")
+        if should_submit and filled is not False:
+            filled = trigger_autofill(mode="submit")
 
         # v1.3.0 — count one autofill action regardless of fill/submit
         # split (the user's manual flow is still one lookup + one paste).
-        record_action("autofill")
+        record_action("autofill", success=filled is not False)
+        if filled is False:
+            return failure("Autofill failed; check provider and permissions")
 
         time.sleep(POST_AUTOFILL_DELAY)
 
@@ -199,3 +208,4 @@ def _execute_single(
     # =====================================================
 
     time.sleep(delay)
+    return success()
