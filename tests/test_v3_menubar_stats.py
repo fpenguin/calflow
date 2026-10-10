@@ -307,6 +307,14 @@ class StatsCli(unittest.TestCase):
            runner is one such machine).
     """
 
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.stats_path = Path(self.temp.name) / "stats.json"
+        isolated_stats = patch("state.stats_store.STATS_PATH", self.stats_path)
+        isolated_stats.start()
+        self.addCleanup(isolated_stats.stop)
+
     def test_snapshot_is_json_serializable(self):
         # In-process: doesn't depend on google deps.
         from state.stats_store import snapshot
@@ -332,8 +340,16 @@ class StatsCli(unittest.TestCase):
         )
         if probe.returncode != 0:
             self.skipTest("google-api-python-client not in subprocess env")
+        code = """
+import runpy, sys
+from pathlib import Path
+import state.stats_store as stats
+stats.STATS_PATH = Path(sys.argv[1])
+sys.argv = ['cli.main', 'stats']
+runpy.run_module('cli.main', run_name='__main__')
+"""
         proc = subprocess.run(
-            [sys.executable, "-m", "cli.main", "stats"],
+            [sys.executable, "-c", code, str(self.stats_path)],
             cwd=ROOT,
             capture_output=True,
             text=True,

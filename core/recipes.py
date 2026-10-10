@@ -280,7 +280,10 @@ def save_my_recipe(payload: Dict[str, Any]) -> Dict[str, Any]:
         recipe["created_at"] = now
         existing.append(recipe)
 
-    _persist(existing)
+    try:
+        _persist(existing)
+    except OSError as exc:
+        return {"ok": False, "error": f"recipe write failed: {type(exc).__name__}"}
     return {"ok": True, **recipe, "owner": "mine"}
 
 
@@ -292,7 +295,10 @@ def delete_my_recipe(rid: str) -> Dict[str, Any]:
     kept = [r for r in existing if r["id"] != rid]
     if len(kept) == len(existing):
         return {"ok": False, "error": "id not found"}
-    _persist(kept)
+    try:
+        _persist(kept)
+    except OSError as exc:
+        return {"ok": False, "error": f"recipe write failed: {type(exc).__name__}"}
     return {"ok": True, "id": rid}
 
 
@@ -335,13 +341,10 @@ def _normalize_category(value: Optional[str]) -> str:
 
 
 def _persist(recipes: List[Dict[str, Any]]) -> None:
-    """Atomic write of the whole my_recipes.json file."""
+    """Atomic write of my_recipes.json; failures must reach the UI caller."""
     payload = {"schema_version": 1, "recipes": recipes}
-    try:
-        MY_RECIPES_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = str(MY_RECIPES_PATH) + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
-        os.replace(tmp, MY_RECIPES_PATH)
-    except Exception as exc:
-        log(f"[WARN] Failed to save my_recipes.json: {exc}")
+    MY_RECIPES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = str(MY_RECIPES_PATH) + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, sort_keys=True)
+    os.replace(tmp, MY_RECIPES_PATH)

@@ -99,46 +99,61 @@ def migrate_settings_to_sidecars() -> Dict[str, Any]:
     `data/user_settings.json`; TARGETS drift is handled by
     `core.targets_reader.migrate_targets_to_sidecar`.
     """
-    live = _literal_assignments(SETTINGS_PATH)
-    defaults = _literal_assignments(DEFAULT_SETTINGS_PATH if DEFAULT_SETTINGS_PATH.exists() else SETTINGS_PATH)
-    found: Dict[str, Any] = {}
-    for const_name in CONST_TO_SPEC:
-        if const_name not in live or const_name not in defaults:
-            continue
-        if live[const_name] != defaults[const_name]:
-            found[const_name] = live[const_name]
+    from core.targets_reader import migrate_targets_to_sidecar
 
-    existing = load_user_overrides()
-    merged = {**existing, **found}
-    backup = None
-    if found:
-        backup = save_user_overrides(merged)
-
-    # If a defaults snapshot exists, restore settings.py to the tracked
-    # snapshot after overrides were safely written.
-    restored = False
-    restore_backup = None
-    if found and DEFAULT_SETTINGS_PATH.exists():
-        restore_backup = Path(DATA_DIR) / "settings.py.bak"
-        try:
-            restore_backup.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(str(SETTINGS_PATH), str(restore_backup))
-            tmp = str(SETTINGS_PATH) + ".tmp"
-            Path(tmp).write_text(DEFAULT_SETTINGS_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-            os.replace(tmp, SETTINGS_PATH)
-            restored = True
-        except Exception as exc:
-            log(f"[WARN] settings.py restore after migration failed: {exc}")
-
-    return {
-        "ok": True,
-        "migrated": sorted(found.keys()),
-        "count": len(found),
+    result: Dict[str, Any] = {
+        "ok": False, "migrated": [], "count": 0,
         "user_settings_path": str(USER_SETTINGS_PATH),
-        "backup_path": backup,
-        "settings_restored": restored,
-        "settings_backup_path": str(restore_backup) if restored else None,
+        "backup_path": None, "settings_restored": False, "settings_backup_path": None,
     }
+    try:
+        source = SETTINGS_PATH.read_text(encoding="utf-8")
+        snapshot = DEFAULT_SETTINGS_PATH.read_text(encoding="utf-8")
+        live, live_remainder = _migration_assignments(source)
+        defaults, default_remainder = _migration_assignments(snapshot)
+        if live_remainder != default_remainder or live.keys() != defaults.keys():
+            raise ValueError("Unsupported settings customizations; source left unchanged")
+        found = {key: value for key, value in live.items()
+                 if key in CONST_TO_SPEC and value != defaults[key]}
+        for key, value in found.items():
+            _, error = _coerce_const_override(key, value)
+            if error:
+                raise ValueError(f"Cannot preserve {key}: {error}")
+
+        existing = load_user_overrides()
+        if USER_SETTINGS_PATH.exists():
+            data = json.loads(USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+            if (not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION
+                    or not isinstance(data.get("overrides"), dict)
+                    or len(data["overrides"]) != len(existing)):
+                raise ValueError("Cannot safely merge existing settings sidecar")
+        if any(key in existing and existing[key] != value for key, value in found.items()):
+            raise ValueError("Existing settings conflict with legacy settings; migration aborted")
+
+        targets = migrate_targets_to_sidecar(
+            settings_path=SETTINGS_PATH, defaults_path=DEFAULT_SETTINGS_PATH,
+        )
+        result["targets"] = targets
+        if not targets["ok"]:
+            raise ValueError(targets["error"])
+        if found:
+            result["backup_path"] = save_user_overrides({**existing, **found})
+
+        # Restore only after every customization has been preserved or rejected.
+        if found or targets["migrated"]:
+            if SETTINGS_PATH.read_text(encoding="utf-8") != source:
+                raise ValueError("Settings changed during migration; source left unchanged")
+            backup = Path(DATA_DIR) / "settings.py.bak"
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(SETTINGS_PATH, backup)
+            tmp = Path(str(SETTINGS_PATH) + ".tmp")
+            tmp.write_text(snapshot, encoding="utf-8")
+            os.replace(tmp, SETTINGS_PATH)
+            result.update(settings_restored=True, settings_backup_path=str(backup))
+        result.update(ok=True, migrated=sorted(found), count=len(found))
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
 
 
 def _coerce_const_override(const_name: str, value: Any) -> Tuple[Any, str | None]:
@@ -180,20 +195,18 @@ def _coerce_const_override(const_name: str, value: Any) -> Tuple[Any, str | None
     return coerced, None
 
 
-def _literal_assignments(path: Path) -> Dict[str, Any]:
-    try:
-        tree = ast.parse(Path(path).read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    out: Dict[str, Any] = {}
+def _migration_assignments(source: str) -> tuple[dict[str, Any], str]:
+    tree = ast.parse(source)
+    values: Dict[str, Any] = {}
+    remainder = []
     for node in tree.body:
-        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name):
-            continue
-        try:
-            out[target.id] = ast.literal_eval(node.value)
-        except Exception:
-            continue
-    return out
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in {*CONST_TO_SPEC, "TARGETS"}):
+            key = node.targets[0].id
+            if key in values:
+                raise ValueError(f"Ambiguous legacy assignment: {key}")
+            values[key] = ast.literal_eval(node.value)
+        else:
+            remainder.append(node)
+    return values, ast.dump(ast.Module(body=remainder, type_ignores=[]))

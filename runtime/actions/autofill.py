@@ -35,6 +35,7 @@ from typing import Optional
 from config.config import DATA_DIR
 from config.settings import AUTOFILL_PROVIDER, AUTOFILL_SHORTCUTS
 from core.utils import log
+from runtime.actions._applescript import escape_applescript_string
 
 
 _USER_CONFIG_PATH = Path(DATA_DIR) / "config.json"
@@ -149,7 +150,7 @@ def _build_applescript(action: dict) -> Optional[str]:
 
     if "key" in action:
         # AppleScript-escape backslash and double-quote inside the key.
-        key = str(action["key"]).replace("\\", "\\\\").replace('"', '\\"')
+        key = escape_applescript_string(str(action["key"]))
         modifiers = action.get("modifiers") or []
         using = ", ".join(
             _MODIFIER_MAP[m.lower()] for m in modifiers

@@ -580,6 +580,7 @@ const _pending = new Map();
 let _nextId = 1;
 
 function bridge(op, args) {
+  const timeout = op === "run-event" ? 65000 : 25000;
   return new Promise((resolve, reject) => {
     const id = String(_nextId++);
     _pending.set(id, { resolve, reject, ts: Date.now() });
@@ -594,7 +595,7 @@ function bridge(op, args) {
         _pending.delete(id);
         reject(new Error("bridge timeout: " + op));
       }
-    }, 8000);
+    }, timeout);
   });
 }
 
@@ -693,6 +694,8 @@ const state = {
   upcoming: null,
   missed: null,
   paused: false,
+  changingPause: false,
+  runningEvents: new Set(),
   lastRefresh: null,
   refreshing: false,
   refreshMessage: "",
@@ -720,7 +723,7 @@ function renderHeader() {
     +     '<div class="subtitle ' + (state.refreshError ? 'error' : '') + '">' + sub + '</div>'
     +   '</div>'
     +   '<div class="header-actions">'
-    +     '<button class="icon-btn" title="Pause" onclick="cfPauseToggle()" aria-label="Pause">' + svg(state.paused ? "play" : "pause", 24) + '</button>'
+    +     '<button class="icon-btn" title="' + (state.paused ? 'Resume' : 'Pause') + '" onclick="cfPauseToggle()" aria-label="' + (state.paused ? 'Resume' : 'Pause') + '"' + (state.changingPause ? ' disabled' : '') + '>' + svg(state.paused ? "play" : "pause", 24) + '</button>'
     +     '<button class="' + refreshClass + '" title="Refresh" onclick="cfRefresh(true)" aria-label="Refresh"'
     +       (state.refreshing ? ' disabled' : '') + '>' + svg("refresh", 24) + '</button>'
     +     '<button class="icon-btn" title="Settings" onclick="cfOpenSettings()" aria-label="Settings">' + svg("gear", 25) + '</button>'
@@ -787,7 +790,7 @@ function selectTimelineEvents(events) {
 }
 
 function renderRunButton(ev, colorClass) {
-  return '<button class="run-btn ' + (colorClass || "") + '" data-event-id="' + esc(ev.id) + '" onclick="cfRunEvent(this.dataset.eventId, this)" aria-label="Run Now">'
+  return '<button class="run-btn ' + (colorClass || "") + '" data-event-id="' + esc(ev.id) + '" onclick="cfRunEvent(this.dataset.eventId, this)" aria-label="Run Now"' + (state.runningEvents.has(ev.id) ? ' disabled' : '') + '>'
        + svg("play", 15) + '<span>Run Now</span></button>';
 }
 
@@ -954,6 +957,9 @@ async function cfRefresh(force) {
   try {
     const feed = await bridge("popover-feed", { hours: 30 });
     state.status = feed.status || {};
+    if (!feed.stale && !state.changingPause && state.status.daemon && typeof state.status.daemon.loaded === "boolean") {
+      state.paused = !state.status.daemon.loaded;
+    }
     state.stats = feed.stats || {};
     state.upcoming = feed.upcoming || {};
     state.missed = feed.missed || {};
@@ -984,7 +990,8 @@ setInterval(() => { if (state.cacheStale) render(); }, 30000);
 window.cf_onShow = function() { cfRefresh(true); };
 
 async function cfRunEvent(id, btn) {
-  if (!id || (btn && btn.disabled)) return;
+  if (!id || state.runningEvents.has(id) || (btn && btn.disabled)) return;
+  state.runningEvents.add(id);
   if (btn) btn.disabled = true;
   try {
     const result = await bridge("run-event", { id });
@@ -1000,12 +1007,15 @@ async function cfRunEvent(id, btn) {
       setTimeout(() => row.classList.remove("flash-fail"), 900);
     }
   } finally {
+    state.runningEvents.delete(id);
     if (btn) btn.disabled = false;
     cfRefresh(true);
   }
 }
 
 async function cfPauseToggle() {
+  if (state.changingPause) return;
+  state.changingPause = true;
   state.paused = !state.paused;
   render();
   try {
@@ -1016,6 +1026,8 @@ async function cfPauseToggle() {
     }
   } catch (e) {
     state.paused = !state.paused;
+  } finally {
+    state.changingPause = false;
     render();
   }
 }

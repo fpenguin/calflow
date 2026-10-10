@@ -856,6 +856,11 @@ hide [active,"Spotify"]             ## v1.5.2 — `active` expands at run time
 > `hide display(N)`. Inside a list, `active` expands to the frontmost
 > app name at execution time and is deduped against the static items.
 
+App/list targets combined with HIDE display filters (for example,
+`hide @chrome display(2)`) are rejected rather than widened to all apps or
+all displays. Empty or invalid display/exception filters are also rejected.
+Use `display(...)`, without `#`, for HIDE filters.
+
 ### Tab vs window (URL opens)
 
 Whether a URL opens in a new TAB or a new WINDOW is decided by
@@ -867,12 +872,22 @@ Whether a URL opens in a new TAB or a new WINDOW is decided by
    positioned independently of the window it lives in)
 4. default: TAB
 
+Specify a browser alias when window placement or a new window is required.
+With no browser selected, opening uses the OS default, but new-window and
+placement behavior are not guaranteed. An explicitly selected browser/profile
+that fails to launch is not retried in a different browser; dependent autofill
+is skipped.
+
 `#profile(N)` does NOT imply a window — profile routing is
 window-mode-agnostic.
 
 ---
 
 ## 3.2 Mouse & Keyboard
+
+These verbs currently parse and route, but their mouse/keyboard backends
+are not implemented. Examples here describe the accepted syntax, not actions
+that CalFlow performs yet.
 
 ```text
 click text("Sign in")
@@ -941,6 +956,10 @@ timeout(3s)
 
 ## 3.3 Screenshot
 
+Current backend: whole-screen captures only. The scoped forms shown below
+are reserved syntax; they log an unsupported-action warning and take no
+capture. CalFlow never substitutes a whole-screen capture for a smaller scope.
+
 ```text
 screenshot                           ## → clipboard (v1.5.2 default)
 screenshot to(clipboard)             ## → clipboard (explicit spelling)
@@ -962,8 +981,8 @@ screenshot area(0,0,1920,1080)
 - a PNG FILE is written only when `to("path")` is supplied
 - file filename pattern is `PLUS_SCREENSHOT_FILENAME_FORMAT`  
   (default `CalFlow_{YYYY-MM-DD_HHMMSS}.png`) when the path is a folder
-- destination directory is created automatically if it doesn't exist; falls
-  back to `~/Library/Application Support/CalFlow/screenshots/` if read-only
+- destination directories are created if needed; an unwritable explicit
+  destination reports failure rather than silently saving elsewhere
 - both folder and filename pattern are configurable in `config/settings.py`
 - positional path (`screenshot "~/x.png"`) was REMOVED in v1.1.2 — use
   `to("…")` for parity with `save … to(…)`
@@ -982,7 +1001,9 @@ save source(clipboard) to("~/file.png")
 > v1.5.2 — `copy("text")` writes the literal straight to the clipboard
 > via `pbcopy` (no keystroke synthesis, no Accessibility permission).
 > The argument must be quoted; `copy(hello)` is rejected. Bare `copy`
-> (selection copy) remains keystroke-based.
+> (selection copy), `paste`, and standalone `save` are not implemented in
+> this build: they only log a stub. Use `screenshot to("path")` to save an
+> image directly, or a run-result handler to save text from one run.
 
 ---
 
@@ -1013,6 +1034,12 @@ if(error) save to("~/Logs/calflow-last-error.txt")
 if(success) notify("Done")
 if(output) copy(result)
 ```
+
+Denied backends do not execute handlers. `save`/`append` file handlers are
+limited to self-authored events and local runs. Deep links such as `btt://`,
+`alfred://` and `shortcuts://` are checked against the same backend allowlist
+when used with `open`, including after alias expansion. Trusted invitations
+cannot open local file paths or other custom URI schemes.
 
 Run backend timeouts are configured in `config/settings.py`:
 

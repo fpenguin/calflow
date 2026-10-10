@@ -304,6 +304,11 @@ Ignored.
 
 # 3. Plus Mode Grammar
 
+Grammar acceptance does not imply an implemented backend. In the current
+build, click/drag/type/press, bare copy, paste and standalone save are stubs.
+Scoped screenshots are refused without capturing. See the current support
+table in [QA](QA.md#actual-backend-support).
+
 ---
 
 ## 3.1 Command Line
@@ -368,6 +373,10 @@ screenshot #display(2)
 ---
 
 ## 3.3 Run Commands
+
+Backend permissions also apply to automation deep links opened through
+`open`, including alias expansion. Denied runs execute no result handlers.
+File-writing handlers require self-authored or local execution.
 
 ```ebnf
 run_command ::= "run" run_backend run_option* run_handler*
@@ -707,9 +716,15 @@ focus active                      ## no-op (frontmost is focused)
 - Bare `close` is rejected — too destructive without an explicit target.
 - `display(N)` accepts an integer (1-based index) or a string substring
   match against the display name.
-- `display(N)` per-window filtering inside `hide …` is parsed but is a
-  stub at v1.1.2 (runs across all displays); the `display` semantic for
-  `focus … display(N)` (move-to-display) IS fully implemented.
+- Display selectors must be positive integers, nonempty quoted names, or
+  `ext`/`external`. Invalid selectors are rejected, not treated as "all".
+- HIDE display filtering is implemented for `hide display(...)`,
+  `hide all display(...)`, `hide active display(...)` and
+  `hide except(...) display(...)`. App/list targets combined with display
+  filters are rejected until their intersection is supported.
+- HIDE uses `display(...)`, not `#display(...)`, for scoped filtering.
+  Legacy hash modifiers on Smart Mode URL lines remain supported.
+- `focus ... display(N)` moves the target's windows to the selected display.
 
 ### Reserved words
 

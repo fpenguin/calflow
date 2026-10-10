@@ -380,9 +380,8 @@ try {
 const _pending = new Map();
 let _nextId = 1;
 function bridge(op, args) {
-  // Longer timeout for ops that touch settings.py (apply-settings can
-  // be slow on cold-start) or that subprocess into the daemon pipeline.
-  const TIMEOUT = (op === "apply-settings" || op === "run-script") ? 30000 : 12000;
+  // Let the native worker return its own timeout/error before the UI gives up.
+  const TIMEOUT = op === "run-script" ? 65000 : 25000;
   return new Promise((resolve, reject) => {
     const id = String(_nextId++);
     _pending.set(id, { resolve, reject, op, sentAt: Date.now() });

@@ -19,14 +19,16 @@ Each event dict:
 Design:
 - module-level functions (no class wrapper) — direct, testable
 - token refresh + first-time OAuth handled inline
-- never raises; all failures logged and an empty list returned
+- query failures raise CalendarFetchError, distinct from an empty calendar
 """
 
 from __future__ import annotations
 
 # v1.1.27 — public surface lock. See pyproject.toml for the rationale.
 __all__ = [
+    'CalendarFetchError',
     'build_service',
+    'get_primary_account_email',
     'get_recent_events',
     'get_upcoming_events',
     'next_event_across_calendars',
@@ -34,7 +36,7 @@ __all__ = [
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from dateutil import parser as dateparser
 from google.auth.transport.requests import Request
@@ -50,6 +52,53 @@ from config.config import (
 from config.settings import FETCH_WINDOW_HOURS
 from core.utils import log
 from infra.calendar.normalize import normalize_description
+
+
+class CalendarFetchError(RuntimeError):
+    """A calendar query failed; callers must not treat this as an empty feed."""
+
+
+def get_primary_account_email(service: Any) -> str | None:
+    """Resolve the signed-in account independently of the selected calendars."""
+    try:
+        metadata = service.calendars().get(calendarId="primary").execute()
+        email = metadata.get("id")
+        if isinstance(email, str) and "@" in email:
+            return email.strip().lower()
+    except Exception as exc:
+        log(f"[WARN] Primary calendar identity unavailable ({type(exc).__name__})")
+    return None
+
+
+def _list_event_items(service, calendar_id: str, *, time_min: str, time_max: str) -> list[dict[str, Any]]:
+    params = {
+        "calendarId": calendar_id,
+        "timeMin": time_min,
+        "timeMax": time_max,
+        "singleEvents": True,
+        "orderBy": "startTime",
+    }
+    items: list[dict[str, Any]] = []
+    seen_tokens = set()
+    try:
+        while True:
+            page = service.events().list(**params).execute()
+            batch = page.get("items", [])
+            if not isinstance(batch, list):
+                raise ValueError("Invalid event page")
+            items.extend(batch)
+            token = page.get("nextPageToken")
+            if not token:
+                return items
+            if not isinstance(token, str) or token in seen_tokens:
+                raise ValueError("Invalid pagination token")
+            seen_tokens.add(token)
+            params["pageToken"] = token
+    except Exception as exc:
+        # Exception text can contain request URLs or event content.
+        message = f"Calendar event query failed ({type(exc).__name__})"
+        log(f"[ERROR] {message}")
+        raise CalendarFetchError(message) from exc
 
 
 # =========================================================
@@ -126,7 +175,7 @@ def get_upcoming_events(
 
     Returns:
         List of normalized event dicts (see module docstring).
-        Returns [] on any API failure (logged).
+        Raises CalendarFetchError on API failure, including later pages.
     """
     window_hours = hours if hours is not None else FETCH_WINDOW_HOURS
     now = datetime.now(timezone.utc)
@@ -134,22 +183,9 @@ def get_upcoming_events(
 
     log(f"[INFO] [{calendar_id}] Checking upcoming events")
 
-    try:
-        items = (
-            service.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=now.isoformat(),
-                timeMax=future.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-            )
-            .execute()
-            .get("items", [])
-        )
-    except Exception as exc:
-        log(f"[ERROR] [{calendar_id}] Failed to fetch events: {exc}")
-        return []
+    items = _list_event_items(
+        service, calendar_id, time_min=now.isoformat(), time_max=future.isoformat(),
+    )
 
     out: List[Dict] = []
     for ev in items:
@@ -176,6 +212,8 @@ def get_upcoming_events(
                 "event_url":   ev.get("htmlLink", ""),
                 "creator_email":   _actor_email(ev.get("creator")),
                 "organizer_email": _actor_email(ev.get("organizer")),
+                "creator_self":    _actor_self(ev.get("creator")),
+                "organizer_self":  _actor_self(ev.get("organizer")),
             })
         except Exception as exc:
             log(f"[WARN] [{calendar_id}] Failed to parse event: {exc}")
@@ -220,7 +258,7 @@ def get_recent_events(
         List[Dict]: events sorted ASCENDING by start (oldest first),
         which the menubar reverses for display (most recent at top).
 
-    Returns [] on any API failure.
+    Raises CalendarFetchError on API failure, including later pages.
     """
     if hours <= 0:
         return []
@@ -229,22 +267,9 @@ def get_recent_events(
 
     log(f"[INFO] [{calendar_id}] Checking recent events (last {hours}h)")
 
-    try:
-        items = (
-            service.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=past.isoformat(),
-                timeMax=now.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-            )
-            .execute()
-            .get("items", [])
-        )
-    except Exception as exc:
-        log(f"[ERROR] [{calendar_id}] Failed to fetch recent events: {exc}")
-        return []
+    items = _list_event_items(
+        service, calendar_id, time_min=past.isoformat(), time_max=now.isoformat(),
+    )
 
     out: List[Dict] = []
     for ev in items:
@@ -265,6 +290,8 @@ def get_recent_events(
                 "event_url":   ev.get("htmlLink", ""),
                 "creator_email":   _actor_email(ev.get("creator")),
                 "organizer_email": _actor_email(ev.get("organizer")),
+                "creator_self":    _actor_self(ev.get("creator")),
+                "organizer_self":  _actor_self(ev.get("organizer")),
             })
         except Exception as exc:
             log(f"[WARN] [{calendar_id}] Failed to parse recent event: {exc}")
@@ -277,6 +304,10 @@ def _actor_email(actor) -> str:
     if isinstance(actor, dict):
         return actor.get("email", "") or ""
     return ""
+
+
+def _actor_self(actor) -> bool:
+    return isinstance(actor, dict) and actor.get("self") is True
 
 
 # =========================================================

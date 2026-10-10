@@ -1,6 +1,9 @@
-# 🗺️ CalFlow Roadmap (post-v2.0)
+# CalFlow Roadmap
 
-## What v2.0 ships (fully real, not stubbed)
+Release line: v1.5.x. Historical v2.x headings below identify architecture
+milestones, not a claim that those future backends have shipped.
+
+## Implemented Foundation
 
 - **Smart Mode** — every documented Smart Mode behavior is real:
   URL extraction (now including URLs with embedded `{…}` blocks),
@@ -16,12 +19,12 @@
   format tokens (`YYYY/YY/MM/DD/HH/hh/mm/ss`), shorthand and
   `format("…")` forms, default `YYYY-MM-DD`, single `>` operator,
   whitespace tolerance.
-- **Plus Mode parser, validator, resolver, dispatcher** — all 13
-  verbs parse and route. `#grid(NxM@D)` and `#area(x,y,w,h)` parse
+- **Plus Mode parser, validator, resolver, dispatcher** — all 14
+  verbs parse and route. `#grid(D@NxM)` and `#area(x,y,w,h)` parse
   to typed dicts.
 - **Calendar layer** — multi-calendar polling, OAuth flow, event
   dedup, idempotent state, lock file, launchd install.
-- **Onboarding** — `python3 -m cli.main setup` (4 steps: Google credentials, calendar selection, daemon install, password manager).
+- **Onboarding** — `python3 -m cli.main setup` (5 steps: Google credentials, calendar selection, daemon install, password manager, Accessibility).
 - **Autofill keystrokes** — `#fill` and `#submit` send the configured keystroke via osascript + `System Events`. Provider chosen during onboarding (Apple Passwords / 1Password / Bitwarden / None).
 - **Trusted run backends** — `run btt(...)`, `run shortcut(...)`,
   `run alfred(...)`, and `run applescript` execute behind the event trust
@@ -41,10 +44,9 @@ three categories:
    integration harness CalFlow doesn't have yet.
 3. **Security-sensitive** — needs a permission/policy model first.
 
-Everything deferred is **already wired through parser → validator →
-resolver → dispatcher** — only the **side-effect backend** is stubbed.
-The pipeline runs to completion, the action logs `(stub)`, nothing
-crashes.
+Many deferred verbs already parse and route, but their side-effect backends
+are stubs. Scoped screenshots are refused without capture. Arbitrary script
+files remain unsupported; parsing alone is not evidence an action runs.
 
 > **No Smart Mode feature is deferred. No dynamic-expression base
 > feature is deferred.**
@@ -112,8 +114,9 @@ Make Plus Mode actually drive the GUI on macOS.
 | `type("…")` | CGEventKeyboardSetUnicodeString | easy | medium — focus-dependent |
 | `press {…}` | Keycode mapping + CGEventCreateKeyboardEvent | medium | medium |
 | `press [{…},({…})x5,{…}]` | Sequence orchestration with key-down/key-up state | medium | high |
-| `focus title("Inbox")` | AXUIElement window enumeration + title match | hard | high — title text changes |
-| `hide @app`, `close @app` | AppleScript `tell application` | easy | low |
+
+App focus, matching-window focus, hide and close already have real backends;
+they are not part of the deferred mouse/keyboard implementation.
 
 ## Why deferred
 - `pyobjc` is a 100+ MB dependency tree; we want it **optional**.
@@ -125,23 +128,25 @@ Make Plus Mode actually drive the GUI on macOS.
 ## Deliverables
 - `runtime/actions/quartz.py` — thin wrapper over Quartz mouse/key events
 - `runtime/actions/axui.py` — wrapper over AXUIElement (FOCUS, CLICK by text)
-- Onboarding adds an "Accessibility permissions" step
+- Improve the existing "Accessibility permissions" onboarding step
 - Integration tests that run on a real macOS workstation (opt-in via env var)
 
 ---
 
 # v2.2 — Layout Application Backend
 
+**Implemented.** Basic layout, grids, absolute areas and display selection
+already use osascript/JXA. Remaining work is application-specific reliability
+and real multi-display integration coverage.
+
 ## Goal
 Make `#left(50%)`, `#right(50%)`, `#grid(1@3x2)`, `#area(...)`, `#display(N)`
-actually move + resize windows. Currently they parse cleanly and the
-resolver returns the right dict — but the action layer logs `[INFO]
-Applying layout` and stops.
+move and resize windows using the existing action backend.
 
 ## Scope
 - `#left/#right/#middle/#top/#bottom` — single-axis split
 - `#full` — maximize on the active display
-- `#grid(NxM@D)` — divide screen into N×M cells, place window in cell D
+- `#grid(D@NxM)` — divide screen into N×M cells, place window in cell D
 - `#area(x,y,w,h)` — absolute pixel/% positioning
 - `#display(N)` — move to display N before applying layout
 
@@ -159,6 +164,10 @@ Applying layout` and stops.
 ---
 
 # v2.3 — Clipboard + Save
+
+**Partially implemented.** Literal `copy("text")`, screenshot-to-file and
+run-result copy/save/append work. Bare selection-copy, paste and standalone
+clipboard-save are still stubs.
 
 ## Goal
 Make `copy`, `paste`, and `save source(clipboard) to("…")` actually
@@ -332,15 +341,17 @@ These are **out of scope** for any near-term release:
 | FOCUS — `focus @app display(N)` / `display("name")` (v1.1.2) | ✅ | ✅ | ✅ | ✅ (real — activate + JXA enumerate + AppleScript bounds set) |
 | FOCUS — `focus active` (v1.1.2 no-op) | ✅ | ✅ | ✅ | ✅ (real — log-only) |
 | SCREENSHOT — `screenshot to("…")` (v1.1.2 canonical) | ✅ | ✅ | ✅ | ✅ (real, screencapture) |
-| SCREENSHOT — `screenshot active` (frontmost window) | ✅ | ✅ | ✅ | 🚧 stub — falls back to full screen |
+| SCREENSHOT — `screenshot active` (frontmost window) | ✅ | ✅ | ✅ | 🚧 rejected without capture |
 | CLICK | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
+| DRAG | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | TYPE | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
 | PRESS (single / combo / sequence) | ✅ | ✅ | ✅ | 🚧 stub (v2.1) |
-| SCREENSHOT (display/window/area variants) | ✅ | ✅ | ✅ | 🚧 stub (v2.5) |
-| COPY / PASTE | ✅ | ✅ | ✅ | 🚧 stub (v2.3) |
+| SCREENSHOT (display/window/area variants) | ✅ | ✅ | ✅ | 🚧 rejected without capture (v2.5) |
+| COPY literal text | ✅ | ✅ | ✅ | ✅ real, pbcopy |
+| Bare COPY / PASTE | ✅ | ✅ | ✅ | 🚧 stub (v2.3) |
 | SAVE | ✅ | ✅ | ✅ | 🚧 stub (v2.3) |
-| RUN trusted backends (`-btt`, `-shortcut`, `-alfred`, `-applescript`) | ✅ | ✅ | ✅ | ✅ (real, gated by event trust + backend allowlists) |
-| RUN arbitrary script/path | ✅ | ✅ | ✅ | 🚧 stub — refusing arbitrary scripts by default |
+| RUN trusted backends (`btt(...)`, `shortcut(...)`, `alfred(...)`, `applescript`) | ✅ | ✅ | ✅ | ✅ real, gated by event trust + backend allowlists |
+| RUN arbitrary script/path | unsupported | unsupported | unsupported | refused |
 
 ⏳ = doc-locked, code lands next pass.
 🚧 = stub or unimplemented; safe to invoke (logs only).

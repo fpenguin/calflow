@@ -162,6 +162,19 @@ python3 -m cli.main menubar-status
 Look for the month/day icon in the macOS menu bar, for example `JUN`
 over `3`.
 
+`menubar-install` enables the icon at each login, including after a reboot.
+It also upgrades an older installation and restarts the icon after a crash.
+**Quit** closes the companion until you next log in. To reopen it immediately:
+
+```bash
+.venv/bin/python -m cli.main menubar-start
+```
+
+If the icon is missing, run `.venv/bin/python -m cli.main menubar-install`
+from your CalFlow folder, then check `menubar-status`. `loaded: true` means
+registered; `lock.alive: true` means the companion process is running.
+See [menu bar troubleshooting](docs/menubar.md#login-and-recovery).
+
 The menu bar app is separate from the background automation loop:
 
 - the daemon watches calendar events and runs automations
@@ -230,13 +243,13 @@ verbs CalFlow understands today:
 | `close` | Quits/closes apps; requires an explicit target. | `close @spotify` |
 | `wait` | Pauses the workflow briefly. | `wait 5s` |
 | `screenshot` | Captures to the clipboard by default, or to a file via `to("path")`. | `screenshot` · `screenshot to("~/Desktop/meeting.png")` |
-| `click` | Clicks by visible text, selector, or position. Supports `button(right)` and `count(2)` for double-click. | `click text("row") button(right)` |
-| `drag` | One mouse gesture from point to point. | `drag from(100,200) to(300,400)` |
-| `type` | Types text into the focused app/window. | `type("hello")` |
-| `press` | Sends a key or keyboard shortcut. | `press {cmd+k}` |
-| `copy` | Copies the current selection, or places literal text on the clipboard. | `copy` · `copy("hello")` |
-| `paste` | Pastes clipboard contents. | `paste` |
-| `save` | Saves a source, such as clipboard or run result, to a file. | `save source(clipboard) to("~/Desktop/file.txt")` |
+| `click` | Planned UI action; parses but does not click yet. | `click text("row") button(right)` |
+| `drag` | Planned UI action; parses but does not drag yet. | `drag from(100,200) to(300,400)` |
+| `type` | Planned UI action; parses but does not type yet. | `type("hello")` |
+| `press` | Planned UI action; parses but does not send keys yet. | `press {cmd+k}` |
+| `copy` | Places literal text on the clipboard. Bare selection-copy is not implemented. | `copy("hello")` |
+| `paste` | Planned clipboard action; not implemented yet. | `paste` |
+| `save` | Standalone clipboard saving is not implemented. Run-result file handlers work. | `run shortcut("Example") if(error) save to("~/Logs/error.txt")` |
 | `run` | Runs an external automation backend. | `run shortcut("Start Focus")` |
 
 Smart Mode does not require verbs. A plain URL line is treated like
@@ -331,6 +344,11 @@ notifications. This includes blocked backends, missing trigger names,
 AppleScript failures, Shortcut failures, and local URL-launch failures
 for BetterTouchTool and Alfred.
 
+A denied backend never executes its result handlers. File handlers (`save`
+and `append`) require a self-authored event or a local run; trusted invitations
+cannot choose arbitrary output files. Use `screenshot to("~/Desktop/report.png")`
+to save an image directly. Standalone `save source(clipboard)` is not implemented.
+
 Alfred's URL scheme does not report workflow-internal failures back to
 CalFlow, so those still need to be checked in Alfred.
 
@@ -351,7 +369,7 @@ Examples:
 
 | Expression | Meaning |
 | --- | --- |
-| `{now}` | Current date/time |
+| `{now}` | Today's date, formatted YYYY-MM-DD |
 | `{now-7d}` | Seven days ago |
 | `{now-1mo > start_of_month}` | Start of last month |
 | `{now > YYYY-MM-DD}` | Format the current date |
@@ -368,6 +386,8 @@ Default policy:
 - third-party calendar invites are blocked
 - trusted domains and trusted emails are empty by default
 - run backends are allowed by trust level
+- automation deep links follow the same backend permissions
+- trusted invitations cannot open local files or unknown custom URL schemes
 - arbitrary shell/script execution is not part of the default grammar
 
 Configure trust and backend allowlists in `config/settings.py`:
@@ -406,7 +426,7 @@ are treated as user-initiated local actions.
 | Dynamic dates like `{now-7d}` | Works |
 | `open` | Works |
 | `wait` | Works |
-| `screenshot` | Works — clipboard by default, file via `to("path")`; window/display/area variants still fall back |
+| `screenshot` | Whole-screen capture works: clipboard by default, file via `to("path")`. Unsupported active/window/display/area requests are rejected without capturing. |
 | `copy("text")` | Works — literal text straight to the clipboard |
 | `run btt(...)` | Works via BetterTouchTool URL scheme |
 | `run shortcut(...)` | Works via macOS `shortcuts run` |
@@ -472,9 +492,11 @@ CalFlow polls your selected calendars and evaluates upcoming events.
 When an event enters the configured trigger window, CalFlow parses the
 event text and executes it once.
 
-Default timing is roughly five minutes before the event starts. Timing,
-calendar choices, backend allowlists, trusted invite policy, and run
-notifications are configured in `config/settings.py`.
+The shipped default is three minutes before the event starts; your saved
+settings can override it. Use Settings for timing and supported preferences,
+which are saved in `data/user_settings.json`. Calendar selection is set during
+setup. Advanced backend allowlists, invitation trust and run notifications
+currently use constants in `config/settings.py` and are not exposed in the GUI.
 
 Useful commands:
 

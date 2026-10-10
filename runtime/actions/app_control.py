@@ -22,6 +22,7 @@ import subprocess
 from typing import Iterable, Optional
 
 from core.utils import log
+from runtime.actions._applescript import escape_applescript_string
 
 
 # =========================================================
@@ -62,7 +63,7 @@ def _osascript(script: str, *, action_label: str) -> bool:
 
 def _escape(name: str) -> str:
     """Escape an app name for safe insertion into an AppleScript string."""
-    return (name or "").replace("\\", "\\\\").replace('"', '\\"')
+    return escape_applescript_string(name or "")
 
 
 def _osascript_capture(script: str, *, action_label: str) -> Optional[str]:

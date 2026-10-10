@@ -31,8 +31,8 @@ Why subprocess instead of in-process imports:
     `print_*_json` to return dicts and skip subprocess.
 
 Lifecycle:
-    AppHelper.runEventLoop() blocks forever. Cmd+Q from the popover
-    or NSApp.terminate_(None) cleanly exits.
+    AppHelper.runEventLoop() blocks forever. Quit from the popover
+    cleanly exits; launchd restores the icon at the next login.
 
 Lazy import discipline:
     pyobjc-framework-WebKit and pyobjc-framework-Cocoa are optional
@@ -693,7 +693,8 @@ class _CFApp(NSObject):
         # run-script may legitimately take many seconds (it executes a
         # full Smart/Plus pipeline). Give it a longer budget; everything
         # else stays on the original 20 s clock.
-        timeout = 60 if cmd and cmd[-1] == "run-script" else 20
+        operation = cmd[3] if cmd and len(cmd) > 3 else ""
+        timeout = 60 if operation in ("run-script", "run-event") else 20
         try:
             proc = subprocess.run(
                 cmd,
@@ -929,11 +930,10 @@ def _parse_json_from_log(stdout: str) -> Any:
 # Pattern mirrors cli/main.py's daemon LOCK_FILE:
 #   - file at /tmp/calflow_menubar.lock
 #   - contents: "<pid>|<unix_ts>"
-#   - stale detection: process is dead OR ts > MAX_AGE
+#   - stale detection: process is dead or PID belongs to another program
 #   - stale lock is replaced; live lock makes us exit cleanly
 
 _LOCK_PATH = "/tmp/calflow_menubar.lock"
-_LOCK_MAX_AGE = 7 * 24 * 3600   # 7 days — menubar can stay up that long
 
 def _pid_command(pid: int) -> str:
     try:
@@ -995,13 +995,11 @@ def _acquire_singleton_or_exit() -> None:
     so the user's shell doesn't think it's an error.
     """
     import os as _os
-    import time as _t
 
     existing = _read_lock()
     if existing is not None:
-        pid, ts = existing
-        age = _t.time() - ts
-        if age <= _LOCK_MAX_AGE and _is_menubar_pid(pid) and pid != _os.getpid():
+        pid, _ts = existing
+        if _is_menubar_pid(pid) and pid != _os.getpid():
             print(
                 f"CalFlow menubar is already running (PID {pid}).\n"
                 "  • To stop it:    pkill -f 'cli.main menubar'\n"
@@ -1011,7 +1009,7 @@ def _acquire_singleton_or_exit() -> None:
                 file=sys.stderr,
             )
             sys.exit(0)
-        # Lock exists but is stale (pid dead or too old) — overwrite it.
+        # Lock exists but its owner is gone — overwrite it.
 
     _write_lock()
     # Best-effort cleanup on normal exit. SIGKILL leaves it; the next

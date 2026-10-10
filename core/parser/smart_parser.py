@@ -56,7 +56,7 @@ _URL_DYNAMIC = r"\{[^{}]*\}"
 _URL_BODY = rf"(?:{_URL_CHARS}|{_URL_DYNAMIC})+"
 
 URL_PATTERN = re.compile(
-    rf"(?i)(https?://{_URL_BODY}|www\.{_URL_BODY}|\b[a-z0-9.-]+\.[a-z]{{2,}}(?:/{_URL_BODY})?)"
+    rf"(?i)(https?://{_URL_BODY}|www\.{_URL_BODY}|\b[a-z0-9.-]+\.[a-z]{{2,}}(?:[/?#]{_URL_BODY})?)"
 )
 EMAIL_PATTERN = re.compile(
     r"(?i)[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
@@ -184,13 +184,21 @@ def _strip_comments(text: str) -> str:
     return "\n".join(strip_inline_comment(line) for line in text.splitlines())
 
 
+def _outside_url_matches(pattern: re.Pattern[str], text: str) -> list[str]:
+    url_spans = [match.span() for match in URL_PATTERN.finditer(text)]
+    return [
+        match.group(1) for match in pattern.finditer(text)
+        if not any(start <= match.start() < end for start, end in url_spans)
+    ]
+
+
 def extract_tags(text: str) -> set[str]:
-    """All `#tags` from text, lowercased; `##` comments stripped first."""
+    """Extract modifiers outside URL payloads and `##` comments."""
     if not text:
         return set()
     clean = _strip_comments(text)
-    tags = {t.lower() for t in HASHTAG_PATTERN.findall(clean)}
-    tags.update(f"#{t.lower()}" for t in FUNCTION_TAG_PATTERN.findall(clean))
+    tags = {t.lower() for t in _outside_url_matches(HASHTAG_PATTERN, clean)}
+    tags.update(f"#{t.lower()}" for t in _outside_url_matches(FUNCTION_TAG_PATTERN, clean))
     return tags
 
 
@@ -198,7 +206,7 @@ def extract_targets(text: str) -> list[str]:
     """All `@target` tokens from text, lowercased, in order of appearance."""
     if not text:
         return []
-    return [t.lower() for t in TARGET_PATTERN.findall(_strip_comments(text))]
+    return [t.lower() for t in _outside_url_matches(TARGET_PATTERN, _strip_comments(text))]
 
 
 # =========================================================
@@ -270,8 +278,12 @@ def _tag_category(tag: str) -> str:
         return "display"
     if name == "profile":
         return "session"
-    if name in {"fill", "submit", "slow", "no-autofill", "force"}:
+    if name in {"fill", "submit", "no-autofill"}:
         return "behavior"
+    if name == "slow":
+        return "timing"
+    if name == "force":
+        return "url-filter"
     if name == "alert":
         return "alert"
     return f"tag:{name}"  # unique per arbitrary tag
@@ -339,7 +351,7 @@ def extract_url_entries(text: str, title: str | None = None) -> list[dict]:
 
         # Per-line tags + URL
         line_tags = extract_tags(line)
-        line_targets = [t.lower() for t in TARGET_PATTERN.findall(line)]
+        line_targets = extract_targets(line)
 
         for raw_url in _find_urls(line):
             url = normalize_url(raw_url)

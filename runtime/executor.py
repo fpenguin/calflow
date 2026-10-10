@@ -25,6 +25,7 @@ from typing import Dict, List, Set
 
 # Dynamic substitution (v2.0)
 from core.dynamic import resolve_dynamic
+from core.event_trust import TRUST_SELF
 
 # Resolver
 from core.resolver import (
@@ -39,6 +40,7 @@ from core.resolver import (
 # Actions
 from runtime.actions.autofill import trigger_autofill
 from runtime.actions.browser import open_target
+from runtime.run_policy import is_open_target_allowed
 
 # Settings
 from config.settings import (
@@ -61,6 +63,7 @@ def execute_entries(
     entries: List[Dict],
     global_tags: Set[str],
     debug: bool = False,
+    trust_level: str = TRUST_SELF,
 ) -> None:
     """
     Execute parsed Smart Mode entries.
@@ -77,7 +80,7 @@ def execute_entries(
 
     for entry in entries:
         try:
-            _execute_single(entry, global_tags, debug)
+            _execute_single(entry, global_tags, debug, trust_level=trust_level)
 
         except Exception as e:
             # Never break execution pipeline
@@ -92,6 +95,8 @@ def _execute_single(
     entry: Dict,
     global_tags: Set[str],
     debug: bool,
+    *,
+    trust_level: str = TRUST_SELF,
 ) -> None:
     """
     Execute a single Smart Mode entry.
@@ -112,6 +117,9 @@ def _execute_single(
     # actual moment of execution, not the moment the description was read.
     if url:
         url = resolve_dynamic(url)
+        if not is_open_target_allowed(url, trust_level):
+            log("[WARN] Smart Mode URL blocked by event trust policy")
+            return
 
     # IMPORTANT: do NOT merge `global_tags` here. In v2.0 the Smart
     # parser already merges true Smart Mode global state (standalone
@@ -145,7 +153,7 @@ def _execute_single(
     # 🌐 OPEN
     # =====================================================
 
-    open_target(
+    opened = open_target(
         url=url,
         app=app,
         layout=layout,
@@ -153,6 +161,9 @@ def _execute_single(
         chrome_profile=chrome_profile,
         new_window=new_win,
     )
+    if opened is False:
+        record_action("open_profile" if chrome_profile else "open_url", success=False)
+        return
 
     # v1.3.0 — lifetime stats. Counted only when open_target returned
     # without raising (the outer try/except in execute_entries catches

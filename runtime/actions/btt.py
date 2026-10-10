@@ -50,7 +50,15 @@ def trigger_named_btt(trigger_name: str) -> RunResult:
 
     url = build_named_trigger_url(name)
     try:
-        subprocess.run(["open", url], check=False, timeout=RUN_BTT_TIMEOUT)
+        result = subprocess.run(
+            ["open", url], check=False, timeout=RUN_BTT_TIMEOUT,
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            msg = f"launch exited {result.returncode}"
+            log(f"[WARN] BTT {msg}")
+            notify_run_error("CalFlow BTT failed", msg)
+            return error_result("btt", msg, returncode=int(result.returncode))
         log(f"[INFO] BTT trigger: {name}")
         return ok_result("btt", f"BTT trigger launched: {name}")
     except Exception as exc:
@@ -72,7 +80,15 @@ def trigger_alfred(bundle_id: str, trigger_id: str, argument: str = "") -> RunRe
 
     url = build_alfred_trigger_url(bid, tid, argument)
     try:
-        subprocess.run(["open", url], check=False, timeout=RUN_ALFRED_TIMEOUT)
+        result = subprocess.run(
+            ["open", url], check=False, timeout=RUN_ALFRED_TIMEOUT,
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            msg = f"launch exited {result.returncode}"
+            log(f"[WARN] Alfred {msg}")
+            notify_run_error("CalFlow Alfred failed", msg)
+            return error_result("alfred", msg, returncode=int(result.returncode))
         log(f"[INFO] Alfred trigger: {bid}/{tid}")
         return ok_result("alfred", f"Alfred trigger launched: {bid}/{tid}")
     except Exception as exc:

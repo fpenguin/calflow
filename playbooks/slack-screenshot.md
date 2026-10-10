@@ -16,16 +16,15 @@ Capture → save → done.
 +CalFlow+
 
 focus @chrome title("Slack")
-screenshot
-save source(clipboard) to("~/Desktop/slack_{now > YYYY-MM-DD_hh-mm}.png")
+screenshot to("~/Desktop/slack_{now > YYYY-MM-DD_hh-mm}.png")
 ```
 
 ---
 
 ## What actually happens
 
-- Chrome switches to the tab with title "Slack"  
-- screenshot is captured to clipboard  
+- Chrome's matching window is raised (this does not search background tabs)
+- the whole screen is captured, not just Slack
 - image is saved to Desktop with timestamp  
 
 → no manual capture or renaming  
@@ -56,8 +55,7 @@ You get:
 +CalFlow+
 
 focus @chrome title("Slack")
-screenshot
-save source(clipboard) to("~/Desktop/bug_{now > YYYY-MM-DD_hh-mm}.png")
+screenshot to("~/Desktop/bug_{now > YYYY-MM-DD_hh-mm}.png")
 ```
 
 → quick bug evidence capture  
@@ -70,8 +68,7 @@ save source(clipboard) to("~/Desktop/bug_{now > YYYY-MM-DD_hh-mm}.png")
 +CalFlow+
 
 focus @chrome title("Slack")
-screenshot
-save source(clipboard) to("~/Desktop/daily_{now > YYYY-MM-DD}.png")
+screenshot to("~/Desktop/daily_{now > YYYY-MM-DD}.png")
 ```
 
 → one snapshot per day  
@@ -84,8 +81,7 @@ save source(clipboard) to("~/Desktop/daily_{now > YYYY-MM-DD}.png")
 +CalFlow+
 
 focus @chrome title("Slack")
-screenshot
-save source(clipboard) to("~/Desktop/client_{now > YYYY-MM-DD_hh-mm}.png")
+screenshot to("~/Desktop/client_{now > YYYY-MM-DD_hh-mm}.png")
 ```
 
 → track important messages  
@@ -117,7 +113,7 @@ to("~/Documents/screenshots/slack_{now}.png")
 ### Change filename format
 
 ```text
-{now}                      → full timestamp  
+{now}                      → date (YYYY-MM-DD)
 {now > YYYY-MM-DD}          → date only  
 {now > hh-mm}               → time only  
 ```
@@ -128,7 +124,7 @@ to("~/Documents/screenshots/slack_{now}.png")
 
 - `focus` = bring correct window  
 - `screenshot` = capture  
-- `save` = persist with naming  
+- `to("path")` = persist the screenshot with naming
 
 ---
 

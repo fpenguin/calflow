@@ -13,6 +13,29 @@ on:
 # need cli.main they import the real code.
 
 jobs:
+  menubar-ui:
+    name: Menu UI behavior
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: node --test tests/menubar_ui.test.cjs
+
+  menubar-native:
+    name: macOS menubar lifecycle
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest tests/test_launchd_lifecycle.py tests/test_v3_menubar_launchd.py tests/test_v3_menubar_bridge.py tests/test_v3_menubar_icon.py tests/test_v3_menubar_resize.py
+
   test:
     name: Tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest

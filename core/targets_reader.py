@@ -71,20 +71,50 @@ def save_user_targets(
     return backup
 
 
-def migrate_targets_to_sidecar() -> Dict[str, Any]:
-    live = _read_targets_from_path(SETTINGS_PATH)
-    defaults = _read_targets_from_path(DEFAULT_SETTINGS_PATH if DEFAULT_SETTINGS_PATH.exists() else SETTINGS_PATH)
-    changed = live != defaults
-    backup = None
-    if changed:
-        backup = save_user_targets(live)
-    return {
-        "ok": True,
-        "migrated": changed,
-        "count": len(live) if changed else 0,
-        "user_targets_path": str(USER_TARGETS_PATH),
-        "backup_path": backup,
+def migrate_targets_to_sidecar(
+    *, settings_path: Path | None = None, defaults_path: Path | None = None,
+) -> Dict[str, Any]:
+    """Preserve legacy aliases; never silently replace conflicting sidecar data."""
+    result: dict[str, Any] = {
+        "ok": False, "migrated": False, "count": 0,
+        "user_targets_path": str(USER_TARGETS_PATH), "backup_path": None,
     }
+    try:
+        live = _migration_targets(Path(settings_path or SETTINGS_PATH))
+        defaults = _migration_targets(Path(defaults_path or DEFAULT_SETTINGS_PATH))
+        if live != defaults:
+            if USER_TARGETS_PATH.exists():
+                data = json.loads(USER_TARGETS_PATH.read_text(encoding="utf-8"))
+                if (not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION
+                        or data.get("targets") != live):
+                    raise ValueError("Existing aliases conflict with legacy settings; migration aborted")
+            else:
+                result["backup_path"] = save_user_targets(live)
+            result.update(migrated=True, count=len(live))
+        result["ok"] = True
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
+
+
+def _migration_targets(path: Path) -> dict[str, TargetValue]:
+    from core.targets_writer import validate_alias_name, validate_app_list
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    values = [
+        ast.literal_eval(node.value) for node in tree.body
+        if isinstance(node, ast.Assign) and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "TARGETS"
+    ]
+    if len(values) != 1 or not isinstance(values[0], dict):
+        raise ValueError("Cannot safely read legacy TARGETS")
+    targets = values[0]
+    for alias, apps in targets.items():
+        if validate_alias_name(alias) or validate_app_list(apps):
+            raise ValueError("Invalid legacy TARGETS; migration aborted")
+    if _coerce_targets(targets) != targets:
+        raise ValueError("Unsupported legacy TARGETS; migration aborted")
+    return targets
 
 
 def _read_targets_from_path(path: Path) -> Dict[str, TargetValue]:

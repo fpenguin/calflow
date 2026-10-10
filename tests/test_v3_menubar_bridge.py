@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -89,6 +90,16 @@ class NsToPythonHelper(unittest.TestCase):
             def __str__(self):
                 return "opaque"
         self.assertEqual(self.menubar._ns_to_python(Opaque()), "opaque")
+
+
+    def test_long_running_menubar_keeps_its_singleton_lock(self):
+        with patch.object(self.menubar, "_read_lock", return_value=(123, 1)), \
+             patch.object(self.menubar, "_is_menubar_pid", return_value=True), \
+             patch.object(self.menubar, "_write_lock") as write:
+            with self.assertRaises(SystemExit) as error:
+                self.menubar._acquire_singleton_or_exit()
+        self.assertEqual(error.exception.code, 0)
+        write.assert_not_called()
 
 
 class JsonDumpsWithDefault(unittest.TestCase):

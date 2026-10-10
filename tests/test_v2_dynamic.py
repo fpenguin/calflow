@@ -194,25 +194,30 @@ class SmartModeDynamic(unittest.TestCase):
 
         orig_open = ex.open_target
         orig_sleep = ex.time.sleep
-        import runtime.actions.autofill as af
-        orig_fill = af.trigger_autofill
+        orig_fill = ex.trigger_autofill
+        orig_record = ex.record_action
         try:
             ex.open_target = fake_open
             ex.time.sleep = lambda *_a, **_k: None
-            af.trigger_autofill = lambda mode="fill": None
+            ex.trigger_autofill = lambda mode="fill": None
+            ex.record_action = lambda *a, **kw: None
 
             # Patch datetime so result is deterministic
             import core.dynamic as d
             from unittest.mock import patch
-            with patch.object(d, "datetime") as m:
+            # v1.5.5 - regression: stale autofill patches must not reach the desktop.
+            with patch.object(d, "datetime") as m, \
+                 patch("subprocess.Popen", side_effect=AssertionError("unexpected subprocess")) as process:
                 m.now.return_value = NOW
                 from core.parser.parser import parse
                 result = parse("https://x.com?d={now > YYYY-MM-DD}")
                 ex.execute_entries(result.entries, global_tags=set(), debug=False)
+            process.assert_not_called()
         finally:
             ex.open_target = orig_open
             ex.time.sleep = orig_sleep
-            af.trigger_autofill = orig_fill
+            ex.trigger_autofill = orig_fill
+            ex.record_action = orig_record
 
         self.assertEqual(captured.get("url"), "https://x.com?d=2026-05-15")
 

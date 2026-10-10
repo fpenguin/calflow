@@ -48,6 +48,7 @@ Design:
 
 from __future__ import annotations
 
+import json
 import re
 from typing import List, Tuple
 
@@ -179,6 +180,17 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
 
     verb_tok = tokens[0]
     args = tokens[1:]
+
+    for token in args:
+        display_token = token.lstrip("#")
+        if display_token.lower().startswith("display("):
+            if (not display_token.endswith(")")
+                    or not _valid_display_selector(display_token[8:-1])):
+                return [ValidationError(
+                    line_no,
+                    'display(...) expects a positive integer, nonempty quoted '
+                    'display name, or ext/external; empty or invalid selectors are not allowed',
+                )]
 
     # Implicit open: line starts with a URL or quoted string or `~/path`
     if not _is_known_verb(verb_tok):
@@ -346,6 +358,12 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
             for fc in functions
         )
 
+        # Hash display tags are not filters in the HIDE AST; do not ignore scope.
+        if any(t.lower() == "#display" or t.lower().startswith("#display(") for t in args):
+            return [ValidationError(
+                line_no, 'HIDE display filters require display(...), without #',
+            )]
+
         # Detect old `hide all except @x` shape: head=="all" AND extra body OR
         # head=="all" AND `except` function present.
         if head_lower == "all" and (len(body) > 1 or has_except):
@@ -358,6 +376,21 @@ def validate_plus_line(line: str, line_no: int) -> List[ValidationError]:
                     'bare `hide all` (no except).',
                 )
             )
+        elif positional_count > 1 or (has_except and (body or targets)):
+            errors.append(ValidationError(
+                line_no,
+                'HIDE accepts one target/list or except(...), not a combination',
+            ))
+        elif has_display and (targets or (body and head_lower not in _RESERVED_RUNTIME_TARGETS)):
+            errors.append(ValidationError(
+                line_no,
+                'HIDE app/list targets cannot be combined with display(...); '
+                'use hide active display(...) for the frontmost app, or hide <target>',
+            ))
+        elif has_except and not _nonempty_except_arg(_function_inner(functions, "except")):
+            errors.append(ValidationError(
+                line_no, 'HIDE except(...) requires a nonempty target or nonempty list',
+            ))
         elif not (body or targets or has_except or has_display):
             # Bare `hide` was removed in v1.1.2.
             errors.append(
@@ -780,6 +813,50 @@ def _strip_quotes(token: str) -> str:
     if _QUOTED_RE.match(token):
         return token[1:-1]
     return token
+
+
+def _valid_display_selector(inner: str) -> bool:
+    value = inner.strip()
+    if _QUOTED_RE.fullmatch(value):
+        if value.startswith('"'):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                return False
+        elif re.fullmatch(r"'(?:\\.|[^'\\])*'", value):
+            value = _strip_quotes(value)
+        else:
+            return False
+        value = value.strip()
+        if not value:
+            return False
+        if not value.isdigit():
+            return True
+    elif value.lower() in {"ext", "external"}:
+        return True
+    if not re.fullmatch(r"[0-9]+", value):
+        return False
+    try:
+        return int(value) > 0
+    except ValueError:
+        return False
+
+
+def _nonempty_except_arg(inner: str) -> bool:
+    value = inner.strip()
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
+    items = _split_top_level_commas(value)
+    for item in items:
+        item = item.strip()
+        if _QUOTED_RE.fullmatch(item):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = _strip_quotes(item)
+        if not item.strip():
+            return False
+    return bool(items)
 
 
 def _function_name(token: str) -> str:

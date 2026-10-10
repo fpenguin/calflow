@@ -42,10 +42,12 @@ class EventTrust:
 
 def classify_event_trust(event: Dict, *, owner_email: Optional[str] = None) -> EventTrust:
     """Classify a calendar event according to sender allowlists."""
-    owner = _normalize_email(owner_email) or _owner_from_event_calendar(event)
+    owner = _normalize_email(owner_email)
     actors = _event_actor_emails(event)
 
-    if owner and ALLOW_SELF_AUTHORED_EVENTS and owner in actors:
+    if owner and ALLOW_SELF_AUTHORED_EVENTS and (
+        owner in actors or _self_on_primary_calendar(event, owner)
+    ):
         return EventTrust(TRUST_SELF, True, owner, "self_authored")
 
     trusted_emails = {_normalize_email(e) for e in TRUSTED_INVITE_EMAILS}
@@ -85,8 +87,19 @@ def _event_actor_emails(event: Dict) -> Set[str]:
     return out
 
 
-def _owner_from_event_calendar(event: Dict) -> Optional[str]:
-    return _normalize_email(event.get("calendar_id"))
+def _self_on_primary_calendar(event: Dict, owner: str) -> bool:
+    # Google self flags describe this calendar copy, including shared calendars.
+    # Only a separately resolved account identity can establish primary membership.
+    calendar_id = event.get("calendar_id")
+    if calendar_id != "primary" and _normalize_email(calendar_id) != owner:
+        return False
+    for actor in ("creator", "organizer"):
+        if event.get(f"{actor}_self") is True:
+            return True
+        raw = event.get(actor)
+        if isinstance(raw, dict) and raw.get("self") is True:
+            return True
+    return False
 
 
 def _normalize_email(value: object) -> Optional[str]:

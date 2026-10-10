@@ -37,6 +37,7 @@ import time
 from typing import Any
 
 from core.utils import log
+from runtime.actions._applescript import escape_applescript_string
 
 _LAYOUT_RETRY_ATTEMPTS = 5
 _LAYOUT_RETRY_DELAY_SECONDS = 0.35
@@ -339,7 +340,7 @@ def set_window_bounds(app_name: str, rect: tuple[int, int, int, int]) -> bool:
     """
     x, y, w, h = rect
     x2, y2 = x + w, y + h
-    safe = (app_name or "").replace('"', '\\"')
+    safe = escape_applescript_string(app_name or "")
     script = (
         f'tell application "{safe}"\n'
         f'    activate\n'
@@ -569,33 +570,17 @@ function run(argv) {
             }
             if (axDenied) break;
             if (matchedIdx.length > 0) {
-                // v1.1.15 — three-step fallback chain per matched window.
-                // Each chosen because it's NON-DESTRUCTIVE for the
-                // user's data (no quit, no force-close-with-prompt):
-                //   1. miniaturize  → goes to Dock; reversible by click
-                //   2. close        → standard close; some apps have
-                //                     unsaved-changes prompts
-                //   3. move off-screen → set position to (-32000, -32000);
-                //                     window stays alive, content
-                //                     preserved, just not visible.
-                //                     Worst case the user can find it
-                //                     in Mission Control or by re-
-                //                     opening from the app menu.
-                // Tracks per-window outcome so the user sees what we did.
-                var mini = 0, closed = 0, moved = 0, errs = 0;
+                // HIDE must not close documents when minimization fails.
+                // Retain only the existing non-destructive move fallback.
+                var mini = 0, moved = 0, errs = 0;
                 for (var m = 0; m < matchedIdx.length; m++) {
                     var u2 = matchedIdx[m];
-                    var miniErr = null, closeErr = null, moveErr = null;
+                    var miniErr = null, moveErr = null;
                     try {
                         ui[u2].el.miniaturized = true;
                         mini += 1;
                         continue;
                     } catch (e) { miniErr = e.message || String(e); }
-                    try {
-                        ui[u2].el.close();
-                        closed += 1;
-                        continue;
-                    } catch (e) { closeErr = e.message || String(e); }
                     try {
                         ui[u2].el.position = [-32000, -32000];
                         moved += 1;
@@ -605,17 +590,15 @@ function run(argv) {
                     errored.push(
                         name + " " + ui[u2].kind +
                         " (mini: " + miniErr +
-                        "; close: " + closeErr +
                         "; move: " + moveErr + ")"
                     );
                 }
                 var actionParts = [];
                 if (mini > 0)   actionParts.push(mini + " min");
-                if (closed > 0) actionParts.push(closed + " closed");
                 if (moved > 0)  actionParts.push(moved + " off-screen");
                 if (errs > 0)   actionParts.push(errs + " err");
                 var summary = actionParts.join(", ") || "0";
-                if (mini + closed + moved > 0) {
+                if (mini + moved > 0) {
                     hid.push(name + " (" + summary + " of " + matchedIdx.length + ")");
                 } else {
                     kept.push(name);

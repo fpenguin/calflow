@@ -33,6 +33,7 @@ import os
 import sys
 import unittest
 from typing import List
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -79,17 +80,16 @@ class SmartExecutorContamination(unittest.TestCase):
     def setUp(self):
         # Patch side effects so we just capture what would be opened.
         import runtime.executor as ex
-        import runtime.actions.autofill as af
         self.captured: List[dict] = []
-        self._saves = (ex.open_target, ex.time.sleep, af.trigger_autofill)
+        self._saves = (ex.open_target, ex.time.sleep, ex.trigger_autofill, ex.record_action)
         ex.open_target = self._fake_open
         ex.time.sleep = lambda *_a, **_k: None
-        af.trigger_autofill = lambda mode="fill": None
+        ex.trigger_autofill = lambda mode="fill": None
+        ex.record_action = lambda *a, **kw: None
 
     def tearDown(self):
         import runtime.executor as ex
-        import runtime.actions.autofill as af
-        ex.open_target, ex.time.sleep, af.trigger_autofill = self._saves
+        ex.open_target, ex.time.sleep, ex.trigger_autofill, ex.record_action = self._saves
 
     def _fake_open(self, url=None, app=None, layout=None, display_spec=None,
                    chrome_profile=None, new_window=False):
@@ -115,7 +115,10 @@ class SmartExecutorContamination(unittest.TestCase):
         self.assertIn("#right(30%)", polluted)
 
         from runtime.executor import execute_entries
-        execute_entries(parsed.entries, global_tags=polluted, debug=False)
+        # v1.5.5 - regression: stale autofill patches must not reach the desktop.
+        with patch("subprocess.Popen", side_effect=AssertionError("unexpected subprocess")) as process:
+            execute_entries(parsed.entries, global_tags=polluted, debug=False)
+        process.assert_not_called()
 
         self.assertEqual(len(self.captured), 2)
 

@@ -8,6 +8,7 @@ import subprocess
 
 from config.settings import RUN_ERROR_NOTIFICATIONS
 from core.utils import log
+from runtime.actions._applescript import escape_applescript_string
 
 
 def notify_run_error(title: str, message: str) -> None:
@@ -22,9 +23,14 @@ def notify_run_error(title: str, message: str) -> None:
         f'with title {_applescript_string(safe_title)}'
     )
     try:
-        subprocess.run(["osascript", "-e", script], check=False, timeout=5)
+        result = subprocess.run(
+            ["osascript", "-e", script], check=False, timeout=5,
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            log(f"[WARN] notification failed (exit {result.returncode})")
     except Exception as exc:
-        log(f"[WARN] notification failed: {exc}")
+        log(f"[WARN] notification failed: {type(exc).__name__}")
 
 
 def _clip(text: str, limit: int) -> str:
@@ -35,4 +41,4 @@ def _clip(text: str, limit: int) -> str:
 
 
 def _applescript_string(text: str) -> str:
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return '"' + escape_applescript_string(text) + '"'

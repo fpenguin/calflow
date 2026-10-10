@@ -101,16 +101,45 @@ def default_screenshot_path() -> str:
 # 📸 PUBLIC API
 # =========================================================
 
-def take_screenshot(path: Optional[str] = None) -> Optional[str]:
+def _unsupported_scope(target_keyword, display, window, area) -> bool:
+    if any(value is not None for value in (target_keyword, display, window, area)):
+        log("[WARN] Scoped screenshots are unsupported; capture skipped")
+        return True
+    return False
+
+
+def _prepare_explicit_path(path: str) -> str:
+    target = Path(os.path.expanduser(path))
+    if target.is_dir() or path.endswith("/"):
+        filename = _format_filename(
+            PLUS_SCREENSHOT_FILENAME_FORMAT, datetime.datetime.now()
+        )
+        if filename in (".", "..") or Path(filename).name != filename:
+            raise ValueError("Screenshot filename pattern must produce a filename")
+        target = target / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
+
+
+def take_screenshot(
+    path: Optional[str] = None,
+    *,
+    target_keyword: str | None = None,
+    display: int | str | None = None,
+    window: str | None = None,
+    area: tuple[int, int, int, int] | None = None,
+) -> Optional[str]:
     """
     Capture a screenshot to `path` (or a default path if None).
 
     Returns:
-        The path written, or None on failure.
+        The path written, or None on failure or any unsupported scope.
     """
-    target = path or default_screenshot_path()
+    if _unsupported_scope(target_keyword, display, window, area):
+        return None
 
     try:
+        target = _prepare_explicit_path(path) if path else default_screenshot_path()
         # macOS: screencapture -x writes a silent PNG to the path.
         result = subprocess.run(
             ["/usr/sbin/screencapture", "-x", target],
@@ -133,14 +162,23 @@ def take_screenshot(path: Optional[str] = None) -> Optional[str]:
         return None
 
 
-def take_screenshot_to_clipboard() -> bool:
+def take_screenshot_to_clipboard(
+    *,
+    target_keyword: str | None = None,
+    display: int | str | None = None,
+    window: str | None = None,
+    area: tuple[int, int, int, int] | None = None,
+) -> bool:
     """
     Capture the screen straight to the clipboard (v1.5.2 — the default
     sink for bare `screenshot` and `screenshot to(clipboard)`).
 
     Returns:
-        True on success, False on failure.
+        True on success, False on failure or any unsupported scope.
     """
+    if _unsupported_scope(target_keyword, display, window, area):
+        return False
+
     try:
         # macOS: screencapture -c -x captures silently to the clipboard.
         result = subprocess.run(

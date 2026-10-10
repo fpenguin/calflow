@@ -961,7 +961,11 @@ def _split_args(
         if m:
             name = m.group(1).lower()
             inner = m.group(2).strip()
-            value = _coerce_function_args(inner)
+            # Display indices are integers, not durations; avoid float overflow/rounding.
+            if name == "display" and inner.isascii() and inner.isdigit():
+                value = int(inner)
+            else:
+                value = _coerce_function_args(inner)
             functions.append((name, value))
             # v1.1.2 — `#` drop sugar: promote layout-named function calls
             # to tags so the existing layout resolver sees them. The tag

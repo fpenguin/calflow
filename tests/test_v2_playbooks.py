@@ -23,6 +23,7 @@ import re
 import sys
 import unittest
 from typing import List
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -72,6 +73,8 @@ def install_action_mocks(testcase: unittest.TestCase) -> None:
     saves = {
         "open_target":      ce.open_target,
         "take_screenshot":  ce.take_screenshot,
+        "take_screenshot_to_clipboard": ce.take_screenshot_to_clipboard,
+        "record_action":    ce.record_action,
         "trigger_autofill": ce.trigger_autofill,
         "trigger_named_btt": ce.trigger_named_btt,
         "run_applescript":  ce.run_applescript,
@@ -81,6 +84,8 @@ def install_action_mocks(testcase: unittest.TestCase) -> None:
     }
     ce.open_target = lambda **kw: None
     ce.take_screenshot = lambda *a, **kw: "/tmp/mock.png"
+    ce.take_screenshot_to_clipboard = lambda: True
+    ce.record_action = lambda *a, **kw: None
     ce.trigger_autofill = lambda mode="fill": None
     ce.trigger_named_btt = lambda *a, **kw: None
     ce.run_applescript = lambda *a, **kw: None
@@ -91,6 +96,8 @@ def install_action_mocks(testcase: unittest.TestCase) -> None:
     def restore():
         ce.open_target = saves["open_target"]
         ce.take_screenshot = saves["take_screenshot"]
+        ce.take_screenshot_to_clipboard = saves["take_screenshot_to_clipboard"]
+        ce.record_action = saves["record_action"]
         ce.trigger_autofill = saves["trigger_autofill"]
         ce.trigger_named_btt = saves["trigger_named_btt"]
         ce.run_applescript = saves["run_applescript"]
@@ -99,6 +106,10 @@ def install_action_mocks(testcase: unittest.TestCase) -> None:
         ce.time.sleep = saves["sleep"]
 
     testcase.addCleanup(restore)
+    for name in ("close_app", "hide_app", "focus_app", "focus_window_by_title"):
+        action_patch = patch(f"runtime.actions.app_control.{name}", autospec=True)
+        action_patch.start()
+        testcase.addCleanup(action_patch.stop)
 
 
 # =============================================================
@@ -142,7 +153,10 @@ class _PlaybookMixin:
 
     def test_executor_runs_without_exception(self):
         # Mocked side effects → just verifying dispatch wires up.
-        ce.execute_commands(self.result.commands)
+        # v1.5.5 - regression: backend exception handling must not hide missing mocks.
+        with patch("subprocess.Popen", side_effect=AssertionError("unexpected subprocess")) as process:
+            ce.execute_commands(self.result.commands)
+        process.assert_not_called()
 
 
 # =============================================================
@@ -167,12 +181,13 @@ class PB_QuickOpen(_PlaybookMixin, unittest.TestCase):
 
 class PB_SlackScreenshot(_PlaybookMixin, unittest.TestCase):
     playbook_file = "slack-screenshot.md"
-    expected_verbs = ["FOCUS", "SCREENSHOT", "SAVE"]
+    # Audit remediation: the playbook now writes via screenshot to(...), not stub SAVE.
+    expected_verbs = ["FOCUS", "SCREENSHOT"]
 
 
 class PB_WeeklyReport(_PlaybookMixin, unittest.TestCase):
     playbook_file = "weekly-report.md"
-    expected_verbs = ["OPEN", "FOCUS", "SCREENSHOT", "SAVE"]
+    expected_verbs = ["OPEN", "FOCUS", "SCREENSHOT"]
 
 
 # =============================================================

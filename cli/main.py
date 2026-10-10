@@ -56,6 +56,15 @@ if __name__ == "__main__":
         from cli.menubar_launchd import print_menubar_action_json
         print_menubar_action_json(_early_cmd.split("-", 1)[1])
         sys.exit(0)
+    if _early_cmd == "menubar":
+        try:
+            from cli.menubar import main as menubar_main
+        except ImportError as exc:
+            print(json.dumps({"error": f"menubar deps missing: {exc}",
+                              "hint": ".venv/bin/python -m pip install -r requirements.txt"}))
+            sys.exit(1)
+        menubar_main()
+        sys.exit(0)
 
 # CLI / lifecycle
 from cli.onboarding import (
@@ -70,6 +79,7 @@ from cli.menubar_launchd import print_menubar_action_json
 # Infra
 from infra.calendar.calendar_client import (
     build_service,
+    get_primary_account_email,
     get_recent_events,
     get_upcoming_events,
     next_event_across_calendars,
@@ -251,7 +261,7 @@ def _daemon_state() -> dict:
     except Exception:
         return {"loaded": False, "raw_line": None}
     for line in (out.stdout or "").splitlines():
-        if "com.calflow" in line:
+        if line.split() and line.split()[-1] == "com.calflow":
             return {"loaded": True, "raw_line": line.strip()}
     return {"loaded": False, "raw_line": None}
 
@@ -262,10 +272,10 @@ _AVAILABLE_COMMANDS = """
     python3 -m cli.main start       # start the background daemon
     python3 -m cli.main stop        # stop the background daemon
     python3 -m cli.main restart     # restart it
-    python3 -m cli.main setup       # re-onboarding (4 steps)
+    python3 -m cli.main setup       # re-onboarding (5 steps)
     python3 -m cli.main display     # list connected monitors + #display syntax
     python3 -m cli.main test        # generate a test event + run it on demand
-    python3 -m cli.main menubar-install  # show ⏱ CF now and at login
+    python3 -m cli.main menubar-install  # show the date icon now and at login
     python3 -m cli.main menubar-status   # check menu bar companion
     python3 -m cli.main uninstall   # remove daemon (data preserved; --full to wipe)
     python3 -m cli.repl             # interactive REPL (no daemon needed)
@@ -631,21 +641,26 @@ def run_event_by_id(event_id: str) -> None:
         print(json.dumps(out)); return
 
     target: Optional[Dict] = None
-    for cal_id in get_selected_calendars():
-        for ev in get_upcoming_events(service, cal_id, hours=24):
-            if ev.get("id") == event_id:
-                target = ev; break
-        if target: break
-        for ev in get_recent_events(service, cal_id, hours=12):
-            if ev.get("id") == event_id:
-                target = ev; break
-        if target: break
+    try:
+        for cal_id in get_selected_calendars():
+            for ev in get_upcoming_events(service, cal_id, hours=24):
+                if ev.get("id") == event_id:
+                    target = ev; break
+            if target: break
+            for ev in get_recent_events(service, cal_id, hours=12):
+                if ev.get("id") == event_id:
+                    target = ev; break
+            if target: break
+    except Exception as exc:
+        out["error"] = f"calendar query failed: {type(exc).__name__}"
+        print(json.dumps(out))
+        return
 
     if target is None:
         out["error"] = "event not found in upcoming/missed window"
         print(json.dumps(out)); return
 
-    trust_level = _event_trust_or_log(target)
+    trust_level = _event_trust_or_log(target, owner_email=_owner_email_hint(service))
     if trust_level is None:
         out["error"] = "untrusted event source"
         print(json.dumps(out)); return
@@ -665,6 +680,7 @@ def run_event_by_id(event_id: str) -> None:
                 entries=parsed.entries,
                 global_tags=extract_tags(text),
                 debug=DEBUG,
+                trust_level=trust_level,
             )
         elif parsed.is_plus:
             execute_commands(
@@ -928,19 +944,17 @@ def _google_account_label() -> str:
     return "Not connected"
 
 
-def _owner_email_hint() -> Optional[str]:
-    label = _google_account_label()
-    return label if "@" in label else None
+def _owner_email_hint(service=None) -> Optional[str]:
+    return get_primary_account_email(service) if service is not None else None
 
 
-def _event_trust_or_log(event: Dict) -> Optional[str]:
-    trust = classify_event_trust(event, owner_email=_owner_email_hint())
+def _event_trust_or_log(event: Dict, *, owner_email: str | None = None) -> Optional[str]:
+    trust = classify_event_trust(event, owner_email=owner_email)
     if trust.trusted:
         return trust.level
     log(
         "[WARN] Skipped untrusted CalFlow event: "
-        f"title={event.get('title', '(untitled)')!r} "
-        f"actor={trust.actor or '(unknown)'} reason={trust.reason}"
+        f"reason={trust.reason}"
     )
     return None
 
@@ -1135,10 +1149,9 @@ def apply_targets_from_stdin() -> None:
 def migrate_settings_command() -> None:
     """Move legacy settings.py/TARGETS edits into gitignored JSON sidecars."""
     from core.settings_reader import migrate_settings_to_sidecars
-    from core.targets_reader import migrate_targets_to_sidecar
 
     settings_result = migrate_settings_to_sidecars()
-    targets_result = migrate_targets_to_sidecar()
+    targets_result = settings_result.get("targets", {"ok": False, "migrated": False})
     print(json.dumps({
         "ok": bool(settings_result.get("ok")) and bool(targets_result.get("ok")),
         "settings": settings_result,
@@ -1524,7 +1537,12 @@ def _list_test_candidates(hours: int = 2) -> List[Dict]:
 
     out: List[Dict] = []
     for cal_id in get_selected_calendars():
-        for ev in get_upcoming_events(service, cal_id, hours=hours):
+        try:
+            events = get_upcoming_events(service, cal_id, hours=hours)
+        except Exception as exc:
+            print(f"[WARN] Calendar query skipped ({type(exc).__name__})")
+            continue
+        for ev in events:
             text = (ev.get("text") or "").strip()
             title_raw = (ev.get("title") or "").strip()
             title = title_raw.lower()
@@ -1855,9 +1873,14 @@ def main() -> None:
     service = build_service()
 
     # --- Fetch from every selected calendar ---------------
+    owner_email = _owner_email_hint(service)
     events: List[Dict] = []
     for cal_id in calendars:
-        cal_events = get_upcoming_events(service, cal_id)
+        try:
+            cal_events = get_upcoming_events(service, cal_id)
+        except Exception as exc:
+            log(f"[WARN] Calendar query skipped ({type(exc).__name__})")
+            continue
         if DEBUG:
             log(f"[DEBUG] {cal_id} → {len(cal_events)} event(s)")
         events.extend(cal_events)
@@ -1910,14 +1933,13 @@ def main() -> None:
         trigger_time = event_time - timedelta(seconds=alert_offset)
 
         if DEBUG:
-            log(f"[DEBUG] Event: {event.get('title')}")
             log(f"[DEBUG] Now: {now.isoformat()}")
             log(f"[DEBUG] Trigger: {trigger_time.isoformat()}")
 
         if not _within_execution_window(now, trigger_time):
             continue
 
-        trust_level = _event_trust_or_log(event)
+        trust_level = _event_trust_or_log(event, owner_email=owner_email)
         if trust_level is None:
             continue
 
@@ -1929,10 +1951,7 @@ def main() -> None:
                 log("[DEBUG] No executable content")
             continue
 
-        log(
-            f"[INFO] Processing ({parsed.mode}): "
-            f"{event.get('title', '(untitled)')}"
-        )
+        log(f"[INFO] Processing ({parsed.mode})")
 
         # =================================================
         # 🚀 ROUTE → EXECUTION
@@ -1944,6 +1963,7 @@ def main() -> None:
                     entries=parsed.entries,
                     global_tags=global_tags,
                     debug=DEBUG,
+                    trust_level=trust_level,
                 )
             elif parsed.is_plus:
                 if parsed.has_errors and DEBUG:

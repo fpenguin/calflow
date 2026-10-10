@@ -17,8 +17,7 @@ Open → load → capture.
 
 open "tip-developer-today.com/report?start={now-7d}&end={now}"
 focus @chrome title("Report")
-screenshot
-save source(clipboard) to("~/Reports/weekly_{now > YYYY-MM-DD}.png")
+screenshot to("~/Reports/weekly_{now > YYYY-MM-DD}.png")
 ```
 
 ---
@@ -27,7 +26,7 @@ save source(clipboard) to("~/Reports/weekly_{now > YYYY-MM-DD}.png")
 
 - URL loads with dynamic date range (last 7 days)  
 - Chrome focuses on the report page  
-- screenshot is captured  
+- the whole screen is captured (not just the report window)
 - file saved with today’s date  
 
 → fully automated weekly reporting  
@@ -58,8 +57,7 @@ You get:
 +CalFlow+
 
 open "analytics.com?start={now-7d}&end={now}"
-screenshot
-save source(clipboard) to("~/Reports/growth_{now > YYYY-MM-DD}.png")
+screenshot to("~/Reports/growth_{now > YYYY-MM-DD}.png")
 ```
 
 → weekly performance snapshot  
@@ -72,8 +70,7 @@ save source(clipboard) to("~/Reports/growth_{now > YYYY-MM-DD}.png")
 +CalFlow+
 
 open "dashboard.com/revenue?from={now-7d}&to={now}"
-screenshot
-save source(clipboard) to("~/Reports/revenue_{now > YYYY-MM-DD}.png")
+screenshot to("~/Reports/revenue_{now > YYYY-MM-DD}.png")
 ```
 
 → finance reporting  
@@ -86,8 +83,7 @@ save source(clipboard) to("~/Reports/revenue_{now > YYYY-MM-DD}.png")
 +CalFlow+
 
 open "ads.com/report?start={now-7d}&end={now}"
-screenshot
-save source(clipboard) to("~/Reports/ads_{now > YYYY-MM-DD}.png")
+screenshot to("~/Reports/ads_{now > YYYY-MM-DD}.png")
 ```
 
 → campaign tracking  
@@ -130,7 +126,7 @@ weekly_{now > YYYY-MM-DD}.png
 - `open` = load report with dynamic dates  
 - `{}` = generate time range automatically  
 - `screenshot` = capture  
-- `save` = archive  
+- `to("path")` = write the screenshot directly to a file
 
 ---
 

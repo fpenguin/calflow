@@ -16,11 +16,11 @@ Format: PEP 440 (MAJOR.MINOR.PATCH).
 
 from __future__ import annotations
 
-__version__ = "1.5.5"
+__version__ = "1.5.6"
 
 # Stable release vs. work-in-progress flag. Toggle to True only on a
 # tagged release; flip back to False on the next dev commit.
-__is_release__ = True
+__is_release__ = False
 
 
 def version_string() -> str:

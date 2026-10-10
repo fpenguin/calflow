@@ -17,6 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, Dict, List
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -33,10 +34,12 @@ class FakeActions:
     def __init__(self) -> None:
         self.opens: List[Dict[str, Any]] = []
         self.shots: List[Any] = []
+        self.clipboard_shots = 0
         self.fills: List[str] = []
         self.sleeps: List[float] = []
         self.btt: List[str] = []
         self.applescripts: List[str] = []
+        self.applescript_timeouts: list[float | None] = []
         self.shortcuts: List[Dict[str, str]] = []
         self.alfred: List[Dict[str, str]] = []
         self.notifications: List[Dict[str, str]] = []
@@ -55,6 +58,10 @@ class FakeActions:
         self.shots.append(path)
         return path or "/tmp/calflow_test.png"
 
+    def take_screenshot_to_clipboard(self) -> bool:
+        self.clipboard_shots += 1
+        return True
+
     def trigger_autofill(self, mode="fill") -> None:
         self.fills.append(mode)
 
@@ -65,8 +72,9 @@ class FakeActions:
         self.btt.append(trigger_name)
         return ok_result("btt", f"launched {trigger_name}")
 
-    def run_applescript(self, script: str) -> RunResult:
+    def run_applescript(self, script: str, timeout: float | None = None) -> RunResult:
         self.applescripts.append(script)
+        self.applescript_timeouts.append(timeout)
         return self.applescript_result
 
     def run_shortcut(self, name: str, input_text: str = "") -> RunResult:
@@ -96,6 +104,19 @@ class FakeActions:
 class CommandExecutorRoutes(unittest.TestCase):
     def setUp(self) -> None:
         self.fake = FakeActions()
+        process_patch = patch("subprocess.Popen", side_effect=AssertionError("unexpected subprocess"))
+        process = process_patch.start()
+        self.addCleanup(process_patch.stop)
+        # Executors can swallow action exceptions; also fail on the recorded attempt.
+        self.addCleanup(process.assert_not_called)
+        stats_patch = patch.object(ce, "record_action")
+        self.record_action = stats_patch.start()
+        self.addCleanup(stats_patch.stop)
+        screenshot_patch = patch.object(
+            ce, "take_screenshot_to_clipboard", self.fake.take_screenshot_to_clipboard,
+        )
+        screenshot_patch.start()
+        self.addCleanup(screenshot_patch.stop)
         # Patch the names that command_executor imported.
         self._orig = {
             "open_target": ce.open_target,
@@ -145,6 +166,13 @@ class CommandExecutorRoutes(unittest.TestCase):
         ce.execute_commands(result.commands)
         self.assertEqual(self.fake.shots, ["/tmp/x.png"])
 
+    def test_screenshot_defaults_to_mock_clipboard(self) -> None:
+        # v1.5.5 regression: bare screenshots must never reach the desktop in tests.
+        result = parse("+CalFlow+\nSCREENSHOT")
+        ce.execute_commands(result.commands)
+        self.assertEqual(self.fake.clipboard_shots, 1)
+        self.record_action.assert_called_once_with("screenshot", success=True)
+
     def test_wait_calls_sleep_with_seconds(self) -> None:
         result = parse("+CalFlow+\nWAIT 2")
         ce.execute_commands(result.commands)
@@ -170,6 +198,13 @@ class CommandExecutorRoutes(unittest.TestCase):
             self.fake.applescripts,
             ['tell application "Finder" to activate'],
         )
+
+    def test_run_applescript_explicit_timeout_routes_to_fake(self) -> None:
+        # v1.5.5 regression: the fake must accept the real backend's timeout keyword.
+        result = parse('+CalFlow+\nrun applescript timeout(2)\n+++\nreturn 1\n+++')
+        ce.execute_commands(result.commands)
+        self.assertEqual(self.fake.applescripts, ["return 1"])
+        self.assertEqual(self.fake.applescript_timeouts, [2.0])
 
     def test_run_applescript_blocked_for_trusted_domain_by_default(self) -> None:
         result = parse(

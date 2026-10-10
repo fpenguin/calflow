@@ -7,22 +7,29 @@ conventions to follow when writing new tests.
 
 ## Running tests
 
-Single command, all 450 tests in <100 ms:
+Run the full suite from the project environment. Use the reported count;
+it changes as regression coverage is added.
 
 ```bash
 pytest tests/                        # full suite
 pytest tests/test_v2_spec.py -v      # one file
 pytest tests/ -k "title_url"         # by name pattern
 pytest tests/ -x --tb=short          # stop on first failure
+node --test tests/menubar_ui.test.cjs # menu state/timeout behavior (Node 22+)
 ```
 
 The `pytest` config lives in `pyproject.toml` (`[tool.pytest.ini_options]`).
 
-You can also still run the whole thing with stdlib `unittest`:
+For legacy unittest-style tests only:
 
 ```bash
-python -m unittest discover tests/   # works, slower CLI but identical results
+python -m unittest discover tests/
 ```
+
+`unittest` does not discover the newer plain pytest functions. Use pytest
+plus the Node command above for a complete run. Backend tests must mock
+desktop actions, subprocesses and storage; a passing parser/executor test
+does not prove that a macOS action succeeded.
 
 ---
 

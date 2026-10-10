@@ -226,7 +226,7 @@ function bridge(op, args) {
     catch (e) { _pending.delete(id); reject(new Error("bridge unavailable")); }
     setTimeout(() => {
       if (_pending.has(id)) { _pending.delete(id); reject(new Error("bridge timeout: " + op)); }
-    }, 30000);
+    }, op === "run-script" ? 65000 : 25000);
   });
 }
 window.cf_resolve = (id, payload) => { const p = _pending.get(id); if (p) { _pending.delete(id); p.resolve(payload); } };

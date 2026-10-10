@@ -23,11 +23,16 @@ __all__ = [
 ]
 
 import subprocess
+import sys
 import webbrowser
 import time
 from typing import Optional, Dict
 
 from core.utils import log
+from runtime.actions._applescript import escape_applescript_string
+
+
+_LAUNCH_TIMEOUT_SECONDS = 10
 
 
 # =========================================================
@@ -114,9 +119,12 @@ def open_target(
     *,
     chrome_profile: Optional[str] = None,
     new_window: bool = False,
-) -> None:
+) -> bool:
     """
     Open one target (URL, app, or file) and optionally apply layout.
+
+    Returns True after a successful launch, False on launch failure.
+    Layout remains best-effort and does not change the launch result.
 
     The `url` parameter holds the **primary** of an OPEN command, which
     can be any of:
@@ -141,25 +149,28 @@ def open_target(
     """
     if not url and not app:
         log("[WARN] open_target: no primary or app provided")
-        return
+        return False
 
     try:
         # Decide what `url` actually is.
         kind = _classify_primary(url) if url else None
 
         if kind == "url":
-            _open_url(url, app, chrome_profile=chrome_profile,
-                      new_window=new_window)
+            opened = _open_url(url, app, chrome_profile=chrome_profile,
+                               new_window=new_window)
         elif kind == "file":
-            _open_file(url)
+            opened = _open_file(url)
         elif kind == "app":
-            _open_app(_strip_quotes(url))
+            opened = _open_app(_strip_quotes(url))
         elif app:
             # No primary → just launch the app
-            _open_app(app)
+            opened = _open_app(app)
         else:
-            log(f"[WARN] open_target: could not classify primary {url!r}")
-            return
+            log("[WARN] open_target: could not classify primary")
+            return False
+
+        if not opened:
+            return False
 
         # Allow OS time to spawn window
         time.sleep(0.8)
@@ -173,9 +184,11 @@ def open_target(
                 _strip_quotes(url) if kind == "app" else app
             )
             _apply_layout(target_app, layout, display_spec)
+        return True
 
     except Exception as e:
-        log(f"[ERROR] open_target failed: {e}")
+        log(f"[ERROR] open_target failed: {type(e).__name__}")
+        return False
 
 
 # =========================================================
@@ -223,15 +236,27 @@ def _strip_quotes(text: str) -> str:
 _CHROMIUM_BROWSERS = ("Google Chrome", "Brave Browser", "Microsoft Edge", "Arc")
 
 
+def _run_launch(args: list[str]) -> bool:
+    result = subprocess.run(
+        args, check=False, capture_output=True, text=True,
+        timeout=_LAUNCH_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        log(f"[WARN] Launch command failed (exit {result.returncode})")
+        return False
+    return True
+
+
 def _open_url(
     url: str,
     app: Optional[str],
     *,
     chrome_profile: Optional[str] = None,
     new_window: bool = False,
-) -> None:
+) -> bool:
     """
-    Open URL in specified browser or fallback.
+    Open URL in the specified browser, or the OS default when no app is given.
+    Explicit browser/profile failures are not retried in a different context.
 
     v1.1.20 semantics for `new_window`:
         True  → guarantee the URL lands in a fresh BROWSER WINDOW
@@ -253,92 +278,109 @@ def _open_url(
                 if app == "Google Chrome" and chrome_profile:
                     args.append(f"--profile-directory={chrome_profile}")
                 args.append(url)
-                subprocess.run(args, check=False)
+                if not _run_launch(args):
+                    return False
                 log(
                     f"[INFO] Opened URL in {app} (new window"
                     f"{', ' + chrome_profile if app == 'Google Chrome' and chrome_profile else ''}"
-                    f"): {url}"
+                    ")"
                 )
-                return
+                return True
             if app == "Safari":
-                escaped = url.replace('"', '\\"')
+                escaped = escape_applescript_string(url)
                 script = (
                     'tell application "Safari"\n'
                     '    activate\n'
                     f'    make new document with properties {{URL:"{escaped}"}}\n'
                     'end tell\n'
                 )
-                subprocess.run(["osascript", "-e", script], check=False)
-                log(f"[INFO] Opened URL in Safari (new window): {url}")
-                return
+                if not _run_launch(["osascript", "-e", script]):
+                    return False
+                log("[INFO] Opened URL in Safari (new window)")
+                return True
             if app == "Firefox":
-                subprocess.run(
-                    ["open", "-a", "Firefox", "--args", "--new-window", url],
-                    check=False,
-                )
-                log(f"[INFO] Opened URL in Firefox (new window): {url}")
-                return
+                if not _run_launch(["open", "-a", "Firefox", "--args", "--new-window", url]):
+                    return False
+                log("[INFO] Opened URL in Firefox (new window)")
+                return True
             # Unknown browser — best-effort: -na (new instance)
-            subprocess.run(["open", "-na", app, url], check=False)
+            if not _run_launch(["open", "-na", app, url]):
+                return False
             log(
                 f"[INFO] Opened URL in {app} (-na fallback; "
-                "new-window not guaranteed): {url}"
+                "new-window not guaranteed)"
             )
-            return
+            return True
         except Exception as e:
-            log(f"[WARN] new-window launch for {app} failed, falling back: {e}")
+            log(f"[WARN] new-window launch for {app} failed: {type(e).__name__}")
+            return False
 
     # ── new_window=False (or no app) path ────────────────────────────
     if app == "Google Chrome" and chrome_profile:
         try:
-            subprocess.run(
+            if not _run_launch(
                 ["open", "-na", "Google Chrome", "--args",
                  f"--profile-directory={chrome_profile}", url],
-                check=False,
-            )
-            log(f"[INFO] Opened URL in Chrome ({chrome_profile}): {url}")
-            return
+            ):
+                return False
+            log(f"[INFO] Opened URL in Chrome ({chrome_profile})")
+            return True
         except Exception as e:
-            log(f"[WARN] Chrome profile launch failed, fallback: {e}")
+            log(f"[WARN] Chrome profile launch failed: {type(e).__name__}")
+            return False
 
     if app:
         try:
-            subprocess.run(["open", "-a", app, url], check=False)
-            log(f"[INFO] Opened URL in {app}: {url}")
-            return
+            if not _run_launch(["open", "-a", app, url]):
+                return False
+            log(f"[INFO] Opened URL in {app}")
+            return True
         except Exception as e:
-            log(f"[WARN] Failed to open in {app}, fallback: {e}")
+            log(f"[WARN] Failed to open in {app}: {type(e).__name__}")
+            return False
 
-    webbrowser.open(url)
-    log(f"[INFO] Opened URL (default): {url}")
+    if sys.platform == "darwin":
+        if not _run_launch(["open", url]):
+            return False
+    elif not webbrowser.open(url):
+        log("[WARN] Default browser failed to open URL")
+        return False
+    log("[INFO] Opened URL (default)")
+    return True
 
 
 # =========================================================
 # 📄 FILE HANDLING
 # =========================================================
 
-def _open_file(path: str) -> None:
+def _open_file(path: str) -> bool:
     """Open a file with its OS-default app via `open <path>`."""
     import os
     expanded = os.path.expanduser(_strip_quotes(path))
     try:
-        subprocess.run(["open", expanded], check=False)
-        log(f"[INFO] Opened file: {expanded}")
+        if not _run_launch(["open", expanded]):
+            return False
+        log("[INFO] Opened file")
+        return True
     except Exception as e:
-        log(f"[ERROR] Failed to open file {expanded!r}: {e}")
+        log(f"[ERROR] Failed to open file: {type(e).__name__}")
+        return False
 
 
 # =========================================================
 # 🖥️ APP HANDLING
 # =========================================================
 
-def _open_app(app: str) -> None:
+def _open_app(app: str) -> bool:
     """Launch macOS application by name (e.g. 'Google Chrome')."""
     try:
-        subprocess.run(["open", "-a", app], check=False)
+        if not _run_launch(["open", "-a", app]):
+            return False
         log(f"[INFO] Opened app: {app}")
+        return True
     except Exception as e:
-        log(f"[ERROR] Failed to open app {app!r}: {e}")
+        log(f"[ERROR] Failed to open app {app!r}: {type(e).__name__}")
+        return False
 
 
 # =========================================================

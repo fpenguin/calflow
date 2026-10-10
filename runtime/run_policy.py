@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-__all__ = ["is_run_backend_allowed"]
+__all__ = ["is_run_backend_allowed", "is_open_target_allowed"]
 
-from typing import Optional
+from urllib.parse import urlsplit
 
 from config.settings import (
     ALLOW_RUN_BACKENDS_SELF,
@@ -18,7 +18,7 @@ from core.event_trust import (
 )
 
 
-def is_run_backend_allowed(backend: Optional[str], trust_level: str) -> bool:
+def is_run_backend_allowed(backend: str | None, trust_level: str) -> bool:
     name = (backend or "script").strip().lower()
     if trust_level == TRUST_SELF:
         return name in ALLOW_RUN_BACKENDS_SELF
@@ -27,3 +27,29 @@ def is_run_backend_allowed(backend: Optional[str], trust_level: str) -> bool:
     if trust_level == TRUST_TRUSTED_EMAIL:
         return name in ALLOW_RUN_BACKENDS_TRUSTED_EMAIL
     return False
+
+
+def is_open_target_allowed(target: str, trust_level: str) -> bool:
+    """Keep OPEN/deep links from bypassing calendar RUN permissions."""
+    value = target.strip().strip("\"'")
+    try:
+        scheme = urlsplit(value).scheme.lower()
+    except ValueError:
+        return False
+    backend = {
+        "btt": "btt",
+        "bettertouchtool": "btt",
+        "alfred": "alfred",
+        "shortcuts": "shortcut",
+        "applescript": "applescript",
+    }.get(scheme)
+    if backend:
+        return is_run_backend_allowed(backend, trust_level)
+    if trust_level == TRUST_SELF:
+        return True
+    if trust_level not in (TRUST_TRUSTED_DOMAIN, TRUST_TRUSTED_EMAIL):
+        return False
+    if scheme:
+        return scheme in ("http", "https")
+    # Local paths may launch executables via LaunchServices.
+    return not value.startswith(("/", "~", "./", "../"))

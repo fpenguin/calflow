@@ -4,6 +4,11 @@ Generated from the "CalFlow Examples" sheet, tab `260707`
 (spec-of-record). Regenerate this file when the sheet changes;
 do not hand-edit rows here.
 
+Current implementation correction (2026-10-10): the historical screenshot
+rows below describe an old fallback. Scoped captures now refuse the request
+without taking a full-screen screenshot. Use [QA](QA.md#actual-backend-support)
+for the current backend support table until the source sheet is regenerated.
+
 Legend: ❌ = must be rejected · PLANNED = approved syntax, not
 yet implemented · "stub" = parses/validates/resolves, side
 effect lands with the noted release.

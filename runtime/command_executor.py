@@ -21,10 +21,9 @@ Backend status:
 - RUN shortcut(...) → real (runtime.actions.shortcuts.run_shortcut)
 - RUN alfred(...)   → real (runtime.actions.btt.trigger_alfred)
 - RUN applescript   → real (runtime.actions.applescript.run_applescript)
-- FOCUS / CLOSE / HIDE / CLICK / TYPE / PRESS / COPY / PASTE / SAVE
-                → stubs that log the resolved params (Quartz / AXUI / clipboard
-                  backends land in v2.x); Plus Mode pipeline is fully wired
-                  through resolution + dispatch already.
+- FOCUS / CLOSE / HIDE and literal COPY → real macOS actions
+- CLICK / DRAG / TYPE / PRESS / bare COPY / PASTE / SAVE → logging stubs
+- Scoped SCREENSHOT variants → rejected without capture
 """
 
 from __future__ import annotations
@@ -43,6 +42,7 @@ from config.config import MAX_WAIT_SECONDS
 from config.settings import (
     AUTOFILL_BUFFER,
     PLUS_INTER_COMMAND_DELAY,
+    PLUS_MAX_COMMANDS,
 )
 from core.event_trust import TRUST_SELF
 from core.dynamic import resolve_dynamic
@@ -62,7 +62,7 @@ from runtime.actions.notifications import notify_run_error
 from runtime.actions.run_result import RunResult, error_result, ok_result
 from runtime.actions.screenshot import take_screenshot, take_screenshot_to_clipboard
 from runtime.actions.shortcuts import run_shortcut
-from runtime.run_policy import is_run_backend_allowed
+from runtime.run_policy import is_open_target_allowed, is_run_backend_allowed
 from state.stats_store import record_action  # v1.3.0 — lifetime stats
 
 
@@ -93,13 +93,14 @@ def execute_commands(
 
     block_tags: FrozenSet[str] = frozenset(global_tags or frozenset())
 
-    for command in commands:
+    if len(commands) > PLUS_MAX_COMMANDS:
+        log(f"[WARN] Plus Mode command limit reached ({PLUS_MAX_COMMANDS}); extra commands skipped")
+    for command in commands[:PLUS_MAX_COMMANDS]:
         try:
             params = resolve_command(command, block_tags)
             if "invalid" in params:
                 log(
-                    f"[WARN] skipped line {command.line_no}: {params['invalid']} "
-                    f"({command.raw!r})"
+                    f"[WARN] skipped line {command.line_no}: {params['invalid']}"
                 )
                 continue
 
@@ -120,8 +121,7 @@ def execute_commands(
 
         except Exception as exc:
             log(
-                f"[ERROR] Plus command failed at line {command.line_no} "
-                f"({command.raw!r}): {exc}"
+                f"[ERROR] Plus command failed at line {command.line_no}: {type(exc).__name__}"
             )
 
         finally:
@@ -157,7 +157,7 @@ def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
         log(f"[WARN] Plus executor: unknown verb {verb!r}")
         return
 
-    if verb == "RUN":
+    if verb in ("RUN", "OPEN"):
         handler(params, trust_level=trust_level)
     else:
         handler(params)
@@ -167,7 +167,7 @@ def _dispatch(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
 # 🌐 OPEN / FOCUS / CLOSE / HIDE
 # =========================================================
 
-def _do_open(params: Dict[str, Any]) -> None:
+def _do_open(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     url: Optional[str] = params.get("url")
     if not url:
         log("[WARN] OPEN missing url")
@@ -190,14 +190,17 @@ def _do_open(params: Dict[str, Any]) -> None:
     # own open dispatch — and the item's own classification (URL / app /
     # file) decides what gets opened.
     apps: List[str] = params.get("apps") or []
-    primary_is_bundle = url and url.startswith("@") and len(apps) > 1
+    primary_is_bundle = url.startswith("@") and bool(apps)
 
     if primary_is_bundle:
         # `open @work` → expand to N opens, one per item.
         for item in apps:
+            if not is_open_target_allowed(item, trust_level):
+                log("[WARN] OPEN alias item blocked by event trust policy")
+                continue
             # Each `item` is a string from settings.TARGETS — could be
             # an app name ("Slack"), URL ("https://x.com"), or file path.
-            open_target(
+            opened = open_target(
                 url=item,           # let _classify_primary inside open_target dispatch
                 app=None,           # no routing — item's type decides
                 layout=params.get("layout"),
@@ -205,14 +208,20 @@ def _do_open(params: Dict[str, Any]) -> None:
                 chrome_profile=chrome_profile,
                 new_window=new_win,
             )
+            record_action("open_profile" if chrome_profile else "open_url", success=opened is not False)
+        return
+
+    if not is_open_target_allowed(url, trust_level):
+        log("[WARN] OPEN blocked by event trust policy")
         return
 
     # Normal case: one open. `apps` contains the routing browser (or None).
     if not apps:
         apps = [params.get("app") or None]  # type: ignore[list-item]
 
+    any_opened = False
     for app in apps:
-        open_target(
+        opened = open_target(
             url=url,
             app=app,
             layout=params.get("layout"),
@@ -220,11 +229,17 @@ def _do_open(params: Dict[str, Any]) -> None:
             chrome_profile=chrome_profile,
             new_window=new_win,
         )
+        if opened is False:
+            record_action("open_profile" if chrome_profile else "open_url", success=False)
+            continue
+        any_opened = True
         # v1.3.0 — count once per app routed (bundle expansion → N counts).
         record_action("open_profile" if chrome_profile else "open_url")
         if params.get("layout") is not None:
             record_action("arrange")
 
+    if not any_opened:
+        return
     time.sleep(max(0.0, AUTOFILL_BUFFER))
 
     tags = set(params.get("tags") or frozenset())
@@ -538,20 +553,18 @@ def _do_screenshot(params: Dict[str, Any]) -> None:
     v1.1.2 forms:
         screenshot                          → default sink
         screenshot to("~/x.png")            → explicit path
-        screenshot active                   → frontmost-window capture (stub)
-        screenshot display(N) | window(...) | area(...)   (stub variants)
+        screenshot active                   → rejected until scoped capture exists
+        screenshot display(N) | window(...) | area(...)   (also rejected)
     """
-    if params.get("target_keyword") == "active":
-        log(
-            "[INFO] SCREENSHOT active: frontmost-window capture is a "
-            "stub — falling back to full screen"
-        )
-    if params.get("display") or params.get("window") or params.get("area"):
-        log(
-            "[INFO] SCREENSHOT variant: "
-            f"display={params.get('display')} window={params.get('window')!r} "
-            f"area={params.get('area')} (stub — falls back to full screen)"
-        )
+    functions = params.get("functions") or {}
+    if (params.get("target_keyword") == "active"
+            or params.get("layout") is not None
+            or resolve_display(set(params.get("tags") or ())) is not None
+            or any(params.get(key) is not None for key in ("display", "window", "area"))
+            or any(key in functions for key in ("display", "window", "area"))):
+        log("[WARN] Scoped screenshots are not implemented; no capture taken")
+        record_action("screenshot", success=False)
+        return
     # v1.5.2 — the default sink is the CLIPBOARD. A file is written only
     # when the user asked for one via `to("path")`. `to(clipboard)` is
     # the explicit spelling of the default.
@@ -622,10 +635,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
         msg = f"RUN {backend} disabled for trust level {trust_level!r}"
         log(f"[WARN] {msg}")
         notify_run_error("CalFlow run blocked", msg)
-        _apply_run_handlers(
-            handlers,
-            error_result(str(backend), msg),
-        )
+        # Authorization failure must not execute user-controlled handlers.
         return
 
     result: Optional[RunResult] = None
@@ -635,10 +645,10 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
             msg = "RUN btt(...) missing trigger name"
             log(f"[WARN] {msg}")
             notify_run_error("CalFlow BTT failed", msg)
-            _apply_run_handlers(handlers, error_result("btt", msg))
+            _apply_run_handlers(handlers, error_result("btt", msg), trust_level=trust_level)
             return
         result = trigger_named_btt(str(trigger_name))
-        _apply_run_handlers(handlers, result or ok_result("btt"))
+        _apply_run_handlers(handlers, result or ok_result("btt"), trust_level=trust_level)
         return
 
     if backend == "applescript":
@@ -649,7 +659,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
                 str(params.get("script") or ""),
                 timeout=params.get("timeout"),
             )
-        _apply_run_handlers(handlers, result or ok_result("applescript"))
+        _apply_run_handlers(handlers, result or ok_result("applescript"), trust_level=trust_level)
         return
 
     if backend == "shortcut":
@@ -657,7 +667,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
             str(params.get("shortcut_name") or ""),
             str(params.get("shortcut_input") or ""),
         )
-        _apply_run_handlers(handlers, result or ok_result("shortcut"))
+        _apply_run_handlers(handlers, result or ok_result("shortcut"), trust_level=trust_level)
         return
 
     if backend == "alfred":
@@ -666,7 +676,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
             str(params.get("alfred_trigger") or ""),
             str(params.get("alfred_argument") or ""),
         )
-        _apply_run_handlers(handlers, result or ok_result("alfred"))
+        _apply_run_handlers(handlers, result or ok_result("alfred"), trust_level=trust_level)
         return
 
     path = params.get("path")
@@ -674,6 +684,7 @@ def _do_run(params: Dict[str, Any], *, trust_level: str = TRUST_SELF) -> None:
     _apply_run_handlers(
         handlers,
         error_result("script", "arbitrary scripts are disabled in this build"),
+        trust_level=trust_level,
     )
 
 
@@ -692,10 +703,15 @@ def _short(params: Dict[str, Any]) -> Dict[str, Any]:
 def _apply_run_handlers(
     handlers: Tuple[Tuple[str, str, str], ...],
     result: RunResult,
+    *,
+    trust_level: str = TRUST_SELF,
 ) -> None:
     if not handlers:
         return
     for condition, action, value in handlers:
+        if action in ("save", "append") and trust_level != TRUST_SELF:
+            log("[WARN] RUN file handlers require a self-authored event")
+            continue
         if not _run_condition_matches(condition, result):
             continue
         try:
@@ -734,7 +750,7 @@ def _run_handler_text(value: str, result: RunResult) -> str:
 
 
 def _copy_text_to_clipboard(text: str) -> None:
-    subprocess.run(["pbcopy"], input=text, text=True, check=False, timeout=5)
+    subprocess.run(["pbcopy"], input=text, text=True, check=True, timeout=5)
 
 
 def _write_text(path: str, text: str, *, append: bool) -> None:
